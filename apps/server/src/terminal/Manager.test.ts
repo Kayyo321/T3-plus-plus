@@ -454,6 +454,11 @@ it.layer(
       yield* manager.open(openInput());
       expect(ptyAdapter.spawnInputs[0]?.env.API_KEY).toBe(TERMINAL_SECRET);
       expect(ptyAdapter.spawnInputs[0]?.cwd).toBe(process.cwd());
+      yield* manager.open(openInput());
+      expect(
+        ptyAdapter.spawnInputs,
+        "reopening with the same secrets keeps the shell",
+      ).toHaveLength(1);
 
       const pty = ptyAdapter.processes[0]!;
       pty.emitData("value=terminal-sec");

@@ -68,12 +68,12 @@ describe("makeSecretMask", () => {
   });
 
   it("walks plain data, keeps other values, and returns the same object when nothing matched", () => {
-    const date = new Date(0);
-    const clean = { a: ["x"], when: date };
+    const instance = new Map([["key", VALUE]]);
+    const clean = { a: ["x"], kept: instance };
     expect(mask.redactDeep(clean)).toBe(clean);
-    expect(mask.redactDeep({ a: [{ b: VALUE }], when: date, n: 1 })).toStrictEqual({
+    expect(mask.redactDeep({ a: [{ b: VALUE }], kept: instance, n: 1 })).toStrictEqual({
       a: [{ b: "[secret:DATABASE_URL]" }],
-      when: date,
+      kept: instance,
       n: 1,
     });
   });
