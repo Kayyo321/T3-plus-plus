@@ -1,6 +1,6 @@
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
 import { memo } from "react";
-import { CheckIcon, StarIcon } from "lucide-react";
+import { CheckIcon, StarIcon, TriangleAlertIcon } from "lucide-react";
 import { getDisplayModelName } from "./providerIconUtils";
 import { ComboboxItem } from "../ui/combobox";
 import { Button } from "../ui/button";
@@ -32,6 +32,8 @@ export const ModelListRow = memo(function ModelListRow(props: {
   unavailable?: boolean;
   jumpLabel?: string | null;
   disabledReason?: string | null;
+  /** A warning about choosing this row that does not stop you from doing so. */
+  notice?: string | null;
   onToggleFavorite: (instanceId: ProviderInstanceId, slug: string) => void;
 }) {
   const model = {
@@ -96,6 +98,24 @@ export const ModelListRow = memo(function ModelListRow(props: {
           <Badge variant="outline" size="sm">
             Unavailable
           </Badge>
+        ) : null}
+        {props.notice ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  role="img"
+                  aria-label={props.notice}
+                  className="inline-flex shrink-0 text-warning"
+                />
+              }
+            >
+              <TriangleAlertIcon aria-hidden="true" className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="top" align="center">
+              {props.notice}
+            </TooltipPopup>
+          </Tooltip>
         ) : null}
       </div>
 

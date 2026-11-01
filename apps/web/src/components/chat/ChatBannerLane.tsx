@@ -1,10 +1,12 @@
 import type {
+  EnvironmentId,
   OrchestrationV2ProviderFailureClass,
   ProviderInstanceId,
   ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import type { Dispatch, SetStateAction } from "react";
+import { ComputerUseBanner } from "../computerUse/ComputerUseBanner";
 import { ProviderStatusBanner } from "./ProviderStatusBanner";
 import { dismissThreadErrorBannerForSession, ThreadErrorBanner } from "./ThreadErrorBanner";
 
@@ -18,6 +20,8 @@ export function ChatBannerLane(props: {
   setDismissedProviderStatusBannerKey: Dispatch<SetStateAction<string | null>>;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
   threadId: ThreadId;
+  /** Null for a draft, which has no server thread to watch. */
+  computerUseEnvironmentId: EnvironmentId | null;
   threadError: string | null;
   threadErrorClass: OrchestrationV2ProviderFailureClass | null;
   threadErrorCode: string | null;
@@ -31,6 +35,7 @@ export function ChatBannerLane(props: {
     setDismissedProviderStatusBannerKey,
     onOpenProviderSetup,
     threadId,
+    computerUseEnvironmentId,
     threadError,
     threadErrorClass,
     threadErrorCode,
@@ -40,6 +45,9 @@ export function ChatBannerLane(props: {
   } = props;
   return (
     <div className="chat-banner-lane pointer-events-none absolute top-0 z-30 flex flex-col">
+      {computerUseEnvironmentId === null ? null : (
+        <ComputerUseBanner environmentId={computerUseEnvironmentId} threadId={threadId} />
+      )}
       <ProviderStatusBanner
         status={providerStatus}
         onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}

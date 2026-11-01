@@ -60,6 +60,7 @@ import {
   BotIcon,
   BugIcon,
   EyeIcon,
+  CalendarClockIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -123,6 +124,7 @@ import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
+import { useCommandPaletteComputerUseItems } from "./CommandPaletteComputerUseItems";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useScratchProject } from "../hooks/useScratchProject";
@@ -494,6 +496,9 @@ function OpenCommandPaletteDialog(props: {
   );
   const canShareActiveThreadWithGuest = useAtomValue(
     canShareWithGuestAtom(activeThread?.environmentId ?? ("" as EnvironmentId)),
+  );
+  const computerUseItems = useCommandPaletteComputerUseItems(
+    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
   const activeThreadReferenceCopyTarget =
     referenceThreadRef === null || (pathname === "/pull-requests" && !openPanelPullRequestUrl)
@@ -1534,6 +1539,8 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  actionItems.push(...computerUseItems);
+
   if (activeThread !== null) {
     const thread = activeThread;
     actionItems.push({
@@ -1739,6 +1746,16 @@ function OpenCommandPaletteDialog(props: {
     icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/settings" });
+    },
+  });
+  actionItems.push({
+    kind: "action",
+    value: "action:scheduled-tasks",
+    searchTerms: ["scheduled tasks", "schedule", "automations", "cron", "repeat", "run history"],
+    title: "Scheduled tasks",
+    icon: <CalendarClockIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/settings/scheduled-tasks" });
     },
   });
 

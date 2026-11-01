@@ -55,6 +55,7 @@ import { useUsageLimitsPanel } from "./chat/useUsageLimitsPanel";
 import { useWorktreeSetup } from "./chat/useWorktreeSetup";
 import { useChatShortcuts } from "./chat/useChatShortcuts";
 import { ChatBannerLane } from "./chat/ChatBannerLane";
+import { ComputerUseTitlebarIndicator } from "./computerUse/ComputerUseBanner";
 import * as Schema from "effect/Schema";
 import {
   AuthOrchestrationOperateScope,
@@ -3358,10 +3359,15 @@ export default function ChatView(props: ChatViewProps) {
     ),
   } satisfies PanelLayoutControlsProps;
   const panelToggleControls = (
-    <PanelLayoutControls
-      {...panelToggleControlProps}
-      showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
-    />
+    <>
+      {rightPanelMaximized && isServerThread && activeThreadRef !== null ? (
+        <ComputerUseTitlebarIndicator threadRef={activeThreadRef} />
+      ) : null}
+      <PanelLayoutControls
+        {...panelToggleControlProps}
+        showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
+      />
+    </>
   );
   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
   const panelLayoutControls = (
@@ -3524,6 +3530,7 @@ export default function ChatView(props: ChatViewProps) {
               setDismissedProviderStatusBannerKey={setDismissedProviderStatusBannerKey}
               onOpenProviderSetup={openProviderSetupStable}
               threadId={activeThread.id}
+              computerUseEnvironmentId={isServerThread ? activeThread.environmentId : null}
               threadError={timelineThreadError}
               threadErrorClass={
                 threadErrorIsServerRuntimeError ? (serverRuntime?.lastErrorClass ?? null) : null
@@ -3746,6 +3753,11 @@ export default function ChatView(props: ChatViewProps) {
                               activeThreadId={activeThreadId}
                               activeThread={activeThread}
                               activeThreadShell={activeThreadShell}
+                              capabilityMode={
+                                (isServerThread
+                                  ? activeThreadShell?.capabilityMode
+                                  : draftThread?.capabilityMode) ?? "code"
+                              }
                               promptHistoryMessages={timelineMessages}
                               forceExpandedOnMobile={
                                 forceExpandedMobileComposer && isDraftHeroState

@@ -24,6 +24,7 @@ import {
   type RunId,
   type RuntimeMode,
   type RuntimeRequestId,
+  type ThreadCapabilityMode,
   type ThreadId,
   type ThreadEnvMode,
   type UploadChatAttachment,
@@ -146,6 +147,10 @@ export interface SetThreadInteractionModeInput extends ThreadCommandInput {
   readonly interactionMode: ProviderInteractionMode;
 }
 
+export interface SetThreadCapabilityModeInput extends ThreadCommandInput {
+  readonly capabilityMode: ThreadCapabilityMode;
+}
+
 interface StartThreadBootstrap {
   readonly createThread?: {
     readonly projectId: ProjectId;
@@ -153,6 +158,7 @@ interface StartThreadBootstrap {
     readonly modelSelection: ModelSelection;
     readonly runtimeMode: RuntimeMode;
     readonly interactionMode: ProviderInteractionMode;
+    readonly capabilityMode?: ThreadCapabilityMode;
     readonly branch: string | null;
     readonly worktreePath: string | null;
     readonly createdAt: string;
@@ -675,6 +681,17 @@ export const setThreadInteractionMode = Effect.fn("EnvironmentCommands.setThread
   },
 );
 
+export const setThreadCapabilityMode = Effect.fn("EnvironmentCommands.setThreadCapabilityMode")(
+  function* (input: SetThreadCapabilityModeInput) {
+    return yield* dispatch({
+      type: "thread.capability-mode.set",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      capabilityMode: input.capabilityMode,
+    });
+  },
+);
+
 export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(function* (
   input: StartThreadTurnInput,
 ) {
@@ -728,6 +745,9 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
       modelSelection: input.modelSelection ?? thread.modelSelection,
       runtimeMode: input.runtimeMode,
       interactionMode: input.interactionMode,
+      ...(bootstrap?.capabilityMode === undefined
+        ? {}
+        : { capabilityMode: bootstrap.capabilityMode }),
       workspaceStrategy,
       initialMessage: {
         messageId: input.message.messageId,

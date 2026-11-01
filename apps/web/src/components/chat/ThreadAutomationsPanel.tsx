@@ -1,12 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarClockIcon, PencilIcon, PlayIcon, Settings2Icon } from "lucide-react";
+import { CalendarClockIcon, HistoryIcon, PencilIcon, PlayIcon, Settings2Icon } from "lucide-react";
 import { useState } from "react";
 import {
   AuthOrchestrationOperateScope,
   type EnvironmentId,
   type ScheduledTask,
+  type ScheduledTaskId,
   type ThreadId,
 } from "@t3tools/contracts";
 import {
@@ -16,7 +17,11 @@ import {
 
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { cn } from "../../lib/utils";
-import { ScheduledRelativeLabel, scheduleLabel } from "../settings/ScheduledTasksSettings";
+import {
+  ScheduledRelativeLabel,
+  ScheduledTaskRunHistoryDialog,
+} from "../settings/ScheduledTaskRunHistory";
+import { scheduleLabel } from "../settings/scheduledTasksSettings.logic";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -73,12 +78,14 @@ export function ThreadAutomationsPanel(props: {
   });
   const navigate = useNavigate();
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [historyTaskId, setHistoryTaskId] = useState<ScheduledTaskId | null>(null);
 
   const boundTasks = (tasksQuery.data?.tasks ?? []).filter(
     (task) => task.threadId === props.threadId,
   );
 
   if (tasksQuery.error === null && boundTasks.length === 0) return null;
+  const historyTask = boundTasks.find((task) => task.id === historyTaskId);
 
   const reportFailure = (title: string, error: unknown) => {
     toastManager.add(
@@ -205,6 +212,22 @@ export function ThreadAutomationsPanel(props: {
               />
               <TooltipPopup>Edit automation</TooltipPopup>
             </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <ThreadDetailsControl
+                    size="icon-xs"
+                    variant="ghost"
+                    part="icon"
+                    aria-label={`Run history for ${task.title}`}
+                    onClick={() => setHistoryTaskId(task.id)}
+                  >
+                    <HistoryIcon className="size-3.5" />
+                  </ThreadDetailsControl>
+                }
+              />
+              <TooltipPopup>Run history</TooltipPopup>
+            </Tooltip>
             {/* Webhook tasks need a request from their URL. */}
             {task.schedule.type === "webhook" ? null : (
               <Tooltip>
@@ -236,6 +259,13 @@ export function ThreadAutomationsPanel(props: {
           </li>
         ))}
       </ul>
+      {historyTask ? (
+        <ScheduledTaskRunHistoryDialog
+          environmentId={props.environmentId}
+          task={historyTask}
+          onClose={() => setHistoryTaskId(null)}
+        />
+      ) : null}
       {/* Kept last: the details card treats a section whose last child is empty as empty. */}
       {tasksQuery.error !== null ? (
         <p className="px-2.5 py-1.5 text-2xs text-destructive">

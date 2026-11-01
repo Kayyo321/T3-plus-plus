@@ -5,6 +5,7 @@ import type {
   ProjectId,
   RuntimeMode,
   ScheduledTask,
+  ScheduledTaskSchedule,
   ScheduledTaskUpsertSchedule,
   ScheduledTaskWebhookSignature,
 } from "@t3tools/contracts";
@@ -132,6 +133,34 @@ export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): Sch
   }
 }
 
+/** Applies a parsed plain-language schedule, keeping the other modes' fields for switching back. */
+export function scheduleDraftFromParsed(
+  current: ScheduleDraft,
+  parsed: Exclude<ScheduledTaskSchedule, { readonly type: "webhook" }>,
+): ScheduleDraft {
+  switch (parsed.type) {
+    case "fixed_time": {
+      const { timeOfDay, weekdays } = scheduleDraftForTask({ schedule: parsed });
+      return { ...current, mode: "fixed_time", timeOfDay, weekdays };
+    }
+    case "once":
+      return { ...current, mode: "once", runAt: parsed.runAt };
+    case "cron":
+      return {
+        ...current,
+        mode: "cron",
+        cronExpression: parsed.expression,
+        cronTimeZone: parsed.timeZone ?? "",
+      };
+    case "interval":
+      return {
+        ...current,
+        mode: "interval",
+        intervalMinutes: scheduleDraftForTask({ schedule: parsed }).intervalMinutes,
+      };
+  }
+}
+
 export function parseIntervalMinutes(value: string): number {
   return Number(value.trim().replace(",", "."));
 }
@@ -244,6 +273,8 @@ function draftSignature(draft: ScheduledTaskDraft): string {
     draft.schedule.runAt,
     [...draft.schedule.weekdays].sort((a, b) => a - b),
     draft.schedule.intervalMinutes,
+    draft.schedule.cronExpression,
+    draft.schedule.cronTimeZone,
     draft.schedule.maxDeliveryAgeMinutes,
     draft.schedule.replayKey,
     draft.schedule.coalesceKey,
@@ -282,7 +313,8 @@ export function createDraft(
     checkoutPath: "",
     enabled: true,
     startFromOrigin: true,
-    runtimeMode: "full-access",
+    // Nobody is watching an unattended run, so a new task starts with least privilege.
+    runtimeMode: "approval-required",
   };
 }
 

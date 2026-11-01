@@ -1452,6 +1452,27 @@ it.effect.each(["failed", "interrupted"] as const)(
   },
 );
 
+it.effect("creates the thread in the capability mode the launch asks for", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness();
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const chat = yield* launches.launch({
+        ...launchInput({ command: "command:launch:chat", thread: "thread:launch:chat" }),
+        capabilityMode: "chat",
+      });
+      const code = yield* launches.launch(
+        launchInput({ command: "command:launch:code", thread: "thread:launch:code" }),
+      );
+      const chatProjection = yield* threads.getThreadProjection(chat.threadId);
+      const codeProjection = yield* threads.getThreadProjection(code.threadId);
+      assert.equal(chatProjection.thread.capabilityMode, "chat");
+      assert.isUndefined(codeProjection.thread.capabilityMode);
+    }).pipe(Effect.provide(harness.layer));
+  }),
+);
+
 it.effect("replays a server-allocated launch", () =>
   Effect.gen(function* () {
     const setupEntered = yield* Deferred.make<void>();

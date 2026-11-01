@@ -26,7 +26,12 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { useThreadSelectionStore } from "../threadSelectionStore";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { useUiStateStore } from "../uiStateStore";
-import { type CommandHandler, registerCommands } from "./dispatcher";
+import {
+  showComputerUseSteps,
+  stopComputerUse,
+} from "../components/computerUse/computerUseActions";
+import { serverEnvironment } from "../state/server";
+import { type CommandHandler, registerCommands, registerMenuAction } from "./dispatcher";
 
 const CHAT_ROUTE_ID = "/_chat";
 
@@ -112,7 +117,22 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       if (threadRef && canOperatePreview(threadRef.environmentId)) dispatchPreviewAction(action);
     };
 
-  return registerCommands(
+  const stopRouteComputerUse = () => {
+    const threadRef = readRouteThreadRef();
+    if (
+      threadRef === null ||
+      !appAtomRegistry.get(
+        serverEnvironment.stopComputerUse.permissionAtom(threadRef.environmentId),
+      )
+    ) {
+      return false;
+    }
+    void stopComputerUse(threadRef);
+    return true;
+  };
+
+  // Ahead of focused widgets, and with no route guard beyond the thread: Stop always works.
+  const disposeStop = registerCommands(
     {
       "workspaceBundle.switch": (event) => {
         claim(event);
@@ -121,6 +141,25 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       "conversationFolders.toggleView": (event) => {
         claim(event);
         useConversationFolderViewStore.getState().toggleFoldersVisible();
+      "computerUse.stop": (event) => {
+        if (!event.repeat && !stopRouteComputerUse()) return false;
+        claim(event);
+      },
+    },
+    { capture: true },
+  );
+  // A focused desktop browser page forwards the chord here.
+  const disposeStopMenuAction = registerMenuAction("computerUse.stop", () => {
+    stopRouteComputerUse();
+  });
+
+  const disposeCommands = registerCommands(
+    {
+      "computerUse.showSteps": (event) => {
+        const threadRef = readRouteThreadRef();
+        if (threadRef === null) return false;
+        claim(event);
+        showComputerUseSteps(threadRef);
       },
       "chat.newLocal": startNewLocal,
       "chat.newWithoutProject": (event) => {
@@ -202,4 +241,10 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
       },
     },
   );
+
+  return () => {
+    disposeCommands();
+    disposeStopMenuAction();
+    disposeStop();
+  };
 }

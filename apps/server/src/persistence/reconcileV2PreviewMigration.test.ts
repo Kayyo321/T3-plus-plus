@@ -59,6 +59,8 @@ describe("V2 preview upgrade", () => {
         [77, "AuditTrail"],
         [80, "BackgroundTasks"],
         [85, "CheckpointRefIndex"],
+        [82, "ConversationDocuments"],
+        [83, "ScheduledRunsAndComputerUse"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -161,6 +163,8 @@ describe("V2 preview upgrade", () => {
         [77, "AuditTrail"],
         [80, "BackgroundTasks"],
         [85, "CheckpointRefIndex"],
+        [82, "ConversationDocuments"],
+        [83, "ScheduledRunsAndComputerUse"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

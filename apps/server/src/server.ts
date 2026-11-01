@@ -146,6 +146,7 @@ import * as McpOAuthHttp from "./auth/mcpOAuthHttp.ts";
 import {
   relayHookBaseUrl,
   ScheduledRunCostEstimator,
+  ScheduledTaskRunHost,
   ScheduledTaskWebhookOrigin,
 } from "./scheduledTasks/ScheduledTaskService.ts";
 import {
@@ -192,6 +193,8 @@ import * as CursorKeychain from "@t3tools/provider-cursor/server/CursorKeychain"
 import * as CursorUsageAccounts from "@t3tools/provider-cursor/server/CursorUsageAccounts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as CodexUsageHistory from "./usage/CodexUsageHistory.ts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import { SERVICE_LAUNCHER_CONTEXT_ENV } from "./cloud/serviceProtocol.ts";
 import * as ComputerUseService from "./computerUse/ComputerUseService.ts";
 import * as VirtualDisplay from "./computerUse/VirtualDisplay.ts";
 import * as ConversationDocumentService from "./documents/ConversationDocumentService.ts";
@@ -545,6 +548,19 @@ const layerScheduledTaskWebhookOrigin = Layer.effect(
   }),
 );
 
+const layerScheduledTaskRunHost = Layer.effect(
+  ScheduledTaskRunHost,
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    const environment = yield* HostProcess.Environment;
+    return environment[SERVICE_LAUNCHER_CONTEXT_ENV] !== undefined
+      ? ("service" as const)
+      : config.mode === "desktop"
+        ? ("desktop" as const)
+        : ("terminal" as const);
+  }),
+);
+
 const layerScheduledRunCostEstimator = Layer.effect(
   ScheduledRunCostEstimator,
   UsageService.UsageService.pipe(Effect.map((usage) => usage.estimateCostUsd)),
@@ -566,6 +582,7 @@ const layerOrchestrationV2Runtime = RuntimeLayer.layerProduction.pipe(
   Layer.provideMerge(layerComputerUse),
   Layer.provide(layerScheduledTaskWebhookOrigin),
   Layer.provide(layerScheduledRunCostEstimator),
+  Layer.provide(layerScheduledTaskRunHost),
   Layer.provide(ProviderEventIngestor.layerAnalytics),
   Layer.provide(layerCheckpointStore),
   Layer.provide(layerGitWorkflow),

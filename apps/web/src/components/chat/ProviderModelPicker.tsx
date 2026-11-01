@@ -99,6 +99,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   onOpenChange?: (open: boolean) => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
+  getInstanceNotice?: ((instanceId: ProviderInstanceId) => string | null) | undefined;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
   /** Shown after the model name inside the same trigger, such as the effort level. */
   triggerSuffix?: ReactNode;
@@ -273,6 +274,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           ? "Model picker is disabled"
           : (props.getModelDisabledReason?.(instanceId, model) ?? null)
       }
+      getInstanceNotice={props.getInstanceNotice}
       onInstanceModelChange={handleInstanceModelChange}
       {...(docked
         ? {

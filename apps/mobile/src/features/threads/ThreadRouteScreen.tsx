@@ -943,6 +943,9 @@ function ThreadRouteContent(
         modelSelection: selectedThread.modelSelection,
         runtimeMode: selectedThread.runtimeMode,
         interactionMode: selectedThread.interactionMode,
+        ...(selectedThread.capabilityMode === undefined
+          ? {}
+          : { capabilityMode: selectedThread.capabilityMode }),
         workspaceMode: "local",
         branch: null,
         worktreePath: null,

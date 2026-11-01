@@ -17,6 +17,9 @@ import { resolveSettingsScope, type SettingsScopeSearch } from "./settingsScope"
 
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import {
+  applyScheduleToDraft,
+  interpretScheduleText,
+  nextCronRunFromDraft,
   scheduledTaskDefaultModel,
   defaultScheduledTaskProjectId,
   matchesScheduledTaskScope,
@@ -310,6 +313,70 @@ describe("webhook scheduled tasks", () => {
         filters: [{ id: "f1", path: "body.action", op: "in", value: " , " }],
       }),
     ).toBeNull();
+  });
+});
+
+describe("plain-language schedules", () => {
+  const now = new Date("2026-11-02T10:00:00.000Z");
+  const draft = taskToDraft(legacyTask);
+
+  it.each([
+    ["every 30 minutes", "interval", "Every 30 min"],
+    ["weekdays at 9am", "fixed", "Weekdays at 09:00"],
+    ["0 9 * * 1-5", "cron", "Cron 0 9 * * 1-5"],
+  ])("fills the draft from %s", (text, mode, description) => {
+    const understood = interpretScheduleText(text, now);
+    expect(understood?.description).toBe(description);
+    expect(understood?.nextRun?.getTime()).toBeGreaterThan(now.getTime());
+    expect(applyScheduleToDraft(draft, understood!.schedule).scheduleMode).toBe(mode);
+    expect(scheduleFromDraft(applyScheduleToDraft(draft, understood!.schedule))).toEqual(
+      understood!.schedule,
+    );
+  });
+
+  it("keeps the exact time of a one-time phrase", () => {
+    const understood = interpretScheduleText("in 90 minutes", now);
+    expect(understood?.nextRun).toEqual(new Date("2026-11-02T11:30:00.000Z"));
+    expect(scheduleFromDraft(applyScheduleToDraft(draft, understood!.schedule))).toEqual({
+      type: "once",
+      runAt: "2026-11-02T11:30:00.000Z",
+    });
+  });
+
+  it("leaves text it cannot read alone", () => {
+    expect(interpretScheduleText("whenever you feel like it", now)).toBeNull();
+    expect(interpretScheduleText("   ", now)).toBeNull();
+  });
+});
+
+describe("cron drafts", () => {
+  const now = new Date("2026-11-02T10:00:00.000Z");
+  const draft = { ...taskToDraft(legacyTask), scheduleMode: "cron" as const };
+
+  it("previews the next run in the zone it names", () => {
+    expect(
+      nextCronRunFromDraft(
+        { ...draft, cronExpression: "0 9 * * *", cronTimeZone: "America/New_York" },
+        now,
+      ),
+    ).toEqual(new Date("2026-11-02T14:00:00.000Z"));
+  });
+
+  it("has no next run for an expression that never fires or a zone that does not exist", () => {
+    expect(nextCronRunFromDraft({ ...draft, cronExpression: "0 9 31 2 *" }, now)).toBeNull();
+    expect(
+      nextCronRunFromDraft({ ...draft, cronExpression: "0 9 * * *", cronTimeZone: "Mars/Base" }, now),
+    ).toBeNull();
+  });
+
+  it("refuses a zone the server would reject, and sends a blank zone as none", () => {
+    expect(
+      scheduleFromDraft({ ...draft, cronExpression: "0 9 * * *", cronTimeZone: "Mars/Base" }),
+    ).toBeNull();
+    expect(scheduleFromDraft({ ...draft, cronExpression: "0 9 * * *" })).toEqual({
+      type: "cron",
+      expression: "0 9 * * *",
+    });
   });
 });
 

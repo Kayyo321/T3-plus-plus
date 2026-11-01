@@ -501,6 +501,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta alpha simlock callstack simulator emulator ios android pool lease gateway"],
   },
   {
+    id: "computer-use",
+    title: "Computer use",
+    to: "/settings/labs",
+    scope: "environment",
+    searchTerms: ["beta agent screen click type browser virtual display desktop screenshot"],
+  },
+  {
     id: "auto-settle-inactive-threads",
     title: "Auto-settle inactive threads",
     to: "/settings/threads",

@@ -60,6 +60,24 @@ describe("closedViewStore", () => {
       threadRef: refA,
       surface: { kind: "side-chat", id: "side-chat:x" },
     },
+    {
+      id: "bad",
+      kind: "panel-tab",
+      threadRef: refA,
+      surface: { kind: "document", id: "document:x" },
+    },
+    {
+      id: "bad",
+      kind: "panel-tab",
+      threadRef: refA,
+      surface: { kind: "document", id: "document:x", documentId: "y" },
+    },
+    {
+      id: "bad",
+      kind: "panel-tab",
+      threadRef: refA,
+      surface: { kind: "computer-use", id: "computer-use:x", threadId: "y" },
+    },
   ])("discards incomplete saved views %j while retaining valid history", async (entry) => {
     const id = useClosedViewStore.getState().remember(diff(refA));
     const { storage, name } = useClosedViewStore.persist.getOptions();

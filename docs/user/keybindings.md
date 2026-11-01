@@ -155,6 +155,9 @@ shortcut; assign one in **Settings → Keybindings**.
 the open thread. `thread.newNestedSession` (`mod+alt+j`) starts a
 [nested session](./nested-sessions.md), and `thread.runInBackground` (`mod+alt+g`) starts a
 [background task](./background-tasks.md).
+`computerUse.stop` (`mod+alt+shift+s` by default) ends computer use in the focused
+conversation, even while a terminal or the built-in browser has focus.
+`computerUse.showSteps` opens its step log and has no default shortcut.
 
 `thread.undo` (`mod+z` by default) reverses the actions shown in the notice at the
 bottom of the sidebar, such as unpin, settle, snooze, archive, or discarding a

@@ -3,22 +3,32 @@ import {
   type PendingSubagentRequest,
   presentThreadShell,
 } from "@t3tools/client-runtime/state/models";
+import { scheduledRunOutcome } from "@t3tools/client-runtime/scheduled-task-policy";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import type { AnyRouter } from "@tanstack/react-router";
-import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
+import {
+  isScheduledRunThread,
+  type EnvironmentId,
+  type OrchestrationV2ThreadShell,
+  type ScheduledTask,
+  type ScheduledTaskId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 import * as Option from "effect/Option";
-import type { AtomRegistry } from "effect/reactivity";
+import { AsyncResult, type AtomRegistry } from "effect/reactivity";
 import {
   CircleAlertIcon,
   CircleCheckIcon,
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { getClientSettings, subscribeClientSettings } from "../hooks/useSettings";
 import { isWindowsPlatform } from "../lib/utils";
 import { environmentSummaries } from "../state/presentation";
+import { serverEnvironment } from "../state/server";
 import { environmentShell } from "../state/shell";
 import { environmentThreadShells } from "../state/threads";
 import {
@@ -32,10 +42,23 @@ import {
 import { resolveSidebarThreadStatus, type SidebarThreadStatus } from "./Sidebar.logic";
 import {
   createThreadNotificationGate,
+  observeScheduledRuns,
   type ThreadNotificationKind,
   type ThreadNotificationObservation,
 } from "./ThreadNotificationCoordinator.logic";
 import { toastManager } from "./ui/toast";
+
+interface Announcement {
+  readonly kind: ThreadNotificationKind;
+  readonly toastType: "success" | "error" | "warning";
+  readonly title: string;
+  readonly description: string;
+  readonly leadingIcon: ReactNode;
+  /** Null when nothing ran, so there is no conversation to open. */
+  readonly threadId: ThreadId | null;
+  readonly actionLabel: string;
+  readonly tag: string;
+}
 
 interface NotificationState extends ThreadNotificationObservation {
   readonly raw: OrchestrationV2ThreadShell;
@@ -49,6 +72,7 @@ interface WatchedEnvironment {
   previous: Map<ThreadId, NotificationState>;
   reconnecting: boolean;
   readonly gate: ReturnType<typeof createThreadNotificationGate<ThreadId>>;
+  readonly scheduledRuns: Map<ScheduledTaskId, string | null>;
 }
 
 /**
@@ -74,29 +98,20 @@ export function startThreadNotifications(
   };
 
   // Completions fire from a timer, so read settings, focus and route when presenting.
-  const present = (
-    environmentId: EnvironmentId,
-    state: NotificationState,
-    kind: ThreadNotificationKind,
-  ) => {
-    const { thread, status } = state;
+  const announce = (environmentId: EnvironmentId, announcement: Announcement) => {
+    const { kind, threadId, title, description } = announcement;
     const { notificationMode: mode, inAppNotificationsEnabled } = getClientSettings();
     const active = (router.state.matches.at(-1)?.params ?? {}) as {
       environmentId?: string;
       threadId?: string;
     };
-    const title =
-      kind === "completion"
-        ? "Thread completed"
-        : status === "approval"
-          ? "Approval needed"
-          : status === "limited"
-            ? "Usage limit reached"
-            : status === "failed"
-              ? "Thread failed"
-              : status === "request"
-                ? "Guest request"
-                : "Input needed";
+    const open = () =>
+      threadId === null
+        ? router.navigate({ to: "/settings/scheduled-tasks" })
+        : router.navigate({
+            to: "/$environmentId/$threadId",
+            params: { environmentId, threadId },
+          });
     if (hasNotificationSound(mode)) {
       void playNotificationSound(kind, () =>
         hasNotificationSound(getClientSettings().notificationMode),

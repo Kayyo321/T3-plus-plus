@@ -40,12 +40,16 @@ export * from "./orchestrationProject.ts";
 export * from "./orchestrationV2.ts";
 export * from "./audit.ts";
 export * from "./orchestratorAgent.ts";
+<<<<<<< Updated upstream
 export * from "./threadBranching.ts";
 export * from "./backgroundTasks.ts";
 export * from "./conversationFolders.ts";
 export * from "./workspaces.ts";
 export * from "./computerUse.ts";
 export * from "./conversationDocument.ts";
+=======
+export * from "./teamwork.ts";
+>>>>>>> Stashed changes
 export * from "./guestShare.ts";
 export * from "./guestStream.ts";
 export * from "./remoteControl.ts";

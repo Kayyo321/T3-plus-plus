@@ -149,6 +149,7 @@ export function pendingThreadCreationShell(
     modelSelection: message.modelSelection,
     runtimeMode: message.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     interactionMode: message.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
+    ...(creation.capabilityMode === undefined ? {} : { capabilityMode: creation.capabilityMode }),
     branch: creation.branch,
     pullRequests: [],
     worktreePath: creation.workspaceMode === "worktree" ? null : creation.worktreePath,

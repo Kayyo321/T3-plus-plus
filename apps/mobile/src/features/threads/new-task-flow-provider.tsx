@@ -11,6 +11,7 @@ import type {
   ProviderOptionSelection,
   RuntimeMode,
   ServerProvider,
+  ThreadCapabilityMode,
 } from "@t3tools/contracts";
 import {
   CommandId,
@@ -156,6 +157,7 @@ type NewTaskFlowContextValue = {
   readonly currentCheckoutBranchName: string | null;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
+  readonly capabilityMode: ThreadCapabilityMode;
   readonly planModeEnabled: boolean;
   readonly expandedProvider: string | null;
   readonly environments: ReadonlyArray<{
@@ -209,6 +211,7 @@ type NewTaskFlowContextValue = {
   readonly loadBranches: () => void;
   readonly setRuntimeMode: (value: RuntimeMode) => void;
   readonly setInteractionMode: (value: ProviderInteractionMode) => void;
+  readonly setCapabilityMode: (value: ThreadCapabilityMode) => void;
   readonly setSelectedModelOptions: (
     value: ReadonlyArray<ProviderOptionSelection> | undefined,
   ) => void;
@@ -418,6 +421,7 @@ export function NewTaskFlowProvider(
     isGitRepo && (draftStartFromOrigin ?? projectSettings.settings.newWorktreesStartFromOrigin);
   const defaultRuntimeMode = projectSettings.settings.defaultRuntimeMode;
   const runtimeMode = selectedProjectDraft.runtimeMode ?? defaultRuntimeMode;
+  const capabilityMode = selectedProjectDraft.capabilityMode ?? "code";
 
   // Antigravity keeps unavailable selections so sign-out or a catalog change
   // cannot switch the user's model.
@@ -703,6 +707,11 @@ export function NewTaskFlowProvider(
       updateComposerDraftSettings(selectedProjectDraftKey, { runtimeMode: value });
     }
   };
+  const setCapabilityMode = (value: ThreadCapabilityMode) => {
+    if (selectedProjectDraftKey) {
+      updateComposerDraftSettings(selectedProjectDraftKey, { capabilityMode: value });
+    }
+  };
   const setInteractionMode = (value: ProviderInteractionMode) => {
     if (selectedProjectDraftKey) {
       updateComposerDraftSettings(selectedProjectDraftKey, {
@@ -763,6 +772,7 @@ export function NewTaskFlowProvider(
         projectTitle: selectedProject.title,
         projectCwd: selectedProject.workspaceRoot,
         workspaceMode: mode,
+        ...(draft.capabilityMode === "chat" ? { capabilityMode: draft.capabilityMode } : {}),
         ...(mode === "worktree" && workspaceSelection?.pullRequestReference
           ? { pullRequestReference: workspaceSelection.pullRequestReference }
           : {}),
@@ -866,6 +876,7 @@ export function NewTaskFlowProvider(
     currentCheckoutBranchName,
     runtimeMode,
     interactionMode,
+    capabilityMode,
     planModeEnabled,
     expandedProvider,
     environments,
@@ -898,6 +909,7 @@ export function NewTaskFlowProvider(
     loadBranches,
     setRuntimeMode,
     setInteractionMode,
+    setCapabilityMode,
     setSelectedModelOptions,
     setExpandedProvider: (value: string | null) => updateFlow({ expandedProvider: value }),
   } satisfies NewTaskFlowContextValue;

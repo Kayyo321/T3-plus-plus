@@ -25,6 +25,9 @@ const RIGHT_PANEL_KINDS = [
   "pull-requests",
   "side-chat",
   "git-graph",
+  "documents",
+  "document",
+  "computer-use",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -81,6 +84,10 @@ export type RightPanelSurface =
   | { id: "pull-requests"; kind: "pull-requests" }
   | { id: "git-graph"; kind: "git-graph" }
   | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId };
+  | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId }
+  | { id: "documents"; kind: "documents" }
+  | { id: `document:${string}`; kind: "document"; documentId: string }
+  | { id: `computer-use:${string}`; kind: "computer-use"; threadId: ThreadId };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 14;
@@ -128,9 +135,15 @@ interface RightPanelStoreState {
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat">,
+    kind: Exclude<
+      RightPanelKind,
+      "file" | "terminal" | "pull-request" | "side-chat" | "document" | "computer-use"
+    >,
   ) => void;
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
+  openDocument: (ref: ScopedThreadRef, documentId: string) => void;
+  /** `threadId` is the conversation the steps belong to, which a side chat's parent panel is not. */
+  openComputerUse: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
@@ -199,7 +212,10 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat">,
+    kind: Exclude<
+      RightPanelKind,
+      "file" | "terminal" | "pull-request" | "side-chat" | "document" | "computer-use"
+    >,
   ) => void;
   setThreadPanelOpen: (
     ref: ScopedThreadRef,
@@ -222,7 +238,10 @@ const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
 };
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request" | "side-chat">,
+  kind: Exclude<
+    RightPanelKind,
+    "file" | "preview" | "terminal" | "pull-request" | "side-chat" | "document" | "computer-use"
+  >,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -235,6 +254,8 @@ const singletonSurface = (
       return { id: "git-graph", kind };
     case "device":
       return { id: "device", kind };
+    case "documents":
+      return { id: "documents", kind };
   }
 };
 
@@ -542,6 +563,20 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                     const kind = (surface as { kind?: string }).kind;
                     if (kind === "plan" || kind === "agents") return [];
                     if (
+                      surface.kind === "document" &&
+                      (typeof surface.documentId !== "string" ||
+                        surface.id !== `document:${surface.documentId}`)
+                    ) {
+                      return [];
+                    }
+                    if (
+                      surface.kind === "computer-use" &&
+                      (typeof surface.threadId !== "string" ||
+                        surface.id !== `computer-use:${surface.threadId}`)
+                    ) {
+                      return [];
+                    }
+                    if (
                       (surface.kind === "file" || surface.kind === "files") &&
                       "folderTrail" in surface &&
                       typeof surface.folderTrail !== "string"
@@ -776,6 +811,22 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) =>
             upsertSurface(current, { id: `side-chat:${threadId}`, kind: "side-chat", threadId }),
+          ),
+        ),
+      openDocument: (ref, documentId) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, { id: `document:${documentId}`, kind: "document", documentId }),
+          ),
+        ),
+      openComputerUse: (ref, threadId) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, {
+              id: `computer-use:${threadId}`,
+              kind: "computer-use",
+              threadId,
+            }),
           ),
         ),
       renameDevice: (ref, surfaceId, title) =>

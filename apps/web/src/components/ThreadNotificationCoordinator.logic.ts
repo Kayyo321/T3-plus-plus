@@ -1,6 +1,34 @@
+import { shouldNotifyScheduledRun } from "@t3tools/client-runtime/scheduled-task-policy";
 import { WORKING_EXIT_GRACE_MS } from "@t3tools/client-runtime/state/thread-inbox";
+import type { ScheduledTask, ScheduledTaskId } from "@t3tools/contracts";
 
 export type ThreadNotificationKind = "input" | "completion";
+
+/**
+ * Records each task's latest run and returns the tasks to announce. A first sighting is only
+ * recorded. A task that posts into a conversation stays out: the thread notifier speaks for it.
+ */
+export function observeScheduledRuns(
+  seen: Map<ScheduledTaskId, string | null>,
+  tasks: ReadonlyArray<ScheduledTask>,
+): ReadonlyArray<ScheduledTask> {
+  const listed = new Set(tasks.map((task) => task.id));
+  for (const id of seen.keys()) if (!listed.has(id)) seen.delete(id);
+  return tasks.filter((task) => {
+    const run = task.latestRun;
+    const key = run === undefined ? null : `${run.id}:${run.outcome}`;
+    const known = seen.has(task.id);
+    const changed = seen.get(task.id) !== key;
+    seen.set(task.id, key);
+    return (
+      known &&
+      changed &&
+      run !== undefined &&
+      task.threadId === null &&
+      shouldNotifyScheduledRun(run, task.policy?.notify)
+    );
+  });
+}
 
 export interface ThreadNotificationObservation {
   /** Run and status key while the thread needs attention, otherwise null. */

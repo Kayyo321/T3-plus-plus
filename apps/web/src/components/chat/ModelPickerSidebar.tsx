@@ -37,6 +37,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
   getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
+  /** Replaces the plain provider name, for what choosing this provider means here. */
+  getInstanceNotice?: ((entry: ProviderInstanceEntry) => string | null) | undefined;
 }) {
   const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
     props.onSelectInstance(instanceId);
@@ -137,7 +139,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               ? describeUnavailableInstance(entry)
               : isContextDisabled
                 ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
-                : entry.displayName;
+                : (props.getInstanceNotice?.(entry) ?? entry.displayName);
 
             const button = (
               <Toolbar.Button

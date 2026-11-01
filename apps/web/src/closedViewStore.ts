@@ -64,6 +64,7 @@ const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
     case "files":
     case "pull-requests":
     case "git-graph":
+    case "documents":
       return surface.id === surface.kind;
     case "preview":
       return surface.resourceId === null || typeof surface.resourceId === "string";
@@ -86,6 +87,14 @@ const isClosedViewEntry = (entry: unknown): entry is ClosedViewEntry => {
       );
     case "side-chat":
       return typeof surface.threadId === "string" && surface.id === `side-chat:${surface.threadId}`;
+    case "document":
+      return (
+        typeof surface.documentId === "string" && surface.id === `document:${surface.documentId}`
+      );
+    case "computer-use":
+      return (
+        typeof surface.threadId === "string" && surface.id === `computer-use:${surface.threadId}`
+      );
     case "pull-request":
       return (
         typeof surface.projectId === "string" &&

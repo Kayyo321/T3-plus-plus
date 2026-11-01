@@ -890,6 +890,7 @@ export function NewTaskDraftScreen(props: {
     modelSelection: flow.selectedModel,
     runtimeMode: flow.runtimeMode,
     interactionMode: flow.interactionMode,
+    capabilityMode: flow.capabilityMode,
     branch: flow.selectedBranchName,
     worktreePath: flow.selectedWorktreePath,
     createdAt: creationMetadata.createdAt,
@@ -987,6 +988,7 @@ export function NewTaskDraftScreen(props: {
         onReconnectEnvironment={() => onReconnectEnvironment(selectedProject.environmentId)}
         canSwitchThreadProvider
         onUpdateThreadInteractionMode={flow.planModeEnabled ? flow.setInteractionMode : undefined}
+        onUpdateDraftCapabilityMode={flow.setCapabilityMode}
         onRespondToApproval={async () => {}}
         onSelectUserInputOption={() => {}}
         onChangeUserInputCustomAnswer={() => {}}

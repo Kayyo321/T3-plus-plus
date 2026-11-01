@@ -1,6 +1,68 @@
+import {
+  defaultScheduledTaskMissedRuns,
+  SCHEDULED_TASK_MISSED_RUN_OPTIONS,
+  SCHEDULED_TASK_NOTIFY_OPTIONS,
+  SCHEDULED_TASK_PROMPT_OPTIONS,
+} from "@t3tools/client-runtime/scheduled-task-policy";
+import {
+  DEFAULT_SCHEDULED_TASK_RUN_BUDGET,
+  type ScheduledTask,
+  type ScheduledTaskRun,
+} from "@t3tools/contracts";
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+/** The summary a run reported, or the reason it stopped. */
+export function scheduledRunText(run: Pick<ScheduledTaskRun, "summary" | "error">): string | null {
+  return run.error ?? run.summary;
+}
+
+function budgetText(task: Pick<ScheduledTask, "policy">): string {
+  const budget = task.policy?.budget ?? DEFAULT_SCHEDULED_TASK_RUN_BUDGET;
+  return [
+    budget.maxDurationMinutes === undefined ? null : `${budget.maxDurationMinutes} min`,
+    budget.maxToolCalls === undefined ? null : `${budget.maxToolCalls} tool calls`,
+    budget.maxCostUsd === undefined ? null : `$${budget.maxCostUsd}`,
+  ]
+    .filter((part) => part !== null)
+    .join(", ");
+}
+
+/** What an unattended run is held to, with the server's defaults where the task sets nothing. */
+export function scheduledTaskPolicyRows(
+  task: Pick<ScheduledTask, "policy" | "repeaterIteration" | "schedule">,
+): ReadonlyArray<{ readonly label: string; readonly value: string }> {
+  const { policy } = task;
+  const label = <Value extends string>(
+    options: ReadonlyArray<{ readonly value: Value; readonly label: string }>,
+    value: Value,
+  ) => options.find((option) => option.value === value)?.label ?? value;
+  return [
+    { label: "Limit per run", value: budgetText(task) },
+    {
+      label: "If a run is missed",
+      value: label(
+        SCHEDULED_TASK_MISSED_RUN_OPTIONS,
+        policy?.missedRuns ?? defaultScheduledTaskMissedRuns(task.schedule.type),
+      ),
+    },
+    { label: "Notify", value: label(SCHEDULED_TASK_NOTIFY_OPTIONS, policy?.notify ?? "all") },
+    {
+      label: "If it needs an answer",
+      value: label(SCHEDULED_TASK_PROMPT_OPTIONS, policy?.onPrompt ?? "park"),
+    },
+    ...(policy?.repeater
+      ? [
+          {
+            label: "Repeat until",
+            value: `${policy.repeater.doneWhen} (${task.repeaterIteration ?? 0} of ${policy.repeater.maxIterations} runs)`,
+          },
+        ]
+      : []),
+  ];
+}
 
 export function formatScheduledTaskInterval(everyMs: number): string {
   const units = [

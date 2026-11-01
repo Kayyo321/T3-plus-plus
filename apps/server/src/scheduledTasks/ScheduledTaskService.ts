@@ -12,6 +12,7 @@ import {
   type ScheduledRunVerdict,
   ScheduledTask,
   ScheduledTaskError,
+  type ScheduledTaskHost,
   ScheduledTaskId,
   type ScheduledTaskListRunsInput,
   type ScheduledTaskListRunsResult,
@@ -154,6 +155,12 @@ export class ScheduledRunCostEstimator extends Context.Reference<
 >("t3pp/scheduledTasks/ScheduledRunCostEstimator", {
   defaultValue: () => () => Effect.succeed(null),
 }) {}
+
+/** What keeps this server running, so clients can say when tasks will not fire. */
+export class ScheduledTaskRunHost extends Context.Reference<ScheduledTaskHost>(
+  "t3pp/scheduledTasks/ScheduledTaskRunHost",
+  { defaultValue: () => "terminal" },
+) {}
 
 class WebhookDeliverySkipped extends Data.TaggedError("WebhookDeliverySkipped")<{
   readonly reason: string;
@@ -544,6 +551,7 @@ export const layer = Layer.effect(
     const scheduler = yield* Scheduler.Scheduler;
     const readWebhookOrigin = yield* ScheduledTaskWebhookOrigin;
     const estimateCost = yield* ScheduledRunCostEstimator;
+    const host = yield* ScheduledTaskRunHost;
     const auditTrail = yield* Effect.serviceOption(AuditTrail.AuditTrail);
     const audit = (
       task: Pick<ScheduledTask, "id" | "title" | "threadId">,
@@ -1671,7 +1679,7 @@ export const layer = Layer.effect(
 
     const list: ScheduledTaskService["Service"]["list"] = () =>
       listRows().pipe(
-        Effect.map((tasks) => ({ tasks })),
+        Effect.map((tasks) => ({ tasks, host })),
         Effect.mapError((cause) => taskError("Could not list schedule tasks.", { cause })),
       );
 

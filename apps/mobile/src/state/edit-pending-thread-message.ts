@@ -56,6 +56,9 @@ export async function editPendingThreadMessage(message: QueuedThreadMessage): Pr
       ...(message.modelSelection ? { modelSelection: message.modelSelection } : {}),
       ...(message.runtimeMode ? { runtimeMode: message.runtimeMode } : {}),
       ...(message.interactionMode ? { interactionMode: message.interactionMode } : {}),
+      ...(message.creation?.capabilityMode
+        ? { capabilityMode: message.creation.capabilityMode }
+        : {}),
     });
     rollback = { snapshot, merged: getComposerDraftSnapshot(draftKey) };
     await flushComposerDrafts();

@@ -116,6 +116,9 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "chat.new",
   "chat.newLocal",
   "chat.newWithoutProject",
+  "chat.newChat",
+  "chat.toggleCapabilityMode",
+  "documents.toggle",
   "chat.find",
   "editor.openFavorite",
   "usage.cost",
@@ -125,6 +128,8 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "usage.period.week",
   "usage.period.month",
   "usage.period.quarter",
+  "computerUse.stop",
+  "computerUse.showSteps",
   ...MODEL_PICKER_KEYBINDING_COMMANDS,
   ...THREAD_KEYBINDING_COMMANDS,
 ] as const;

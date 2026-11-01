@@ -3,8 +3,81 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import {
   createThreadNotificationGate,
+  observeScheduledRuns,
   type ThreadNotificationObservation,
 } from "./ThreadNotificationCoordinator.logic";
+import {
+  ScheduledTaskId,
+  ScheduledTaskRunId,
+  ThreadId,
+  type ScheduledTask,
+  type ScheduledTaskRun,
+} from "@t3tools/contracts";
+
+describe("observeScheduledRuns", () => {
+  const taskId = ScheduledTaskId.make("task");
+  const run = (id: string, outcome: string, finished = true): ScheduledTaskRun => ({
+    id: ScheduledTaskRunId.make(id),
+    taskId,
+    trigger: "scheduled",
+    scheduledFor: null,
+    startedAt: "2026-11-01T09:00:00.000Z",
+    finishedAt: finished ? "2026-11-01T09:05:00.000Z" : null,
+    outcome,
+    threadId: null,
+    iteration: 0,
+    summary: null,
+    error: null,
+    toolCalls: 0,
+    costUsd: null,
+  });
+  const task = (latestRun?: ScheduledTaskRun, overrides: Partial<ScheduledTask> = {}) =>
+    ({
+      id: taskId,
+      threadId: null,
+      ...(latestRun === undefined ? {} : { latestRun }),
+      ...overrides,
+    }) as ScheduledTask;
+  const announced = (seen: Map<ScheduledTaskId, string | null>, value: ScheduledTask) =>
+    observeScheduledRuns(seen, [value]).length === 1;
+
+  it("never announces the first sighting, even of a finished run", () => {
+    expect(announced(new Map(), task(run("run-1", "failed")))).toBe(false);
+  });
+
+  it("announces each new state of a run once", () => {
+    const seen = new Map();
+    expect(announced(seen, task())).toBe(false);
+    expect(announced(seen, task(run("run-1", "running", false)))).toBe(false);
+    expect(announced(seen, task(run("run-1", "needs_input", false)))).toBe(true);
+    expect(announced(seen, task(run("run-1", "needs_input", false)))).toBe(false);
+    expect(announced(seen, task(run("run-1", "succeeded")))).toBe(true);
+    expect(announced(seen, task(run("run-1", "succeeded")))).toBe(false);
+    expect(announced(seen, task(run("run-2", "succeeded")))).toBe(true);
+  });
+
+  it("honors the task's notify policy", () => {
+    const seen = new Map();
+    const quiet = { policy: { notify: "failures" as const } };
+    announced(seen, task(run("run-1", "running", false), quiet));
+    expect(announced(seen, task(run("run-1", "succeeded"), quiet))).toBe(false);
+    expect(announced(seen, task(run("run-2", "failed"), quiet))).toBe(true);
+  });
+
+  it("leaves a task that posts into a conversation to the thread notifier", () => {
+    const seen = new Map();
+    const bound = { threadId: ThreadId.make("thread") };
+    announced(seen, task(run("run-1", "running", false), bound));
+    expect(announced(seen, task(run("run-1", "succeeded"), bound))).toBe(false);
+  });
+
+  it("forgets deleted tasks, so one that returns counts as a first sighting", () => {
+    const seen = new Map();
+    announced(seen, task(run("run-1", "running", false)));
+    observeScheduledRuns(seen, []);
+    expect(announced(seen, task(run("run-1", "failed")))).toBe(false);
+  });
+});
 
 const working: ThreadNotificationObservation = {
   attention: null,

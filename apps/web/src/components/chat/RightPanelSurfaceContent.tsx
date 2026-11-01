@@ -9,7 +9,7 @@ import type {
   ThreadLinkedPullRequest,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { lazy, Suspense } from "react";
 import SideChatPane from "./SideChatPane";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
@@ -36,6 +36,11 @@ const DevicePanel = lazy(() =>
 );
 const FilePreviewPanel = lazy(() => import("../files/FilePreviewPanel"));
 const GitGraphPanel = lazy(() => import("../gitGraph/GitGraphPanel"));
+const ComputerUsePanel = lazy(() =>
+  import("../computerUse/ComputerUsePanel").then((module) => ({
+    default: module.ComputerUsePanel,
+  })),
+);
 
 type RightPanelTerminalProps = Omit<
   PersistentThreadTerminalPanelProps,
@@ -205,6 +210,15 @@ export function RightPanelSurfaceContent(props: {
           parentPanel={props.sideChatParentPanel}
           onClose={() => onCloseSurface(surface)}
         />
+      );
+    case "computer-use":
+      return (
+        <Suspense fallback={null}>
+          <ComputerUsePanel
+            key={`${props.environmentId}:${surface.id}`}
+            threadRef={scopeThreadRef(props.environmentId, surface.threadId)}
+          />
+        </Suspense>
       );
     case "device":
       return (
