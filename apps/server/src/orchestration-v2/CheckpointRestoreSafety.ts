@@ -48,6 +48,14 @@ export const isCheckpointRestoreIsolated = Effect.fn("orchestrationV2.isCheckpoi
         const checkedPaths = new Set<string>();
         for (const otherThread of [...shell.threads, ...shell.archivedThreads]) {
           if (otherThread.id === thread.id || otherThread.deletedAt !== null) continue;
+          // A rewind's archived branch has written nothing until someone reopens it.
+          if (
+            otherThread.rewindBranch !== undefined &&
+            otherThread.archivedAt !== null &&
+            otherThread.latestRunId === null
+          ) {
+            continue;
+          }
           // An idle side chat that only answered questions never touched the shared worktree.
           if (
             otherThread.lineage.sideChat === true &&

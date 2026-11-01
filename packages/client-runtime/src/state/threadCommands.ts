@@ -28,6 +28,7 @@ import {
   editQueuedRun,
   interruptThreadTurn,
   forkSideChat,
+  forkThreadFromMessage,
   forkThreadFromRun,
   markThreadUnread,
   mergeThreadBack,
@@ -307,6 +308,45 @@ export function createThreadEnvironmentAtoms<R, E>(
         mode: "serial",
         key: ({ environmentId, input }) => JSON.stringify([environmentId, input.sourceThreadId]),
       },
+    }),
+    forkFromMessage: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:fork-from-message",
+      execute: forkThreadFromMessage,
+      scheduler,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.sourceThreadId]),
+      },
+    }),
+    previewFork: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:preview-fork",
+      tag: WS_METHODS.threadForkPreview,
+    }),
+    previewRewind: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:preview-rewind",
+      tag: WS_METHODS.threadRewindPreview,
+    }),
+    rewind: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:rewind",
+      tag: WS_METHODS.threadRewind,
+      scheduler,
+      concurrency,
+    }),
+    reopenRewindBranch: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:reopen-rewind-branch",
+      tag: WS_METHODS.threadRewindReopen,
+      scheduler,
+      concurrency,
+    }),
+    startNestedSession: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:start-nested-session",
+      tag: WS_METHODS.nestedSessionStart,
+    }),
+    closeWithNestedSessions: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:commands:thread:close-with-nested-sessions",
+      tag: WS_METHODS.nestedSessionCloseParent,
+      scheduler,
+      concurrency,
     }),
     forkSideChat: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:fork-side-chat",

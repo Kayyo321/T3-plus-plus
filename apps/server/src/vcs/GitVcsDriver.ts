@@ -1460,6 +1460,23 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         );
       },
     ),
+    stashPaths: Effect.fn("GitVcsDriver.checkpoints.stashPaths")(function* (input) {
+      yield* execute({
+        operation: "GitVcsDriver.checkpoints.stashPaths",
+        cwd: input.cwd,
+        // Read from stdin: an agent's tree can name more paths than one command line holds.
+        args: [
+          "stash",
+          "push",
+          "--include-untracked",
+          "-m",
+          input.message,
+          "--pathspec-from-file=-",
+          "--pathspec-file-nul",
+        ],
+        stdin: input.paths.join("\0"),
+      });
+    }),
   };
 
   return {

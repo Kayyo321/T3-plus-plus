@@ -83,9 +83,9 @@ is unavailable. Tool approvals follow [Permission modes](./permission-modes.md).
 Questions with fixed choices still need one of the offered answers, even in
 **Full access**.
 
-T3++ keeps conversation history and file diffs, but Antigravity cannot rewind
-its conversation. Reverting a thread or editing and resubmitting an earlier turn
-is unavailable. Continue with a follow-up message or start a new thread.
+T3++ keeps conversation history and file diffs. Antigravity has no way to cut its
+conversation short, so [rewinding](./rewind-and-fork.md) one restarts the agent:
+the thread shows the earlier turns, but the agent no longer remembers them.
 
 Manual context compaction is unavailable through Antigravity's ACP runtime, even
 though its CLI has `/compact`. Start a new thread when you need a fresh context.

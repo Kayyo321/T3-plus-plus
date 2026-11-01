@@ -141,6 +141,24 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "capabilities",
   ),
   delegate_task: tool(["Delegate", "Delegating", "Delegated", "a child task"], "delegate"),
+  start_nested_session: tool(["Start", "Starting", "Started", "a nested session"], "thread-create"),
+  report_to_parent: tool(["Report", "Reporting", "Reported", "to the parent"], "thread-send"),
+  t3_thread_close: tool(["Close", "Closing", "Closed", "a thread"], "thread-update"),
+  t3_thread_rewind: tool(["Rewind", "Rewinding", "Rewound", "a thread"], "thread-update"),
+  t3_thread_fork_preview: tool(["Preview", "Previewing", "Previewed", "a fork"], "thread-read"),
+  background_task_start: tool(
+    ["Start", "Starting", "Started", "a background task"],
+    "background-wait",
+  ),
+  background_task_list: tool(["List", "Listing", "Listed", "background tasks"], "background-wait"),
+  background_task_log: tool(
+    ["Read", "Reading", "Read", "a background task's log"],
+    "background-wait",
+  ),
+  background_task_stop: tool(
+    ["Stop", "Stopping", "Stopped", "a background task"],
+    "background-wait",
+  ),
   task_status: tool(["Get", "Getting", "Got", "delegated task status"], "task-status"),
   task_cancel: tool(
     ["Cancel", "Canceling", "Requested cancellation of", "a delegated task"],

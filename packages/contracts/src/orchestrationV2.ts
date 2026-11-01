@@ -158,8 +158,31 @@ export const OrchestrationV2AppThreadLineage = Schema.Struct({
   sideChat: Schema.optional(Schema.Boolean),
   /** The environment's one orchestrator conversation, shown only in its panel. */
   orchestrator: Schema.optional(Schema.Boolean),
+  /**
+   * A child conversation the user can open and talk to, shown under its parent. It keeps
+   * `relationshipToParent: "fork"`, so clients that predate it list it as an ordinary fork.
+   */
+  nestedSession: Schema.optional(Schema.Boolean),
 });
 export type OrchestrationV2AppThreadLineage = typeof OrchestrationV2AppThreadLineage.Type;
+
+export const isNestedSessionLineage = (lineage: OrchestrationV2AppThreadLineage): boolean =>
+  lineage.nestedSession === true && lineage.parentThreadId !== null;
+
+export const OrchestrationV2RewindMode = Schema.Literals(["conversation", "files", "both"]);
+export type OrchestrationV2RewindMode = typeof OrchestrationV2RewindMode.Type;
+
+/** Marks an archived branch holding what a rewind discarded, so it can be reopened or forked. */
+export const OrchestrationV2RewindTail = Schema.Struct({
+  sourceThreadId: ThreadId,
+  mode: OrchestrationV2RewindMode,
+  /** Rolled-back runs this branch still shows, excluding those an earlier rewind took. */
+  discardedRunIds: Schema.Array(RunId),
+  /** Hidden ref of the workspace as it was before the rewind. Null when files stayed put. */
+  snapshotRef: Schema.NullOr(CheckpointRef),
+  rewoundAt: IsoDateTime,
+});
+export type OrchestrationV2RewindTail = typeof OrchestrationV2RewindTail.Type;
 
 /** Subagents and side chats live inside their parent's view, never in thread lists. */
 export const isListedThreadLineage = (lineage: OrchestrationV2AppThreadLineage): boolean =>
@@ -194,6 +217,8 @@ export const OrchestrationV2ThreadForkSourcePoint = Schema.Union([
   Schema.Struct({ type: Schema.Literal("latest_stable") }),
   Schema.Struct({ type: Schema.Literal("run"), runId: RunId }),
   Schema.Struct({ type: Schema.Literal("checkpoint"), checkpointId: CheckpointId }),
+  /** Forks up to just before a user message, or through an assistant message. */
+  Schema.Struct({ type: Schema.Literal("message"), messageId: MessageId }),
 ]);
 export type OrchestrationV2ThreadForkSourcePoint = typeof OrchestrationV2ThreadForkSourcePoint.Type;
 
@@ -246,6 +271,8 @@ export const OrchestrationV2ContextTransfer = Schema.Struct({
   basePoint: Schema.NullOr(OrchestrationV2ContextSourcePoint),
   sourceProviderInstanceId: Schema.NullOr(ProviderInstanceId),
   sourceTokenUsage: Schema.optional(OrchestrationV2ProviderTurnTokenUsage),
+  /** Chosen context for a nested session, delivered with its first prompt instead of history. */
+  contextSeed: Schema.optional(Schema.String),
   targetProviderInstanceId: Schema.NullOr(ProviderInstanceId),
   targetRunId: Schema.NullOr(RunId),
   status: Schema.Literals([
@@ -366,6 +393,8 @@ export const OrchestrationV2CheckpointCapabilities = Schema.Struct({
   providerCanRollbackConversation: Schema.Boolean,
   providerRollbackReturnsSnapshot: Schema.Boolean,
   providerCanReadConversationSnapshot: Schema.Boolean,
+  /** Rollback replaces the agent session, so the agent keeps no memory of earlier turns. */
+  rollbackStartsFreshSession: Schema.optional(Schema.Boolean),
 });
 export type OrchestrationV2CheckpointCapabilities =
   typeof OrchestrationV2CheckpointCapabilities.Type;
@@ -467,9 +496,18 @@ export const OrchestrationV2AppThread = Schema.Struct({
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
   lineage: OrchestrationV2AppThreadLineage,
+  rewindTail: Schema.optional(OrchestrationV2RewindTail),
+  /** The last files-only rewind, which the agent hears about on its next turn. */
+  filesRewound: Schema.optional(Schema.Struct({ at: IsoDateTime, appRunOrdinal: NonNegativeInt })),
   forkedFrom: Schema.NullOr(
     Schema.Union([
-      Schema.Struct({ type: Schema.Literal("run"), threadId: ThreadId, runId: RunId }),
+      Schema.Struct({
+        type: Schema.Literal("run"),
+        threadId: ThreadId,
+        runId: RunId,
+        /** Cuts the source run after this item, for a fork from the middle of a turn. */
+        throughTurnItemId: Schema.optional(TurnItemId),
+      }),
       Schema.Struct({ type: Schema.Literal("node"), nodeId: NodeId }),
       Schema.Struct({
         type: Schema.Literal("provider_thread"),
@@ -1272,6 +1310,12 @@ export const OrchestrationV2NotificationSource = kindUnionWithFallback(
     Schema.Struct({ kind: Schema.Literal("monitor") }),
     Schema.Struct({ kind: Schema.Literal("background_task") }),
     Schema.Struct({ kind: Schema.Literal("system") }),
+    /** A nested session or background task reporting up. Older clients see `background_task`. */
+    Schema.Struct({
+      kind: Schema.Literal("handoff"),
+      childThreadId: Schema.optional(ThreadId),
+      backgroundTaskId: Schema.optional(TrimmedNonEmptyString),
+    }),
   ],
   (kind) => Schema.Struct({ kind }),
   () => ({ kind: "background_task" }),
@@ -2066,6 +2110,16 @@ export const OrchestrationV2LatestVisibleMessageSummary = Schema.Struct({
 export type OrchestrationV2LatestVisibleMessageSummary =
   typeof OrchestrationV2LatestVisibleMessageSummary.Type;
 
+/** What lists need to know about a rewind's archived branch, without its run ids. */
+export const OrchestrationV2ShellRewindBranch = Schema.Struct({
+  sourceThreadId: ThreadId,
+  mode: OrchestrationV2RewindMode,
+  discardedRunCount: NonNegativeInt,
+  hasSnapshot: Schema.Boolean,
+  rewoundAt: IsoDateTime,
+});
+export type OrchestrationV2ShellRewindBranch = typeof OrchestrationV2ShellRewindBranch.Type;
+
 export const OrchestrationV2ThreadShell = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -2082,6 +2136,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   pullRequests: Schema.optional(Schema.Array(ThreadPullRequestLink)),
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   lineage: OrchestrationV2AppThreadLineage,
+  rewindBranch: Schema.optional(OrchestrationV2ShellRewindBranch),
   forkedFrom: Schema.NullOr(OrchestrationV2AppThread.fields.forkedFrom),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
@@ -2887,6 +2942,31 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
 ]);
 export type OrchestrationV2DomainEventJson = typeof OrchestrationV2DomainEventJson.Type;
 
+export const OrchestrationV2RewindKeepTail = Schema.Struct({
+  targetThreadId: ThreadId,
+  title: Schema.optional(TrimmedNonEmptyString),
+  snapshotRef: Schema.NullOr(CheckpointRef),
+  /** Paths to stash before files restore, when the user chose to keep outside changes. */
+  stashPaths: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
+});
+export type OrchestrationV2RewindKeepTail = typeof OrchestrationV2RewindKeepTail.Type;
+
+/** Longest chosen context a nested session carries; history is what a transcript is for. */
+export const NESTED_SESSION_CONTEXT_SEED_MAX_CHARS = 64_000;
+
+/** What separates a nested session's fork from a plain one. */
+export const OrchestrationV2NestedForkOptions = Schema.Struct({
+  /** Empty, the chosen seed, or the source point's transcript. */
+  inherit: Schema.Literals(["none", "seed", "transcript"]),
+  contextSeed: Schema.optional(
+    Schema.String.check(Schema.isMaxLength(NESTED_SESSION_CONTEXT_SEED_MAX_CHARS)),
+  ),
+  modelSelection: Schema.optional(ModelSelection),
+  runtimeMode: Schema.optional(RuntimeMode),
+  interactionMode: Schema.optional(ProviderInteractionMode),
+});
+export type OrchestrationV2NestedForkOptions = typeof OrchestrationV2NestedForkOptions.Type;
+
 export const OrchestrationV2Command = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("thread.stop"),
@@ -3288,6 +3368,10 @@ export const OrchestrationV2Command = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("checkpoint.rollback"),
     restoreFiles: Schema.optional(Schema.Boolean),
+    /** Restore files only: the conversation and the provider stay as they are. */
+    filesOnly: Schema.optional(Schema.Boolean),
+    /** Keeps what this rewind discards as an archived branch. */
+    keepTail: Schema.optional(OrchestrationV2RewindKeepTail),
     commandId: CommandId,
     threadId: ThreadId,
     scopeId: CheckpointScopeId,
@@ -3302,6 +3386,7 @@ export const OrchestrationV2Command = Schema.Union([
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
     title: Schema.optional(TrimmedNonEmptyString),
     sideChat: Schema.optional(Schema.Boolean),
+    nested: Schema.optional(OrchestrationV2NestedForkOptions),
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),
   Schema.Struct({
@@ -3395,6 +3480,19 @@ const OrchestrationV2InternalCommand = Schema.Union([
     guestMessageId: GuestMessageId,
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  }),
+  /** Leaves a summary card in a thread; `wake` also tells its agent, in the same commit. */
+  Schema.Struct({
+    type: Schema.Literal("thread.handoff-card.post"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    notification: OrchestrationV2Notification,
+    wake: Schema.optional(
+      Schema.Struct({
+        messageId: MessageId,
+        text: Schema.String,
+      }),
+    ),
   }),
   /** Moves a thread to a project rooted at the folder it already works in, so its cwd never changes. */
   Schema.Struct({

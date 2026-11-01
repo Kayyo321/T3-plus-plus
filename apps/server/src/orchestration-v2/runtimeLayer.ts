@@ -5,6 +5,9 @@ import * as SupervisionMonitor from "../orchestratorAgent/SupervisionMonitor.ts"
 import * as ConversationAttribution from "../git/graph/ConversationAttribution.ts";
 import * as GitActions from "../git/graph/GitActions.ts";
 import * as GitGraphService from "../git/graph/GitGraphService.ts";
+import * as BackgroundTaskService from "../backgroundTasks/BackgroundTaskService.ts";
+import * as NestedSessionService from "./NestedSessionService.ts";
+import * as ThreadBranchService from "./ThreadBranchService.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -193,6 +196,7 @@ const layerRuntimeRequestServiceProvided = RuntimeRequestService.layer.pipe(
 const layerCheckpointRollbackServiceProvided = CheckpointRollbackService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
+      ThreadForkService.layer,
       ProjectStore.layer,
       layerCheckpointServiceProvided,
       layerEventSink,
@@ -416,6 +420,33 @@ export const layerProduction = Layer.mergeAll(
     ),
   ),
   layerGitGraph,
+  NestedSessionService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        layerThreadManagementProvided,
+        layerThreadLaunchProvided,
+        ProjectionStore.layer,
+        ProjectStore.layer,
+        AuditTrail.layer,
+      ),
+    ),
+  ),
+  ThreadBranchService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        layerOrchestratorProvided,
+        ProjectionStore.layer,
+        layerCheckpointServiceProvided,
+        CommandPolicy.layer,
+        ProjectStore.layer,
+        AuditTrail.layer,
+        ProviderAdapterRegistry.layerFromProviderInstanceRegistry,
+      ),
+    ),
+  ),
+  BackgroundTaskService.layer.pipe(
+    Layer.provide(Layer.mergeAll(layerOrchestratorProvided, ProjectStore.layer, AuditTrail.layer)),
+  ),
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,

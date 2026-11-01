@@ -10,6 +10,7 @@ import {
   ProviderUserInputAnswers,
   ProviderThreadId,
   ProviderTurnId,
+  OrchestrationV2RewindKeepTail,
   RunId,
   RuntimeRequestId,
   ThreadId,
@@ -86,6 +87,8 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("provider-thread.rollback"),
     restoreFiles: Schema.optional(Schema.Boolean),
+    filesOnly: Schema.optional(Schema.Boolean),
+    keepTail: Schema.optional(OrchestrationV2RewindKeepTail),
     providerThreadId: ProviderThreadId,
     checkpointId: CheckpointId,
     scopeId: CheckpointScopeId,

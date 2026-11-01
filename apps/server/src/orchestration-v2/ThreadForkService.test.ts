@@ -1,4 +1,4 @@
-import { assert, it } from "@effect/vitest";
+import { assert, describe, it } from "@effect/vitest";
 import {
   CommandId,
   ContextTransferId,
@@ -8,6 +8,7 @@ import {
   type OrchestrationV2AppThread,
   type OrchestrationV2Run,
   type OrchestrationV2ThreadProjection,
+  type OrchestrationV2TurnItem,
   ProjectId,
   ProviderInstanceId,
   ProviderThreadId,
@@ -324,3 +325,62 @@ it.effect("marks only requested forks as supervised side chats", () =>
     assert.equal(fromDelegated.cause, "A subagent cannot start a side chat.");
   }),
 );
+
+describe("forking from a message", () => {
+  const run = (ordinal: number, status: "completed" | "rolled_back" = "completed") =>
+    ({
+      id: `run-${ordinal}`,
+      ordinal,
+      status,
+      userMessageId: `user-${ordinal}`,
+    }) as unknown as OrchestrationV2Run;
+  const item = (type: string, ordinal: number, messageId?: string) =>
+    ({
+      id: `item-${ordinal}`,
+      type,
+      ordinal,
+      ...(messageId === undefined ? {} : { messageId }),
+    }) as unknown as OrchestrationV2TurnItem;
+  const runs = [run(1, "rolled_back"), run(2), run(3)];
+  const runItems = [
+    item("user_message", 1, "user-3"),
+    item("assistant_message", 2, "first-reply"),
+    item("command_execution", 3),
+    item("user_message", 4, "steer"),
+    item("assistant_message", 5, "last-reply"),
+    item("checkpoint", 6),
+  ];
+  const point = (role: "user" | "assistant", id: string, target = runs[2]!) =>
+    ThreadForkService.messageForkPoint({
+      message: { id: MessageId.make(id), role },
+      run: target,
+      runs,
+      runItems,
+    });
+
+  it("forks a turn's opening message from the end of the last surviving turn", () => {
+    assert.deepEqual(point("user", "user-3"), { run: runs[1]!, throughTurnItemId: undefined });
+  });
+
+  it("refuses the first message, which has nothing before it", () => {
+    assert.property(point("user", "user-2", runs[1]!), "refused");
+  });
+
+  it("does not cut a turn at its last reply just because a checkpoint follows", () => {
+    assert.deepEqual(point("assistant", "last-reply"), {
+      run: runs[2]!,
+      throughTurnItemId: undefined,
+    });
+  });
+
+  it("cuts a turn after an earlier reply, and before a steer", () => {
+    assert.equal(
+      (point("assistant", "first-reply") as { throughTurnItemId: string }).throughTurnItemId,
+      "item-2",
+    );
+    assert.equal(
+      (point("user", "steer") as { throughTurnItemId: string }).throughTurnItemId,
+      "item-3",
+    );
+  });
+});

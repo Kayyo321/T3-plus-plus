@@ -40,6 +40,8 @@ export * from "./orchestrationProject.ts";
 export * from "./orchestrationV2.ts";
 export * from "./audit.ts";
 export * from "./orchestratorAgent.ts";
+export * from "./threadBranching.ts";
+export * from "./backgroundTasks.ts";
 export * from "./guestShare.ts";
 export * from "./guestStream.ts";
 export * from "./applicationEvent.ts";

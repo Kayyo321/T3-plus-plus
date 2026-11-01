@@ -63,6 +63,12 @@ export interface VcsCheckpointOps {
   readonly deleteCheckpointRefs: (
     input: VcsDeleteCheckpointRefsInput,
   ) => Effect.Effect<void, VcsError>;
+  /** A visible stash of these paths, tracked or not, that the user can pop later. */
+  readonly stashPaths: (input: {
+    readonly cwd: string;
+    readonly paths: ReadonlyArray<string>;
+    readonly message: string;
+  }) => Effect.Effect<void, VcsError>;
 }
 
 export class VcsDriver extends Context.Service<

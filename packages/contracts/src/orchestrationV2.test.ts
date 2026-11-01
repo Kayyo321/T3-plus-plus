@@ -2,9 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Schema from "effect/Schema";
 
-import { NodeId, RunAttemptId, TrimmedNonEmptyString } from "./index.ts";
+import { NodeId, RunAttemptId, ThreadId, TrimmedNonEmptyString } from "./index.ts";
 import {
+  isListedThreadLineage,
+  isNestedSessionLineage,
   latestProviderTurnForAttempt,
+  OrchestrationV2AppThreadJson,
   OrchestrationV2ProviderCapabilities,
   OrchestrationV2ProviderThread,
   OrchestrationV2ProviderThreadJson,
@@ -447,6 +450,54 @@ describe("orchestration V2 contracts", () => {
   });
 });
 
+const decodeStoredThread = Schema.decodeUnknownSync(OrchestrationV2AppThreadJson);
+
+describe("threads stored before nested sessions and rewind branches", () => {
+  const thread = {
+    id: "thread-old",
+    projectId: "project-old",
+    title: "Older fork",
+    providerInstanceId: "codex",
+    modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    activeProviderThreadId: null,
+    lineage: {
+      rootThreadId: "thread-root",
+      parentThreadId: "thread-root",
+      relationshipToParent: "fork",
+    },
+    forkedFrom: { type: "run", threadId: "thread-root", runId: "run-1" },
+    createdBy: "user",
+    creationSource: "web",
+    createdAt: "2026-10-01T00:00:00.000Z",
+    updatedAt: "2026-10-01T00:00:00.000Z",
+    archivedAt: null,
+    deletedAt: null,
+  };
+
+  it("replays a fork recorded without the new fields", () => {
+    const decoded = decodeStoredThread(thread);
+    expect(decoded.lineage.nestedSession).toBeUndefined();
+    expect(decoded.rewindTail).toBeUndefined();
+    expect(isNestedSessionLineage(decoded.lineage)).toBe(false);
+    expect(decoded.forkedFrom).toEqual({ type: "run", threadId: "thread-root", runId: "run-1" });
+  });
+
+  it("keeps a nested session listed, so a client that ignores the flag still shows it", () => {
+    const lineage = {
+      parentThreadId: ThreadId.make("thread-root"),
+      relationshipToParent: "fork",
+      rootThreadId: ThreadId.make("thread-root"),
+      nestedSession: true,
+    } as const;
+    expect(isListedThreadLineage(lineage)).toBe(true);
+    expect(isNestedSessionLineage(lineage)).toBe(true);
+  });
+});
+
 describe("thread open stats", () => {
   it("reads a thread whose open stats this build cannot read, without them", () => {
     const shell = {
@@ -556,6 +607,16 @@ describe("background work kinds from older or newer servers", () => {
       }
       expect(item).toMatchObject({ source });
     }
+  });
+
+  it("stores a handoff card's source with the child it came from", () => {
+    const item = decodeOrchestrationV2TurnItemJson(
+      storedNotification({ kind: "handoff", childThreadId: "thread-child" }),
+    );
+    expect(item).toMatchObject({
+      type: "notification",
+      source: { kind: "handoff", childThreadId: "thread-child" },
+    });
   });
 
   it("decodes a notification source kind from a newer server as generic background work", () => {

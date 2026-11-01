@@ -121,6 +121,11 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.gitGraphPreview]: AuthOrchestrationReadScope,
   [WS_METHODS.auditList]: AuthOrchestrationReadScope,
   [WS_METHODS.auditSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.threadRewindPreview]: AuthOrchestrationReadScope,
+  [WS_METHODS.threadForkPreview]: AuthOrchestrationReadScope,
+  [WS_METHODS.backgroundTaskList]: AuthOrchestrationReadScope,
+  [WS_METHODS.backgroundTaskReadLog]: AuthOrchestrationReadScope,
+  [WS_METHODS.backgroundTaskSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.scheduledTasksSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.secretsAnswerRequest]: AuthOrchestrationOperateScope,
   // Delivery logs hold request bodies, so they need the same scope as the URL.

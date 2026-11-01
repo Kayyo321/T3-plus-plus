@@ -151,6 +151,11 @@ a shortcut.
 `thread.stop` interrupts the running turn in the focused thread. It has no default
 shortcut; assign one in **Settings → Keybindings**.
 
+`thread.rewind` (`mod+alt+z`) and `thread.fork` (`mod+alt+f`) [rewind or fork](./rewind-and-fork.md)
+the open thread. `thread.newNestedSession` (`mod+alt+j`) starts a
+[nested session](./nested-sessions.md), and `thread.runInBackground` (`mod+alt+g`) starts a
+[background task](./background-tasks.md).
+
 `thread.undo` (`mod+z` by default) reverses the actions shown in the notice at the
 bottom of the sidebar, such as unpin, settle, snooze, archive, or discarding a
 draft. Consecutive

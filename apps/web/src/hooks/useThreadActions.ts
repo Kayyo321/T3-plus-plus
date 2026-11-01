@@ -5,6 +5,7 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import { nestedSessionsByParent } from "@t3tools/client-runtime/state/thread-relationships";
 import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
@@ -30,7 +31,8 @@ import { environmentServerConfigsAtom } from "../state/server";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { orchestrationEnvironment } from "../state/orchestration";
 import { projectEnvironment } from "../state/projects";
-import { threadEnvironment } from "../state/threads";
+import { environmentThreadShells, threadEnvironment } from "../state/threads";
+import { requestNestedSessionPolicy } from "../lib/nestedSessionClose";
 import { vcsEnvironment } from "../state/vcs";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
@@ -263,8 +265,18 @@ function threadOperationFailure(target: ScopedThreadRef) {
       );
 }
 
+function readNestedSessions(ref: ScopedThreadRef): number {
+  const threads = appAtomRegistry
+    .get(environmentThreadShells.quietThreadShellsAtom)
+    .filter((thread) => thread.environmentId === ref.environmentId);
+  return nestedSessionsByParent(threads).get(ref.threadId)?.length ?? 0;
+}
+
 export function useThreadActions() {
   const archiveThreadMutation = useOrchestrationCommand(threadEnvironment.archive, {
+    reportFailure: false,
+  });
+  const closeWithNestedSessions = useAtomCommand(threadEnvironment.closeWithNestedSessions, {
     reportFailure: false,
   });
   const unarchiveThreadMutation = useOrchestrationCommand(threadEnvironment.unarchive, {
@@ -381,16 +393,29 @@ export function useThreadActions() {
       );
     }
 
+    const nestedSessions = readNestedSessions(threadRef);
+    const nestedPolicy =
+      nestedSessions === 0
+        ? undefined
+        : await requestNestedSessionPolicy({ title: thread.title, childCount: nestedSessions });
+    if (nestedPolicy === null) return AsyncResult.success(undefined);
+
     const requestingRouteHref = router.state.location.href;
     const currentRouteThreadRef = getCurrentRouteThreadRef();
     const shouldNavigateToDraft =
       currentRouteThreadRef?.threadId === threadRef.threadId &&
       currentRouteThreadRef.environmentId === threadRef.environmentId;
     const action = ThreadUndo.begin("archive", scopedThreadKey(threadRef));
-    const archiveResult = await archiveThreadMutation({
-      environmentId: threadRef.environmentId,
-      input: { threadId: threadRef.threadId },
-    });
+    const archiveResult =
+      nestedPolicy === undefined
+        ? await archiveThreadMutation({
+            environmentId: threadRef.environmentId,
+            input: { threadId: threadRef.threadId },
+          })
+        : await closeWithNestedSessions({
+            environmentId: threadRef.environmentId,
+            input: { threadId: threadRef.threadId, children: nestedPolicy },
+          });
     if (archiveResult._tag === "Failure") {
       action.finish();
       return archiveResult;

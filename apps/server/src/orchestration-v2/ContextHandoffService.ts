@@ -24,7 +24,12 @@ import {
   selectHistory,
 } from "@t3tools/provider-core/server/handoffBudget";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import { createOrchestrationV2TurnItemVisibility } from "@t3tools/shared/orchestrationV2Timeline";
+import {
+  createOrchestrationV2TurnItemVisibility,
+  forkHistoryRows,
+  type ForkHistoryCut,
+  restoreKeptRuns,
+} from "@t3tools/shared/orchestrationV2Timeline";
 import type { ProjectionStoreV2Shape } from "./ProjectionStore.ts";
 
 export class ContextHandoffPrepareError extends Schema.TaggedError<ContextHandoffPrepareError>()(
@@ -95,6 +100,8 @@ export interface ContextHandoffServiceV2Shape {
     readonly toProviderInstanceId: ProviderInstanceId;
     readonly coveredRunOrdinals: OrchestrationV2ContextHandoff["coveredRunOrdinals"];
     readonly parentItems: ReadonlyArray<OrchestrationV2TurnItem>;
+    /** A nested session's chosen context, which replaces the side chat framing and digest. */
+    readonly contextSeed?: string;
     readonly createdAt: DateTime.Utc;
   }) => Effect.Effect<OrchestrationV2ContextHandoff, ContextHandoffServiceV2Error>;
 }
@@ -148,7 +155,8 @@ const readOwnHistoryItems = Effect.fn("orchestrationV2.contextHandoff.readOwnHis
   function* (
     projectionStore: Pick<ProjectionStoreV2Shape, "getThreadRecords">,
     source: ForkHistorySource,
-    throughRun: Pick<OrchestrationV2Run, "ordinal">,
+    throughRun: Pick<OrchestrationV2Run, "id" | "ordinal">,
+    cut: ForkHistoryCut = {},
   ) {
     const { turnItems } = yield* projectionStore.getThreadRecords(source.thread.id, ["turnItems"], {
       turnItemRunIds: [
@@ -156,7 +164,10 @@ const readOwnHistoryItems = Effect.fn("orchestrationV2.contextHandoff.readOwnHis
         ...(source.thread.historyOrigin === "v1_import" ? [null] : []),
       ],
     });
-    return visibleConversationItems(source, turnItems);
+    return visibleConversationItems(
+      { ...source, runs: restoreKeptRuns(source.runs, cut.keepRunIds) },
+      forkHistoryRows(turnItems, throughRun, cut),
+    );
   },
 );
 
@@ -175,14 +186,19 @@ export const readInheritedHandoffItems = Effect.fn(
     current.lineage.sideChat !== true &&
     !seen.has(current.forkedFrom.threadId)
   ) {
-    const { threadId, runId } = current.forkedFrom;
+    const { threadId, runId, throughTurnItemId } = current.forkedFrom;
     seen.add(threadId);
     const source = yield* projectionStore
       .getThreadRecords(threadId, ["runs", "attempts"])
       .pipe(Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(null) }));
     const forkRun = source?.runs.find((run) => run.id === runId);
     if (source === null || forkRun === undefined) break;
-    segments.unshift(yield* readOwnHistoryItems(projectionStore, source, forkRun));
+    segments.unshift(
+      yield* readOwnHistoryItems(projectionStore, source, forkRun, {
+        keepRunIds: current.rewindTail?.discardedRunIds,
+        throughTurnItemId,
+      }),
+    );
     current = source.thread;
   }
   return segments.flat();
@@ -194,15 +210,16 @@ export const readForkHistoryItems = Effect.fn(
 )(function* (
   projectionStore: Pick<ProjectionStoreV2Shape, "getThreadRecords">,
   source: ForkHistorySource,
-  throughRun: Pick<OrchestrationV2Run, "ordinal">,
+  throughRun: Pick<OrchestrationV2Run, "id" | "ordinal">,
+  cut: ForkHistoryCut = {},
 ) {
   return [
     ...(yield* readInheritedHandoffItems(projectionStore, source.thread)),
-    ...(yield* readOwnHistoryItems(projectionStore, source, throughRun)),
+    ...(yield* readOwnHistoryItems(projectionStore, source, throughRun, cut)),
   ];
 });
 
-function summarizeDeltaItem(item: OrchestrationV2TurnItem): string | null {
+export function summarizeForDigest(item: OrchestrationV2TurnItem): string | null {
   switch (item.type) {
     case "user_message":
       return `- User: ${compactText(item.text)}`;
@@ -228,7 +245,7 @@ function makeForkDeltaSummary(input: {
   readonly deltaItems: ReadonlyArray<OrchestrationV2TurnItem>;
 }): string {
   const itemLines = input.deltaItems.flatMap((item) => {
-    const line = summarizeDeltaItem(item);
+    const line = summarizeForDigest(item);
     return line === null ? [] : [line];
   });
   return [
@@ -261,7 +278,7 @@ export function makeSideChatContext(input: {
     SIDE_CHAT_CONTEXT_MAX_CHARS - [framing, "", header, truncated, "", footer].join("\n").length;
   for (let index = input.digest.length - 1; index >= 0; index--) {
     const item = input.digest[index]!;
-    const line = typeof item === "string" ? item : summarizeDeltaItem(item);
+    const line = typeof item === "string" ? item : summarizeForDigest(item);
     if (line === null) continue;
     if (line.length + 1 > remaining) {
       omitted = true;
@@ -591,10 +608,12 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
         strategy: "manual_context",
         status: "ready",
         summaryMessageId: null,
-        summaryText: makeSideChatContext({
-          parentThreadId: input.parentThreadId,
-          digest: input.parentItems,
-        }),
+        summaryText:
+          input.contextSeed ??
+          makeSideChatContext({
+            parentThreadId: input.parentThreadId,
+            digest: input.parentItems,
+          }),
         createdByProviderInstanceId: null,
         createdAt: input.createdAt,
         updatedAt: input.createdAt,

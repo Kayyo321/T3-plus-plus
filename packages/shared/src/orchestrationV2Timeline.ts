@@ -3,6 +3,8 @@ import type {
   OrchestrationV2RunAttempt,
   OrchestrationV2TurnItem,
   OrchestrationV2UserMessageInputIntent,
+  RunId,
+  TurnItemId,
 } from "@t3tools/contracts";
 
 type TimelineRun = Pick<OrchestrationV2Run, "id" | "status">;
@@ -10,6 +12,39 @@ type TimelineRunAttempt = Pick<OrchestrationV2RunAttempt, "runId" | "rootNodeId"
 type TimelineTurnItem = Pick<OrchestrationV2TurnItem, "type" | "runId" | "nodeId"> & {
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent;
 };
+
+export interface ForkHistoryCut {
+  /** Rolled-back runs a rewind branch still shows. */
+  readonly keepRunIds?: ReadonlyArray<RunId> | undefined;
+  /** The fork point inside its run, when the fork cuts that run short. */
+  readonly throughTurnItemId?: TurnItemId | undefined;
+}
+
+export function forkHistoryRows<
+  Item extends Pick<OrchestrationV2TurnItem, "id" | "runId" | "ordinal">,
+>(
+  items: ReadonlyArray<Item>,
+  throughRun: Pick<OrchestrationV2Run, "id">,
+  cut: Pick<ForkHistoryCut, "throughTurnItemId">,
+): ReadonlyArray<Item> {
+  const through =
+    cut.throughTurnItemId === undefined
+      ? undefined
+      : items.find((item) => item.id === cut.throughTurnItemId);
+  return through === undefined
+    ? items
+    : items.filter((item) => item.runId !== throughRun.id || item.ordinal <= through.ordinal);
+}
+
+/** A rewind branch shows the runs it took from its source as ordinary history. */
+export function restoreKeptRuns<Run extends Pick<OrchestrationV2Run, "id" | "status">>(
+  runs: ReadonlyArray<Run>,
+  keepRunIds: ForkHistoryCut["keepRunIds"],
+): ReadonlyArray<Run> {
+  if (keepRunIds === undefined || keepRunIds.length === 0) return runs;
+  const kept = new Set(keepRunIds);
+  return runs.map((run) => (kept.has(run.id) ? { ...run, status: "completed" } : run));
+}
 
 export function isOrchestrationV2SupersededInterrupt(input: {
   readonly item: TimelineTurnItem;

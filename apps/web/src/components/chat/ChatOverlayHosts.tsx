@@ -2,6 +2,7 @@ import type {
   DeviceServiceState,
   EnvironmentId,
   MessageId,
+  OrchestrationV2ThreadForkSourcePoint,
   ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
@@ -24,6 +25,9 @@ import {
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { WizardPopup } from "../ui/wizard";
+import { ForkPreviewDialog } from "./ForkPreviewDialog";
+import { NestedSessionDialog } from "./NestedSessionDialog";
+import { RewindDialog, type RewindChoice } from "./RewindDialog";
 import { registerThreadOverlay } from "./threadOverlayRetention";
 
 /**
@@ -192,37 +196,83 @@ export function openRevertConfirm(threadKey: string, pending: PendingRevert): vo
 
 export function RevertConfirmHost(props: {
   readonly threadKey: string;
-  readonly onConfirm: (turnCount: number, messageId: MessageId, restoreFiles: boolean) => void;
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly onConfirm: (turnCount: number, messageId: MessageId, choice: RewindChoice) => void;
 }) {
   const pending = useThreadOverlay(revertConfirmAtom, props.threadKey);
-  const confirm = (restoreFiles: boolean) => {
-    if (pending === null) return;
-    closeThreadOverlay(revertConfirmAtom);
-    props.onConfirm(pending.turnCount, pending.messageId, restoreFiles);
-  };
+  if (pending === null) return null;
   return (
-    <AlertDialog
-      open={pending !== null}
-      onOpenChange={(open) => {
-        if (!open) closeThreadOverlay(revertConfirmAtom);
+    <RewindDialog
+      environmentId={props.environmentId}
+      threadId={props.threadId}
+      target={{ type: "message", messageId: pending.messageId }}
+      restoresPrompt
+      onCancel={() => closeThreadOverlay(revertConfirmAtom)}
+      onConfirm={(choice) => {
+        closeThreadOverlay(revertConfirmAtom);
+        props.onConfirm(pending.turnCount, pending.messageId, choice);
       }}
-    >
-      <AlertDialogPopup>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Edit from here?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Rewind chat to before this message. Your prompt and attachments return to the composer.
-            “Revert files too” also undoes your own edits.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
-          <Button variant="destructive-outline" onClick={() => confirm(true)}>
-            Revert files too
-          </Button>
-          <Button onClick={() => confirm(false)}>Revert and keep changes</Button>
-        </AlertDialogFooter>
-      </AlertDialogPopup>
-    </AlertDialog>
+    />
+  );
+}
+
+type PendingFork = {
+  readonly sourceThreadId: ThreadId;
+  readonly sourcePoint: OrchestrationV2ThreadForkSourcePoint;
+};
+
+const forkPreviewAtom = makeThreadOverlayAtom<PendingFork>("fork-preview");
+
+export function openForkPreview(threadKey: string, pending: PendingFork): void {
+  appAtomRegistry.set(forkPreviewAtom, { threadKey, value: pending });
+}
+
+export function ForkPreviewHost(props: {
+  readonly threadKey: string;
+  readonly environmentId: EnvironmentId;
+  readonly onConfirm: (pending: PendingFork) => void;
+}) {
+  const pending = useThreadOverlay(forkPreviewAtom, props.threadKey);
+  if (pending === null) return null;
+  return (
+    <ForkPreviewDialog
+      environmentId={props.environmentId}
+      threadId={pending.sourceThreadId}
+      sourcePoint={pending.sourcePoint}
+      onCancel={() => closeThreadOverlay(forkPreviewAtom)}
+      onConfirm={() => {
+        closeThreadOverlay(forkPreviewAtom);
+        props.onConfirm(pending);
+      }}
+    />
+  );
+}
+
+const nestedSessionAtom = makeThreadOverlayAtom<{ readonly messageId?: MessageId }>(
+  "nested-session-dialog",
+);
+
+export function openNestedSessionDialog(threadKey: string, messageId?: MessageId): void {
+  appAtomRegistry.set(nestedSessionAtom, {
+    threadKey,
+    value: messageId === undefined ? {} : { messageId },
+  });
+}
+
+export function NestedSessionDialogHost(props: {
+  readonly threadKey: string;
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+}) {
+  const pending = useThreadOverlay(nestedSessionAtom, props.threadKey);
+  if (pending === null) return null;
+  return (
+    <NestedSessionDialog
+      environmentId={props.environmentId}
+      threadId={props.threadId}
+      messageId={pending.messageId}
+      onClose={() => closeThreadOverlay(nestedSessionAtom)}
+    />
   );
 }

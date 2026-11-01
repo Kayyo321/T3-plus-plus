@@ -195,6 +195,7 @@ import { ThreadFeed, type ThreadFeedHandle, type ThreadFeedHistoryControls } fro
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
 import { useThreadQueuedCount } from "./ThreadQueueControl";
+import { ThreadBackgroundTasks } from "./ThreadBackgroundTasks";
 import { ThreadGuestShareBar } from "./ThreadGuestShareBar";
 import { ThreadSideChatsRow } from "./ThreadSideChatsRow";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
@@ -1683,6 +1684,12 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                     </View>
                   ) : (
                     <>
+                      {props.draftMode ? null : (
+                        <ThreadBackgroundTasks
+                          environmentId={props.environmentId}
+                          threadId={props.selectedThread.id}
+                        />
+                      )}
                       <ThreadComposer
                         isDraft={Boolean(props.draftMode)}
                         canOperateThread={props.canOperateThread}

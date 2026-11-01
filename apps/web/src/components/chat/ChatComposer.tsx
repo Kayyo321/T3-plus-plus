@@ -385,6 +385,8 @@ export interface ChatComposerProps {
   onToggleKeepFullHistory: () => void;
   onUsageLimitsCommand?: (() => void) | undefined;
   sideChatAvailable?: boolean;
+  /** Opens "Run in background" with any command already typed. */
+  onRunInBackground?: ((command?: string) => void) | undefined;
   sideChatDisabledReason?: string | null;
   environmentUnavailable: {
     readonly label: string;
@@ -1134,6 +1136,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     threadPullRequests,
     planModeUiEnabled,
     sideChatAvailable: props.sideChatAvailable === true,
+    runInBackgroundAvailable: props.onRunInBackground !== undefined,
     sideChatDisabledReason: props.sideChatDisabledReason ?? null,
     compactSlashCommandAvailable,
     selectedProvider,
@@ -1862,6 +1865,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           setComposerHighlightedItemId(null);
           setIsComposerModelPickerOpen(true);
         }
+        return;
+      }
+      if (item.command === "background") {
+        const typed = snapshot.value.slice(trigger.rangeEnd).trim();
+        const applied = applyPromptReplacement(trigger.rangeStart, snapshot.value.length, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart),
+        });
+        if (applied) setComposerHighlightedItemId(null);
+        props.onRunInBackground?.(typed.length === 0 ? undefined : typed);
         return;
       }
       if (item.command === "side" || item.command === "btw") {

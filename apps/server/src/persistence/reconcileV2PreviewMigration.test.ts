@@ -57,6 +57,7 @@ describe("V2 preview upgrade", () => {
         [75, "SubagentDeliveryState"],
         [76, "ProjectionProjectsPinArchive"],
         [77, "AuditTrail"],
+        [80, "BackgroundTasks"],
         [85, "CheckpointRefIndex"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
@@ -158,6 +159,7 @@ describe("V2 preview upgrade", () => {
         [75, "SubagentDeliveryState"],
         [76, "ProjectionProjectsPinArchive"],
         [77, "AuditTrail"],
+        [80, "BackgroundTasks"],
         [85, "CheckpointRefIndex"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),

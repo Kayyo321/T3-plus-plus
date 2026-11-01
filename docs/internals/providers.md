@@ -128,9 +128,13 @@ start no Codex turn settle on a provider turn without a native ref, which native
 not count. Claude's SDK mode emits no goal events; its adapter reads goal state from the
 synthetic command output and Stop hook feedback in the transcript.
 
-Capabilities must describe what the provider can actually do. Antigravity can capture workspace
-checkpoints but cannot roll back its conversation. The [checkpoint boundary](./overview.md#turn-completion-and-checkpoints)
-therefore rejects revert before touching files. Native permission and question option IDs must
+Capabilities must describe what the provider can actually do. The
+[checkpoint boundary](./overview.md#turn-completion-and-checkpoints) rejects a conversation rewind
+before touching files, and a files-only rewind asks nothing of the provider. Cursor and Muse have no
+rollback. Claude, Codex, OpenCode and Pi truncate natively, though paginated Codex threads refuse at
+the provider. ACP has no truncation, so Grok, Antigravity and registry agents replace the session
+(`rollbackStartsFreshSession`): the transcript rewinds, but the agent forgets every earlier turn, and
+previews say so. Native permission and question option IDs must
 also survive normalization; a display label is not necessarily a valid reply.
 
 ## Attachments and stored history

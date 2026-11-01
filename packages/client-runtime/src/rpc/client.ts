@@ -61,6 +61,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.auditSubscribe
   | typeof WS_METHODS.orchestratorAgentSubscribe
   | typeof WS_METHODS.orchestratorAgentSubscribeDirectives
+  | typeof WS_METHODS.backgroundTaskSubscribe
   | typeof WS_METHODS.scheduledTasksSubscribe
   | typeof WS_METHODS.serverGetStorageCleanupReport
   | typeof WS_METHODS.serverGetDatabaseStorage

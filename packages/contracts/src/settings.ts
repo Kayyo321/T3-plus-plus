@@ -1184,6 +1184,8 @@ export const StorageCleanupSettings = Schema.Struct({
 });
 export type StorageCleanupSettings = typeof StorageCleanupSettings.Type;
 
+const DEFAULT_NESTED_SESSION_MAX_DEPTH = 2;
+
 export const ServerSettings = Schema.Struct({
   // Null means unmigrated; empty is authoritative and must not resurrect cleared preferences.
   favorites: Schema.NullOr(ModelFavorites).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
@@ -1202,6 +1204,10 @@ export const ServerSettings = Schema.Struct({
   ),
   responseStreamingMode: ResponseStreamingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
+  ),
+  /** How many levels of nested sessions can hang under a conversation. */
+  nestedSessionMaxDepth: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 8 })).pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_NESTED_SESSION_MAX_DEPTH)),
   ),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
