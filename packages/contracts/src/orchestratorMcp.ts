@@ -21,6 +21,10 @@ import {
   TurnItemId,
 } from "./baseSchemas.ts";
 import {
+  ScheduledRunReportInput,
+  ScheduledTaskListRunsResult,
+  ScheduledTaskRun,
+  ScheduledTaskRunPolicy,
   ScheduledTaskRunStatus,
   ScheduledTaskSchedule,
   ScheduledTaskUpsertSchedule,
@@ -649,6 +653,11 @@ export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
 });
 export type OrchestratorMcpCapabilitiesResult = typeof OrchestratorMcpCapabilitiesResult.Type;
 
+const OrchestratorMcpSchedulePolicy = ScheduledTaskRunPolicy.annotate({
+  description:
+    "Limits and behaviour per run. `repeater` reruns until done. Omitted when updating: unchanged.",
+});
+
 export const OrchestratorMcpScheduleTaskInput = Schema.Struct({
   environmentId: OrchestratorMcpEnvironmentTarget,
   projectId: OrchestratorMcpProjectTarget,
@@ -661,6 +670,7 @@ export const OrchestratorMcpScheduleTaskInput = Schema.Struct({
       description: "Default true: runs post in this thread. False: new thread per run.",
     }),
   ),
+  policy: Schema.optional(OrchestratorMcpSchedulePolicy),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
 export type OrchestratorMcpScheduleTaskInput = typeof OrchestratorMcpScheduleTaskInput.Type;
@@ -685,6 +695,8 @@ export const OrchestratorMcpScheduledTask = Schema.Struct({
   schedule: ScheduledTaskSchedule,
   nextRunAt: Schema.NullOr(IsoDateTime),
   lastRunStatus: ScheduledTaskRunStatus,
+  policy: Schema.optional(ScheduledTaskRunPolicy),
+  latestRun: Schema.optional(ScheduledTaskRun),
   webhookUrl: Schema.optional(Schema.String).annotate({
     description:
       "Public URL for the sender. Absent: no T3 Connect tunnel. The user must enable T3 Connect remote access.",
@@ -721,9 +733,26 @@ export const OrchestratorMcpUpdateScheduledTaskInput = Schema.Struct({
   schedule: Schema.optional(OrchestratorMcpSchedule),
   enabled: Schema.optional(Schema.Boolean),
   bindToCurrentThread: Schema.optional(Schema.Boolean),
+  policy: Schema.optional(OrchestratorMcpSchedulePolicy),
 });
 export type OrchestratorMcpUpdateScheduledTaskInput =
   typeof OrchestratorMcpUpdateScheduledTaskInput.Type;
+
+export const OrchestratorMcpListScheduledTaskRunsInput = Schema.Struct({
+  environmentId: OrchestratorMcpEnvironmentTarget,
+  scheduledTaskId: ScheduledTaskId,
+  before: Schema.optional(IsoDateTime),
+});
+export type OrchestratorMcpListScheduledTaskRunsInput =
+  typeof OrchestratorMcpListScheduledTaskRunsInput.Type;
+
+export const OrchestratorMcpListScheduledTaskRunsResult = ScheduledTaskListRunsResult;
+export type OrchestratorMcpListScheduledTaskRunsResult =
+  typeof OrchestratorMcpListScheduledTaskRunsResult.Type;
+
+export const OrchestratorMcpReportScheduledRunInput = ScheduledRunReportInput;
+export type OrchestratorMcpReportScheduledRunInput =
+  typeof OrchestratorMcpReportScheduledRunInput.Type;
 
 export const OrchestratorMcpRequestSecretInput = Schema.Struct({
   label: TrimmedNonEmptyString.annotate({

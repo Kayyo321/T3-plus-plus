@@ -10,6 +10,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { parseCronExpression } from "./cronExpression.ts";
 import { ModelSelection } from "./modelSelection.ts";
 import {
   OrchestrationV2Actor,
@@ -70,6 +71,28 @@ const ScheduledTaskOnceSchedule = Schema.Struct({
     Schema.makeFilter(
       (value) => isIsoWithOffset(value) || "Expected an ISO date and time with an offset.",
     ),
+  ),
+});
+
+function isTimeZone(value: string): boolean {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions().timeZone !== "";
+  } catch {
+    return false;
+  }
+}
+
+const ScheduledTaskCronSchedule = Schema.Struct({
+  type: Schema.Literal("cron"),
+  expression: TrimmedNonEmptyString.check(
+    Schema.makeFilter(
+      (value) => parseCronExpression(value) !== null || "Expected a cron expression.",
+    ),
+  ).annotate({ description: "Minute hour day month weekday, such as '0 9 * * 1-5'." }),
+  timeZone: Schema.optional(
+    TrimmedNonEmptyString.check(
+      Schema.makeFilter((value) => isTimeZone(value) || "Expected an IANA time zone."),
+    ).annotate({ description: "IANA zone, such as Europe/Paris. Default: the server's." }),
   ),
 });
 
@@ -194,6 +217,7 @@ const ScheduledTaskUpsertWebhookSchedule = Schema.Struct({
 export const ScheduledTaskSchedule = Schema.Union([
   ScheduledTaskIntervalSchedule,
   ScheduledTaskFixedTimeSchedule,
+  ScheduledTaskCronSchedule,
   ScheduledTaskOnceSchedule,
   ScheduledTaskWebhookSchedule,
 ]);
@@ -209,6 +233,7 @@ export const ScheduledTaskUpsertSchedule = Schema.Union([
     }),
   }),
   ScheduledTaskFixedTimeSchedule,
+  ScheduledTaskCronSchedule,
   ScheduledTaskOnceSchedule,
   ScheduledTaskUpsertWebhookSchedule,
 ]);
@@ -216,6 +241,128 @@ export type ScheduledTaskUpsertSchedule = typeof ScheduledTaskUpsertSchedule.Typ
 
 export const ScheduledTaskRunStatus = Schema.Literals(["never", "running", "succeeded", "failed"]);
 export type ScheduledTaskRunStatus = typeof ScheduledTaskRunStatus.Type;
+
+/** What a late task does when the machine was off or asleep at its time. */
+export const ScheduledTaskMissedRunPolicy = Schema.Literals(["skip", "run_once", "catch_up"]);
+export type ScheduledTaskMissedRunPolicy = typeof ScheduledTaskMissedRunPolicy.Type;
+
+/** Catch up replays at most this many missed times, keeping the newest. */
+export const MAX_SCHEDULED_TASK_CATCH_UP_RUNS = 24;
+
+/** @public */
+export const MAX_SCHEDULED_TASK_ITERATIONS = 100;
+
+const PositiveBudgetInt = Schema.Int.check(Schema.isGreaterThan(0));
+
+export const ScheduledTaskRunBudget = Schema.Struct({
+  maxDurationMinutes: Schema.optional(PositiveBudgetInt),
+  maxToolCalls: Schema.optional(PositiveBudgetInt),
+  maxCostUsd: Schema.optional(Schema.Number.check(Schema.isGreaterThan(0))).annotate({
+    description: "Enforced only for models with known prices.",
+  }),
+});
+export type ScheduledTaskRunBudget = typeof ScheduledTaskRunBudget.Type;
+
+/** Every run is bounded, so an unattended task cannot spend without limit. */
+export const DEFAULT_SCHEDULED_TASK_RUN_BUDGET: ScheduledTaskRunBudget = {
+  maxDurationMinutes: 60,
+  maxToolCalls: 500,
+};
+
+export const ScheduledTaskRepeater = Schema.Struct({
+  doneWhen: TrimmedNonEmptyString.check(Schema.isMaxLength(2000)).annotate({
+    description: "The condition that ends the repeat, such as 'all tests pass'.",
+  }),
+  maxIterations: Schema.Int.check(
+    Schema.isBetween({ minimum: 1, maximum: MAX_SCHEDULED_TASK_ITERATIONS }),
+  ).annotate({ description: "Runs before it stops anyway. Max 100." }),
+}).annotate({
+  description:
+    "Repeat on the schedule until a run reports the condition is met, then pause the task.",
+});
+export type ScheduledTaskRepeater = typeof ScheduledTaskRepeater.Type;
+
+export const ScheduledTaskNotifyPolicy = Schema.Literals(["all", "changes", "failures", "none"]);
+export type ScheduledTaskNotifyPolicy = typeof ScheduledTaskNotifyPolicy.Type;
+
+/** `park` keeps a run that needs an answer open for a human. `fail` stops it. */
+export const ScheduledTaskPromptPolicy = Schema.Literals(["park", "fail"]);
+export type ScheduledTaskPromptPolicy = typeof ScheduledTaskPromptPolicy.Type;
+
+export const ScheduledTaskRunPolicy = Schema.Struct({
+  budget: Schema.optional(ScheduledTaskRunBudget),
+  repeater: Schema.optional(ScheduledTaskRepeater),
+  missedRuns: Schema.optional(ScheduledTaskMissedRunPolicy),
+  notify: Schema.optional(ScheduledTaskNotifyPolicy),
+  onPrompt: Schema.optional(ScheduledTaskPromptPolicy),
+});
+export type ScheduledTaskRunPolicy = typeof ScheduledTaskRunPolicy.Type;
+
+export const ScheduledTaskRunId = TrimmedNonEmptyString.pipe(Schema.brand("ScheduledTaskRunId"));
+export type ScheduledTaskRunId = typeof ScheduledTaskRunId.Type;
+
+export const ScheduledTaskRunOutcome = Schema.Literals([
+  "running",
+  "needs_input",
+  "succeeded",
+  "nothing_changed",
+  "done",
+  "failed",
+  "interrupted",
+  "budget_exceeded",
+  "iteration_limit",
+  "skipped",
+]);
+export type ScheduledTaskRunOutcome = typeof ScheduledTaskRunOutcome.Type;
+
+export const ScheduledTaskRunTrigger = Schema.Literals(["scheduled", "manual", "webhook"]);
+export type ScheduledTaskRunTrigger = typeof ScheduledTaskRunTrigger.Type;
+
+export const ScheduledTaskRun = Schema.Struct({
+  id: ScheduledTaskRunId,
+  taskId: ScheduledTaskId,
+  trigger: ScheduledTaskRunTrigger,
+  scheduledFor: Schema.NullOr(IsoDateTime),
+  startedAt: IsoDateTime,
+  finishedAt: Schema.NullOr(IsoDateTime),
+  // Any string, so an outcome added later doesn't break a client's whole list.
+  outcome: Schema.Union([ScheduledTaskRunOutcome, Schema.String]),
+  threadId: Schema.NullOr(ThreadId),
+  iteration: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  summary: Schema.NullOr(Schema.String),
+  error: Schema.NullOr(Schema.String),
+  toolCalls: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  costUsd: Schema.NullOr(Schema.Number),
+});
+export type ScheduledTaskRun = typeof ScheduledTaskRun.Type;
+
+export const SCHEDULED_TASK_RUN_PAGE_SIZE = 50;
+
+export const ScheduledTaskListRunsInput = Schema.Struct({
+  id: ScheduledTaskId,
+  before: Schema.optional(IsoDateTime),
+  limit: Schema.optional(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SCHEDULED_TASK_RUN_PAGE_SIZE })),
+  ),
+});
+export type ScheduledTaskListRunsInput = typeof ScheduledTaskListRunsInput.Type;
+
+export const ScheduledTaskListRunsResult = Schema.Struct({
+  runs: Schema.Array(ScheduledTaskRun),
+  hasMore: Schema.Boolean,
+});
+export type ScheduledTaskListRunsResult = typeof ScheduledTaskListRunsResult.Type;
+
+export const ScheduledRunVerdict = Schema.Literals(["done", "continue", "nothing_changed"]);
+export type ScheduledRunVerdict = typeof ScheduledRunVerdict.Type;
+
+export const ScheduledRunReportInput = Schema.Struct({
+  verdict: ScheduledRunVerdict,
+  summary: TrimmedNonEmptyString.check(Schema.isMaxLength(500)).annotate({
+    description: "One or two sentences on what this run found or did.",
+  }),
+});
+export type ScheduledRunReportInput = typeof ScheduledRunReportInput.Type;
 
 export const ScheduledTaskWebhookEndpoint = Schema.Struct({
   path: TrimmedNonEmptyString,
@@ -246,6 +393,10 @@ export const ScheduledTask = Schema.Struct({
   lastRunError: Schema.NullOr(Schema.String),
   runCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   webhook: Schema.optional(ScheduledTaskWebhookEndpoint),
+  policy: Schema.optional(ScheduledTaskRunPolicy),
+  /** Runs a repeater has made so far. Reset when it stops or is turned back on. */
+  repeaterIteration: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  latestRun: Schema.optional(ScheduledTaskRun),
 });
 export type ScheduledTask = typeof ScheduledTask.Type;
 
@@ -273,6 +424,8 @@ export const ScheduledTaskUpsertInput = Schema.Struct({
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
+  /** Omitted keeps the stored policy, so a client that predates it cannot clear it. */
+  policy: Schema.optional(ScheduledTaskRunPolicy),
   createdBy: Schema.optional(OrchestrationV2Actor),
   creationSource: Schema.optional(OrchestrationV2CreationSource),
 });

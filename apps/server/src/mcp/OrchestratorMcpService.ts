@@ -26,7 +26,10 @@ import {
   type OrchestratorMcpRequestSecretInput,
   type OrchestratorMcpRequestSecretResult,
   type OrchestratorMcpDeleteScheduledTaskResult,
+  type OrchestratorMcpListScheduledTaskRunsInput,
+  type OrchestratorMcpListScheduledTaskRunsResult,
   type OrchestratorMcpListScheduledTasksResult,
+  type OrchestratorMcpReportScheduledRunInput,
   type OrchestratorMcpScheduledTask,
   type OrchestratorMcpScheduleTaskInput,
   type OrchestratorMcpScheduleTaskResult,
@@ -180,6 +183,14 @@ export interface OrchestratorMcpServiceShape {
     scope: McpInvocationScope,
     input: OrchestratorMcpUpdateScheduledTaskInput,
   ) => Effect.Effect<OrchestratorMcpScheduleTaskResult, OrchestratorMcpFailure>;
+  readonly listScheduledTaskRuns: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpListScheduledTaskRunsInput,
+  ) => Effect.Effect<OrchestratorMcpListScheduledTaskRunsResult, OrchestratorMcpFailure>;
+  readonly reportScheduledRun: (
+    scope: McpInvocationScope,
+    input: OrchestratorMcpReportScheduledRunInput,
+  ) => Effect.Effect<{ readonly recorded: true }, OrchestratorMcpFailure>;
   readonly deleteScheduledTask: (
     scope: McpInvocationScope,
     input: OrchestratorMcpDeleteScheduledTaskInput,
@@ -263,6 +274,8 @@ function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): Orchestrato
     schedule: task.schedule,
     nextRunAt: task.nextRunAt,
     lastRunStatus: task.lastRunStatus,
+    ...(task.policy === undefined ? {} : { policy: task.policy }),
+    ...(task.latestRun === undefined ? {} : { latestRun: task.latestRun }),
     ...(task.webhook?.url == null || !mayRun ? {} : { webhookUrl: task.webhook.url }),
     ...(task.webhook === undefined
       ? {}
@@ -1985,6 +1998,7 @@ const make = Effect.gen(function* () {
         modelSelection,
         runtimeMode: limits.runtimeMode,
         interactionMode: limits.interactionMode,
+        ...(input.policy === undefined ? {} : { policy: input.policy }),
         createdBy: "agent",
         creationSource: "mcp",
         // Scope the idempotency key by provider session so two callers
@@ -2066,6 +2080,7 @@ const make = Effect.gen(function* () {
           modelSelection: existing.modelSelection,
           runtimeMode: existing.runtimeMode,
           interactionMode: existing.interactionMode,
+          ...(input.policy === undefined ? {} : { policy: input.policy }),
           createdBy: existing.createdBy,
           creationSource: existing.creationSource,
         };
@@ -2077,6 +2092,31 @@ const make = Effect.gen(function* () {
             ),
           );
         return yield* summarizeScheduledTask(scope, { parent, limits }, task);
+      },
+    ),
+    listScheduledTaskRuns: Effect.fn("OrchestratorMcpService.listScheduledTaskRuns")(
+      function* (scope, input) {
+        const { limits } = yield* loadCaller(scope);
+        const existing = yield* loadScheduledTask(input.scheduledTaskId, limits);
+        return yield* scheduledTasks
+          .listRuns({
+            id: existing.id,
+            ...(input.before === undefined ? {} : { before: input.before }),
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure("orchestration_error", `Could not list the runs: ${error.message}`),
+            ),
+          );
+      },
+    ),
+    reportScheduledRun: Effect.fn("OrchestratorMcpService.reportScheduledRun")(
+      function* (scope, input) {
+        const { scope: threadScope } = yield* loadThreadCaller(scope, "report_scheduled_run");
+        yield* scheduledTasks
+          .reportRun(threadScope.thread.threadId, input)
+          .pipe(Effect.mapError((error) => failure("invalid_request", error.message)));
+        return { recorded: true as const };
       },
     ),
     deleteScheduledTask: Effect.fn("OrchestratorMcpService.deleteScheduledTask")(

@@ -1500,6 +1500,9 @@ export function threadShellFromProjection(
     ...(projection.thread.capabilityMode === undefined
       ? {}
       : { capabilityMode: projection.thread.capabilityMode }),
+    ...(projection.thread.scheduledTaskId === undefined
+      ? {}
+      : { scheduledTaskId: projection.thread.scheduledTaskId }),
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
     pullRequests: threadPullRequestsOf(projection.thread),
@@ -1784,6 +1787,9 @@ function shellFromState(input: {
     ...(input.state.thread.capabilityMode === undefined
       ? {}
       : { capabilityMode: input.state.thread.capabilityMode }),
+    ...(input.state.thread.scheduledTaskId === undefined
+      ? {}
+      : { scheduledTaskId: input.state.thread.scheduledTaskId }),
     branch: input.state.thread.branch,
     worktreePath: input.state.thread.worktreePath,
     pullRequests: threadPullRequestsOf(input.state.thread),

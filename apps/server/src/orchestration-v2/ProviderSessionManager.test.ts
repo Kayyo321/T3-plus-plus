@@ -16,6 +16,7 @@ import {
   ProviderInstanceId,
   type ProviderSessionId,
   ThreadId,
+  type ThreadCapabilityMode,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -227,6 +228,7 @@ function makeThreadCreatedEvent(input: {
   readonly now: DateTime.Utc;
   readonly projectId?: ProjectId;
   readonly delegatedBy?: ThreadId;
+  readonly capabilityMode?: ThreadCapabilityMode;
 }) {
   return Effect.gen(function* () {
     const projectId =
@@ -248,6 +250,7 @@ function makeThreadCreatedEvent(input: {
       modelSelection,
       runtimeMode: "full-access",
       interactionMode: "default",
+      ...(input.capabilityMode === undefined ? {} : { capabilityMode: input.capabilityMode }),
       branch: null,
       worktreePath: null,
       activeProviderThreadId: providerThreadId,
@@ -1732,6 +1735,41 @@ it.effect(
         ),
       );
     }),
+);
+
+it.effect("ProviderSessionManagerV2 limits a chat thread's MCP credential to its documents", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const mcpConfigs = yield* Ref.make<
+      ReadonlyArray<McpProviderSession.McpProviderSessionConfig | undefined>
+    >([]);
+    yield* Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const registry = yield* McpSessionRegistry.McpSessionRegistry;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread-provider-session-manager-chat");
+      yield* eventSink.write({
+        events: [
+          yield* makeThreadCreatedEvent({ idAllocator, threadId, now, capabilityMode: "chat" }),
+        ],
+      });
+      yield* manager.open({
+        threadId,
+        providerSessionId: yield* idAllocator.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        }),
+        modelSelection,
+        runtimePolicy,
+      });
+      const token = (yield* Ref.get(mcpConfigs))[0]?.authorizationHeader.replace(/^Bearer\s+/, "");
+      assert.isDefined(token);
+      const resolved = yield* registry.resolve(token!);
+      assert.deepEqual(resolved?.capabilities, new Set(["documents"]));
+    }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 1_000, mcpConfigs })));
+  }),
 );
 
 it.effect.each([

@@ -1298,6 +1298,38 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-tasks:live",
       tag: WS_METHODS.scheduledTasksSubscribe,
     }),
+    scheduledTaskRuns: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:scheduled-task:runs",
+      tag: WS_METHODS.scheduledTasksListRuns,
+    }),
+    conversationDocumentsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:documents:live",
+      tag: WS_METHODS.documentsSubscribe,
+    }),
+    conversationDocument: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:documents:get",
+      tag: WS_METHODS.documentsGet,
+    }),
+    conversationDocumentVersions: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:documents:versions",
+      tag: WS_METHODS.documentsListVersions,
+    }),
+    computerUseSupport: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:computer-use:support",
+      tag: WS_METHODS.computerUseSupport,
+    }),
+    computerUseLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:computer-use:live",
+      tag: WS_METHODS.computerUseSubscribe,
+    }),
+    computerUseSteps: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:computer-use:steps",
+      tag: WS_METHODS.computerUseListSteps,
+    }),
+    computerUseScreenshot: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:computer-use:screenshot",
+      tag: WS_METHODS.computerUseGetScreenshot,
+    }),
     // A cold transcript scan is measured in seconds, so keep the result around
     // long enough that switching windows or re-rendering does not rescan.
     usageSummary: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -1542,6 +1574,55 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.scheduledTasksRotateWebhookToken,
       scheduler: configScheduler,
       concurrency: configConcurrency,
+    }),
+    createConversationDocument: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:documents:create",
+      tag: WS_METHODS.documentsCreate,
+    }),
+    updateConversationDocument: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:documents:update",
+      tag: WS_METHODS.documentsUpdate,
+    }),
+    deleteConversationDocument: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:documents:delete",
+      tag: WS_METHODS.documentsDelete,
+    }),
+    restoreConversationDocument: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:documents:restore",
+      tag: WS_METHODS.documentsRestore,
+    }),
+    restoreConversationDocumentVersion: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:documents:restore-version",
+      tag: WS_METHODS.documentsRestoreVersion,
+    }),
+    exportConversationDocument: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:documents:export",
+      tag: WS_METHODS.documentsExport,
+    }),
+    moveConversationDocumentToProject: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:documents:move-to-project",
+      tag: WS_METHODS.documentsMoveToProject,
+    }),
+    startComputerUse: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:computer-use:start",
+      tag: WS_METHODS.computerUseStart,
+    }),
+    // Off the config lane, like every computer use command: a stop must never queue.
+    stopComputerUse: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:computer-use:stop",
+      tag: WS_METHODS.computerUseStop,
+    }),
+    takeOverComputerUse: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:computer-use:take-over",
+      tag: WS_METHODS.computerUseTakeOver,
+    }),
+    resumeComputerUse: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:computer-use:resume",
+      tag: WS_METHODS.computerUseResume,
+    }),
+    answerComputerUseApproval: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:computer-use:answer-approval",
+      tag: WS_METHODS.computerUseAnswerApproval,
     }),
     createGuestShare: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:guest-share:create",

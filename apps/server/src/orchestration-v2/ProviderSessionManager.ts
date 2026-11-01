@@ -15,6 +15,7 @@ import {
   ThreadId,
   type ProviderThreadId,
 } from "@t3tools/contracts";
+import * as ConversationDocumentService from "../documents/ConversationDocumentService.ts";
 import type * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
@@ -213,11 +214,21 @@ export interface ProviderSessionManagerV2Shape {
   }) => Effect.Effect<ReadonlyArray<ThreadId>>;
 }
 
-/** A chat thread gets no T3 tools: `delegate_task` would hand it a code thread by another door. */
+/**
+ * A chat thread reaches only its own documents: `delegate_task` or any other T3 tool would hand
+ * it a code thread by another door.
+ */
 const mcpCapabilityLimit = (
   thread: OrchestrationV2AppThread,
 ): ReadonlySet<McpInvocationContext.McpCapability> | undefined =>
-  thread.capabilityMode === "chat" && !isOrchestratorAgentThread(thread) ? new Set() : undefined;
+  thread.capabilityMode === "chat" && !isOrchestratorAgentThread(thread)
+    ? new Set(["documents"])
+    : undefined;
+
+const sameCapabilities = (
+  granted: ReadonlySet<McpInvocationContext.McpCapability>,
+  limit: ReadonlySet<McpInvocationContext.McpCapability>,
+) => granted.size === limit.size && [...limit].every((capability) => granted.has(capability));
 
 export class ProviderSessionManagerV2 extends Context.Service<
   ProviderSessionManagerV2,
@@ -349,6 +360,9 @@ export const layerWithOptions = (
       /** Unreadable settings must preserve explicit browser-access opt-outs. */
       const serverSettings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
       const projectService = yield* Effect.serviceOption(ProjectService.ProjectService);
+      const documents = yield* Effect.serviceOption(
+        ConversationDocumentService.ConversationDocumentService,
+      );
       const eventSink = yield* EventSink.EventSinkV2;
       const commandOutput = yield* CommandOutputHub.CommandOutputHub;
       const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -483,6 +497,22 @@ export const layerWithOptions = (
                     })),
                   );
                 if (orchestrator) capabilities.add("editor");
+                // A thread brought over from Chat keeps reaching what it wrote there.
+                const documentTools =
+                  limitedTo === undefined && Option.isSome(documents)
+                    ? yield* documents.value
+                        .hasDocuments(threadId)
+                        .pipe(Effect.orElseSucceed(() => false))
+                    : false;
+                if (documentTools) capabilities.add("documents");
+                const computerTools =
+                  limitedTo === undefined && Option.isSome(serverSettings)
+                    ? yield* serverSettings.value.getSettings.pipe(
+                        Effect.map((settings) => settings.computerUseEnabled),
+                        Effect.orElseSucceed(() => false),
+                      )
+                    : false;
+                if (computerTools) capabilities.add("computer-use");
                 const existing = yield* mcpSessions.read(threadId);
                 if (existing !== undefined) {
                   // Reserve before async validation so release cannot revoke between validation and reservation.
@@ -506,8 +536,10 @@ export const layerWithOptions = (
                       ? resolved.capabilities.has("preview") === browserToolsAvailable &&
                         resolved.capabilities.has("device") === deviceToolsAvailable &&
                         resolved.capabilities.has("orchestration") &&
-                        resolved.capabilities.has("editor") === orchestrator
-                      : resolved.capabilities.size === limitedTo.size) &&
+                        resolved.capabilities.has("editor") === orchestrator &&
+                        resolved.capabilities.has("documents") === documentTools &&
+                        resolved.capabilities.has("computer-use") === computerTools
+                      : sameCapabilities(resolved.capabilities, limitedTo)) &&
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent
                   ) {

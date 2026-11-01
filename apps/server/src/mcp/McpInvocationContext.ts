@@ -22,6 +22,10 @@ const ALL_MCP_CAPABILITIES = [
   "pull-requests",
   /** The orchestrator's editor-wide tools, each behind a per-domain grant. */
   "editor",
+  /** The calling conversation's documents: the one thing a chat thread may change. */
+  "documents",
+  /** Offers the computer tools. Each conversation still has to be turned on by a person. */
+  "computer-use",
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 
@@ -144,6 +148,13 @@ export const hiddenWhileLinksOff = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope?.linkedEnvironments !== false;
+};
+
+/** `McpSchema.EnabledWhen` for tools only some credentials can use, to keep tool lists short. */
+export const enabledWithCapability = (capability: McpCapability) => (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return scope?.capabilities.has(capability) === true;
 };
 
 export type McpCapabilityError<C extends McpCapability> = C extends "preview"

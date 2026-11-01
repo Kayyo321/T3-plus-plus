@@ -8,6 +8,34 @@ import {
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import { AuditEntry, AuditListInput, AuditListResult, AuditTrailError } from "./audit.ts";
 import {
+  ComputerUseAnswerApprovalInput,
+  ComputerUseError,
+  ComputerUseListStepsInput,
+  ComputerUseListStepsResult,
+  ComputerUseScreenshot,
+  ComputerUseScreenshotInput,
+  ComputerUseSnapshot,
+  ComputerUseStartInput,
+  ComputerUseState,
+  ComputerUseSupportResult,
+  ComputerUseThreadInput,
+} from "./computerUse.ts";
+import {
+  ConversationDocument,
+  ConversationDocumentCreateInput,
+  ConversationDocumentError,
+  ConversationDocumentExportInput,
+  ConversationDocumentExportResult,
+  ConversationDocumentGetInput,
+  ConversationDocumentIdInput,
+  ConversationDocumentListInput,
+  ConversationDocumentListResult,
+  ConversationDocumentListVersionsResult,
+  ConversationDocumentMoveToProjectInput,
+  ConversationDocumentRestoreVersionInput,
+  ConversationDocumentUpdateInput,
+} from "./conversationDocument.ts";
+import {
   McpAppCallToolInput,
   McpAppCallToolResult,
   McpAppReadResourceInput,
@@ -365,6 +393,8 @@ import {
   ScheduledTaskError,
   ScheduledTaskListInput,
   ScheduledTaskListResult,
+  ScheduledTaskListRunsInput,
+  ScheduledTaskListRunsResult,
   ScheduledTaskRunNowInput,
   ScheduledTaskRotateWebhookTokenInput,
   ScheduledTaskListWebhookDeliveriesInput,
@@ -543,10 +573,30 @@ export const WS_METHODS = {
   scheduledTasksSetEnabled: "scheduledTasks.setEnabled",
   scheduledTasksDelete: "scheduledTasks.delete",
   scheduledTasksRunNow: "scheduledTasks.runNow",
+  scheduledTasksListRuns: "scheduledTasks.listRuns",
   scheduledTasksRotateWebhookToken: "scheduledTasks.rotateWebhookToken",
   secretsAnswerRequest: "secrets.answerRequest",
   auditList: "audit.list",
   auditSubscribe: "audit.subscribe",
+  computerUseSupport: "computerUse.support",
+  computerUseSubscribe: "computerUse.subscribe",
+  computerUseStart: "computerUse.start",
+  computerUseStop: "computerUse.stop",
+  computerUseTakeOver: "computerUse.takeOver",
+  computerUseResume: "computerUse.resume",
+  computerUseAnswerApproval: "computerUse.answerApproval",
+  computerUseListSteps: "computerUse.listSteps",
+  computerUseGetScreenshot: "computerUse.getScreenshot",
+  documentsSubscribe: "documents.subscribe",
+  documentsGet: "documents.get",
+  documentsCreate: "documents.create",
+  documentsUpdate: "documents.update",
+  documentsDelete: "documents.delete",
+  documentsRestore: "documents.restore",
+  documentsListVersions: "documents.listVersions",
+  documentsRestoreVersion: "documents.restoreVersion",
+  documentsExport: "documents.export",
+  documentsMoveToProject: "documents.moveToProject",
   guestShareCreate: "guestShare.create",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
@@ -1897,6 +1947,132 @@ const WsAuditSubscribeRpc = Rpc.make(WS_METHODS.auditSubscribe, {
   stream: true,
 });
 
+const computerUseRpcError = Schema.Union([ComputerUseError, EnvironmentAuthorizationError]);
+
+const WsComputerUseSupportRpc = Rpc.make(WS_METHODS.computerUseSupport, {
+  payload: Schema.Struct({}),
+  success: ComputerUseSupportResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsComputerUseSubscribeRpc = Rpc.make(WS_METHODS.computerUseSubscribe, {
+  payload: ComputerUseThreadInput,
+  success: ComputerUseSnapshot,
+  error: computerUseRpcError,
+  stream: true,
+});
+
+const WsComputerUseStartRpc = Rpc.make(WS_METHODS.computerUseStart, {
+  payload: ComputerUseStartInput,
+  success: ComputerUseState,
+  error: computerUseRpcError,
+});
+
+const WsComputerUseStopRpc = Rpc.make(WS_METHODS.computerUseStop, {
+  payload: ComputerUseThreadInput,
+  success: ComputerUseState,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsComputerUseTakeOverRpc = Rpc.make(WS_METHODS.computerUseTakeOver, {
+  payload: ComputerUseThreadInput,
+  success: ComputerUseState,
+  error: computerUseRpcError,
+});
+
+const WsComputerUseResumeRpc = Rpc.make(WS_METHODS.computerUseResume, {
+  payload: ComputerUseThreadInput,
+  success: ComputerUseState,
+  error: computerUseRpcError,
+});
+
+const WsComputerUseAnswerApprovalRpc = Rpc.make(WS_METHODS.computerUseAnswerApproval, {
+  payload: ComputerUseAnswerApprovalInput,
+  success: ComputerUseState,
+  error: computerUseRpcError,
+});
+
+const WsComputerUseListStepsRpc = Rpc.make(WS_METHODS.computerUseListSteps, {
+  payload: ComputerUseListStepsInput,
+  success: ComputerUseListStepsResult,
+  error: computerUseRpcError,
+});
+
+const WsComputerUseGetScreenshotRpc = Rpc.make(WS_METHODS.computerUseGetScreenshot, {
+  payload: ComputerUseScreenshotInput,
+  success: ComputerUseScreenshot,
+  error: computerUseRpcError,
+});
+
+const documentRpcError = Schema.Union([ConversationDocumentError, EnvironmentAuthorizationError]);
+
+const WsDocumentsSubscribeRpc = Rpc.make(WS_METHODS.documentsSubscribe, {
+  payload: ConversationDocumentListInput,
+  success: ConversationDocumentListResult,
+  error: documentRpcError,
+  stream: true,
+});
+
+const WsDocumentsGetRpc = Rpc.make(WS_METHODS.documentsGet, {
+  payload: ConversationDocumentGetInput,
+  success: ConversationDocument,
+  error: documentRpcError,
+});
+
+const WsDocumentsCreateRpc = Rpc.make(WS_METHODS.documentsCreate, {
+  payload: ConversationDocumentCreateInput,
+  success: ConversationDocument,
+  error: documentRpcError,
+});
+
+const WsDocumentsUpdateRpc = Rpc.make(WS_METHODS.documentsUpdate, {
+  payload: ConversationDocumentUpdateInput,
+  success: ConversationDocument,
+  error: documentRpcError,
+});
+
+const WsDocumentsDeleteRpc = Rpc.make(WS_METHODS.documentsDelete, {
+  payload: ConversationDocumentIdInput,
+  success: ConversationDocument,
+  error: documentRpcError,
+});
+
+const WsDocumentsRestoreRpc = Rpc.make(WS_METHODS.documentsRestore, {
+  payload: ConversationDocumentIdInput,
+  success: ConversationDocument,
+  error: documentRpcError,
+});
+
+const WsDocumentsListVersionsRpc = Rpc.make(WS_METHODS.documentsListVersions, {
+  payload: ConversationDocumentIdInput,
+  success: ConversationDocumentListVersionsResult,
+  error: documentRpcError,
+});
+
+const WsDocumentsRestoreVersionRpc = Rpc.make(WS_METHODS.documentsRestoreVersion, {
+  payload: ConversationDocumentRestoreVersionInput,
+  success: ConversationDocument,
+  error: documentRpcError,
+});
+
+const WsDocumentsExportRpc = Rpc.make(WS_METHODS.documentsExport, {
+  payload: ConversationDocumentExportInput,
+  success: ConversationDocumentExportResult,
+  error: documentRpcError,
+});
+
+const WsDocumentsMoveToProjectRpc = Rpc.make(WS_METHODS.documentsMoveToProject, {
+  payload: ConversationDocumentMoveToProjectInput,
+  success: ConversationDocument,
+  error: documentRpcError,
+});
+
+const WsScheduledTasksListRunsRpc = Rpc.make(WS_METHODS.scheduledTasksListRuns, {
+  payload: ScheduledTaskListRunsInput,
+  success: ScheduledTaskListRunsResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksSubscribeRpc = Rpc.make(WS_METHODS.scheduledTasksSubscribe, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -1988,6 +2164,26 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 export const WsRpcGroup = RpcGroup.make(
   WsAuditListRpc,
   WsAuditSubscribeRpc,
+  WsScheduledTasksListRunsRpc,
+  WsComputerUseSupportRpc,
+  WsComputerUseSubscribeRpc,
+  WsComputerUseStartRpc,
+  WsComputerUseStopRpc,
+  WsComputerUseTakeOverRpc,
+  WsComputerUseResumeRpc,
+  WsComputerUseAnswerApprovalRpc,
+  WsComputerUseListStepsRpc,
+  WsComputerUseGetScreenshotRpc,
+  WsDocumentsSubscribeRpc,
+  WsDocumentsGetRpc,
+  WsDocumentsCreateRpc,
+  WsDocumentsUpdateRpc,
+  WsDocumentsDeleteRpc,
+  WsDocumentsRestoreRpc,
+  WsDocumentsListVersionsRpc,
+  WsDocumentsRestoreVersionRpc,
+  WsDocumentsExportRpc,
+  WsDocumentsMoveToProjectRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

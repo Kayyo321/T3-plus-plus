@@ -3,6 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./cronSchedule": {
+      "types": "./src/cronSchedule.ts",
+      "import": "./src/cronSchedule.ts"
+    },
+    "./scheduleText": {
+      "types": "./src/scheduleText.ts",
+      "import": "./src/scheduleText.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"

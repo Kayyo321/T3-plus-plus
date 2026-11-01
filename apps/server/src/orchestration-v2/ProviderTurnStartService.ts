@@ -26,6 +26,7 @@ import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
+import * as ConversationDocumentService from "../documents/ConversationDocumentService.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -156,6 +157,9 @@ export const layer: Layer.Layer<
     const projects = yield* ProjectService.ProjectService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
     const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+    const documents = yield* Effect.serviceOption(
+      ConversationDocumentService.ConversationDocumentService,
+    );
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
@@ -1560,7 +1564,17 @@ export const layer: Layer.Layer<
             sideChatHandoff === undefined || compact || goalCommand
               ? ""
               : sideChatHandoff.summaryText;
-          const context = [delivery.context, sideChatContext, restartNote]
+          // A chat thread reads its documents through tools; code gets them when it first can act.
+          const documentContext =
+            projection.thread.capabilityMode === "chat" ||
+            compact ||
+            goalCommand ||
+            Option.isNone(documents)
+              ? null
+              : yield* documents.value
+                  .takeTurnContext(projection.thread.id)
+                  .pipe(Effect.orElseSucceed(() => null));
+          const context = [delivery.context, sideChatContext, restartNote, documentContext ?? ""]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;

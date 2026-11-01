@@ -75,6 +75,15 @@ import {
   DeviceScreenshotToolkit,
   DeviceStandardToolkit,
 } from "./toolkits/device/tools.ts";
+import * as ComputerUseService from "../computerUse/ComputerUseService.ts";
+import * as ComputerUseHandlers from "./toolkits/computerUse/handlers.ts";
+import {
+  ComputerScreenshotTool,
+  ComputerScreenshotToolkit,
+  ComputerUseStandardToolkit,
+} from "./toolkits/computerUse/tools.ts";
+import * as DocumentsHandlers from "./toolkits/documents/handlers.ts";
+import { DocumentsToolkit } from "./toolkits/documents/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 
@@ -777,6 +786,33 @@ const registerDeviceScreenshot = Effect.fn("McpHttpServer.registerDeviceScreensh
   );
 });
 
+const registerComputerScreenshot = Effect.fn("McpHttpServer.registerComputerScreenshot")(
+  function* () {
+    const computerUse = yield* ComputerUseService.ComputerUseService;
+    const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    const built = yield* decodeAsAdvertised(ComputerScreenshotToolkit);
+    yield* registerImageTool(
+      ComputerScreenshotTool,
+      (payload) =>
+        built
+          .handle("computer_screenshot", payload)
+          .pipe(Stream.unwrap, Stream.run(Sink.last()), Effect.flatMap(Effect.fromOption)),
+      (effect) =>
+        effect.pipe(
+          Effect.provideService(ComputerUseService.ComputerUseService, computerUse),
+          Effect.provideService(PreviewAutomationBroker.PreviewAutomationBroker, broker),
+          Effect.provideService(ThreadManagementService.ThreadManagementService, threads),
+        ),
+      "screenshot",
+      (error) =>
+        isOrchestratorMcpFailure(error) || AiError.isAiError(error)
+          ? error.message
+          : "Screenshot failed.",
+    );
+  },
+);
+
 const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
 const isDeviceToolError = Schema.is(DeviceToolError);
 
@@ -1115,6 +1151,13 @@ const layerEnvironmentToolkit = toolkitRegistration(
 
 export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, ProjectHandlers.layer);
 
+const layerDocumentsToolkit = toolkitRegistration(DocumentsToolkit, DocumentsHandlers.layer);
+
+const layerComputerUseToolkit = Layer.mergeAll(
+  toolkitRegistration(ComputerUseStandardToolkit, ComputerUseHandlers.layerStandard),
+  imageToolRegistration(registerComputerScreenshot(), ComputerUseHandlers.layerScreenshot),
+);
+
 export const layerAttachmentToolkit = toolkitRegistration(
   AttachmentToolkit,
   AttachmentHandlers.layer,
@@ -1161,6 +1204,8 @@ export const layerTools = Layer.mergeAll(
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
+  layerDocumentsToolkit,
+  layerComputerUseToolkit,
 );
 
 export const layer = layerTools.pipe(Layer.provideMerge(layerMcpTransport));

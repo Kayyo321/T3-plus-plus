@@ -40,7 +40,12 @@ import type {
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
 import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
-import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
+import {
+  createOverrideRateTable,
+  parseRateTable,
+  priceUsage,
+  type RateTable,
+} from "./usagePricing.ts";
 import {
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -144,6 +149,13 @@ export class UsageService extends Context.Service<
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    /** Prices tokens at list rates. Null when the model has no known price. */
+    readonly estimateCostUsd: (input: {
+      readonly model: string;
+      readonly inputTokens: number;
+      readonly cachedInputTokens: number;
+      readonly outputTokens: number;
+    }) => Effect.Effect<number | null>;
   }
 >()("t3pp/usage/UsageService") {}
 
@@ -927,7 +939,33 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates, awaitPersisted } as const;
+  const estimateCostUsd: UsageService["Service"]["estimateCostUsd"] = Effect.fn(
+    "UsageService.estimateCostUsd",
+  )(function* (input) {
+    yield* ensureRates(false);
+    const settings = yield* readSettings.pipe(Effect.option);
+    const usage = priceUsage(
+      rates,
+      {
+        model: input.model,
+        totals: {
+          uncachedInputTokens: Math.max(0, input.inputTokens - input.cachedInputTokens),
+          cachedInputTokens: input.cachedInputTokens,
+          cacheCreationTokens: 0,
+          outputTokens: input.outputTokens,
+          reasoningTokens: 0,
+        },
+        speed: "standard",
+        reportedCostUsd: null,
+      },
+      Option.isSome(settings)
+        ? createOverrideRateTable(settings.value.usagePriceOverrides)
+        : undefined,
+    );
+    return usage.costSource === "unpriced" ? null : usage.costUsd;
+  });
+
+  return { readSummary, refreshRates, estimateCostUsd, awaitPersisted } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);
