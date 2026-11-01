@@ -16,6 +16,7 @@ import {
   type ProviderThreadId,
 } from "@t3tools/contracts";
 import type * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
+import { noSecretMask, type SecretMask } from "@t3tools/shared/secretRedaction";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -44,6 +45,8 @@ import {
   withMetrics,
 } from "../observability/Metrics.ts";
 import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
+import { withSecretsMasked } from "./ProviderEventRedaction.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ServerSettings from "../serverSettings.ts";
@@ -236,6 +239,9 @@ export class ProviderSessionManagerV2 extends Context.Service<
 interface LiveSessionEntry {
   readonly attachedThreadIds: ReadonlySet<ThreadId>;
   readonly loadedProviderThreadKeyByThread: ReadonlyMap<ThreadId, string>;
+  /** The workspace this process launched with; "" means none, and it never changes in place. */
+  readonly workspaceFingerprint: string;
+  readonly secretMask: SecretMask;
   /** Scope revocation to recorded credential ids so superseded sessions cannot revoke replacements opened before detach. */
   readonly mcpCredentialIdByThread: ReadonlyMap<ThreadId, string>;
   readonly supportsMultipleProviderThreads: boolean;
@@ -424,6 +430,8 @@ export const layerWithOptions = (
       const releaseRecordRetries = yield* FiberSet.make();
       const nextSubscriberId = yield* Ref.make(0);
       const sessionOpen = yield* KeyedLock.make<ProviderSessionId>();
+      const workspaceEnvironment = yield* WorkspaceProcessEnvironment.WorkspaceProcessEnvironment;
+      const activeSecretMasks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
       const threadAttachment = yield* KeyedLock.make<string>();
       const threadAttachmentKey = (input: {
         readonly providerSessionId: ProviderSessionId;
@@ -1725,6 +1733,7 @@ export const layerWithOptions = (
         eventSubscribers: Ref.Ref<
           ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
         >,
+        secretMask: SecretMask,
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
         const providerSessionId = runtime.providerSessionId;
         const subscribeEvents = makeEventSubscription(eventSubscribers);
@@ -1740,6 +1749,8 @@ export const layerWithOptions = (
           });
         return {
           ...runtime,
+          readThreadSnapshot: (input) =>
+            runtime.readThreadSnapshot(input).pipe(Effect.map(secretMask.redactDeep)),
           subscribeEvents,
           events: Stream.unwrap(
             subscribeEvents.pipe(Effect.map((subscription) => subscription.events)),
@@ -1973,6 +1984,7 @@ export const layerWithOptions = (
       const startEventPump = (entry: LiveSessionEntry) => {
         let stoppedByProvider = false;
         return entry.runtime.events.pipe(
+          withSecretsMasked(entry.secretMask),
           Stream.runForEach((event) => {
             if (shutdownSignal.received) return Effect.void;
             // Live output bypasses persistence and subscribers so floods cannot delay domain events.
@@ -2147,8 +2159,25 @@ export const layerWithOptions = (
 
       return ProviderSessionManagerV2.of({
         shutdown,
-        open: (input) =>
-          sessionOpen.withLock(
+        open: Effect.fn("ProviderSessionManager.open")(function* (input) {
+          const launch = Option.getOrUndefined(
+            yield* workspaceEnvironment.forThread(input.threadId),
+          );
+          const workspaceFingerprint = launch?.fingerprint ?? "";
+          const stale = (yield* Ref.get(sessions)).get(sessionKey(input.providerSessionId));
+          // Release runs outside the open lock: its record retries take that lock themselves.
+          if (
+            stale !== undefined &&
+            stale.workspaceFingerprint !== workspaceFingerprint &&
+            !stale.supportsMultipleProviderThreads
+          ) {
+            yield* releaseEntry({
+              providerSessionId: input.providerSessionId,
+              reason: "manual_shutdown",
+              detail: "The conversation's workspace changed.",
+            });
+          }
+          return yield* sessionOpen.withLock(
             input.providerSessionId,
             Effect.gen(function* () {
               const cwd = input.runtimePolicy.cwd;
@@ -2167,6 +2196,14 @@ export const layerWithOptions = (
               const key = sessionKey(input.providerSessionId);
               const existing = (yield* Ref.get(sessions)).get(key);
               if (existing !== undefined) {
+                if (existing.workspaceFingerprint !== workspaceFingerprint) {
+                  return yield* new ProviderSessionOpenError({
+                    instanceId: input.modelSelection.instanceId,
+                    providerSessionId: input.providerSessionId,
+                    cause:
+                      "This provider's process serves other conversations, so it cannot take on another workspace.",
+                  });
+                }
                 const attached = existing.attachedThreadIds.has(input.threadId);
                 if (!attached && !existing.supportsMultipleProviderThreads) {
                   return yield* new ProviderSessionOpenError({
@@ -2208,6 +2245,10 @@ export const layerWithOptions = (
                 }
               });
               const sessionScope = yield* Scope.fork(sessionScopes);
+              if (launch !== undefined && launch.mask !== noSecretMask) {
+                const releaseMask = activeSecretMasks.add(launch.mask);
+                yield* Scope.addFinalizer(sessionScope, Effect.sync(releaseMask));
+              }
               yield* agentScope.clear(input.threadId);
               const runtime = yield* adapter
                 .openSession({
@@ -2215,6 +2256,16 @@ export const layerWithOptions = (
                   providerSessionId: input.providerSessionId,
                   modelSelection: input.modelSelection,
                   runtimePolicy: input.runtimePolicy,
+                  ...(launch === undefined
+                    ? {}
+                    : {
+                        workspace: {
+                          environment: launch.environment,
+                          mask: launch.mask,
+                          allowedCommands: launch.settings.allowedCommands ?? [],
+                          mcpServers: launch.settings.mcpServers ?? [],
+                        },
+                      }),
                   ...(input.resumeFromSession === undefined
                     ? {}
                     : { resumeFromSession: input.resumeFromSession }),
@@ -2262,8 +2313,11 @@ export const layerWithOptions = (
               const eventSubscribers = yield* Ref.make<
                 ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
               >(new Map());
-              const exposedRuntime = decorateRuntime(runtime, eventSubscribers);
+              const secretMask = launch?.mask ?? noSecretMask;
+              const exposedRuntime = decorateRuntime(runtime, eventSubscribers, secretMask);
               const entry: LiveSessionEntry = {
+                workspaceFingerprint,
+                secretMask,
                 attachedThreadIds: new Set([input.threadId]),
                 loadedProviderThreadKeyByThread: new Map(),
                 mcpCredentialIdByThread:
@@ -2320,7 +2374,8 @@ export const layerWithOptions = (
               yield* scheduleIdleRelease(input.providerSessionId);
               return exposedRuntime;
             }),
-          ),
+          );
+        }),
         isLive: (providerSessionId) =>
           Ref.get(sessions).pipe(
             Effect.map((current) => current.has(sessionKey(providerSessionId))),

@@ -35,6 +35,7 @@ export type SettingsPath =
   | "/settings/connections"
   | "/settings/access"
   | "/settings/secrets"
+  | "/settings/workspaces"
   | "/settings/maintenance"
   | "/settings/labs"
   | "/settings/about"
@@ -106,6 +107,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/connections": "Environments",
   "/settings/access": "Sharing & access",
   "/settings/secrets": "Secrets",
+  "/settings/workspaces": "Workspaces",
   "/settings/maintenance": "Maintenance",
   "/settings/labs": "Labs",
   "/settings/about": "About",
@@ -141,7 +143,12 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
   },
   {
     heading: "Code",
-    paths: ["/settings/projects", "/settings/source-control", "/settings/worktrees"],
+    paths: [
+      "/settings/projects",
+      "/settings/workspaces",
+      "/settings/source-control",
+      "/settings/worktrees",
+    ],
   },
   {
     heading: "Connections",
@@ -1170,6 +1177,24 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "workspaces",
+    title: "Workspaces",
+    to: "/settings/workspaces",
+    searchTerms: ["secrets environment variables credentials working folder database url staging"],
+  },
+  {
+    id: "workspace-projects",
+    title: "Project workspaces",
+    to: "/settings/workspaces",
+    searchTerms: ["attach workspace project default secrets"],
+  },
+  {
+    id: "workspaces-deleted",
+    title: "Deleted workspaces",
+    to: "/settings/workspaces",
+    searchTerms: ["restore workspace undo delete"],
+  },
+  {
     id: "secret-providers",
     title: "Secret providers",
     to: "/settings/secrets",
@@ -1215,6 +1240,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/connections": "connections",
   "/settings/access": "connections",
   "/settings/secrets": null,
+  "/settings/workspaces": null,
   "/settings/scheduled-tasks": null,
   "/settings/maintenance": null,
   "/settings/labs": null,

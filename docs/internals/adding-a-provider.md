@@ -31,6 +31,9 @@ capabilities, never the driver kind.
   mode by answering approvals in T3: T3's check is weaker than the agent's own enforcement. The
   server runs an unoffered stored mode as Supervised
   ([`RuntimePolicy.ts`](../../apps/server/src/orchestration-v2/RuntimePolicy.ts)).
+- **Workspace secrets.** Add the driver to `workspaceSecretsReachDriver` only if it spawns one
+  process per thread and merges `ProviderAdapterV2OpenSessionInput.workspace` into that process's
+  environment. A shared process stays refused ([workspaces](./workspaces.md)).
 - **Approval and question options.** Pass the provider's own option IDs through unchanged. Every
   request needs a way to decline that the provider honors.
 - **Interaction modes.** Hide the plan toggle (`showInteractionModeToggle: false`) unless the

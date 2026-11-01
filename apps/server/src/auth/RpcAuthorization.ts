@@ -126,6 +126,17 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.backgroundTaskList]: AuthOrchestrationReadScope,
   [WS_METHODS.backgroundTaskReadLog]: AuthOrchestrationReadScope,
   [WS_METHODS.backgroundTaskSubscribe]: AuthOrchestrationReadScope,
+  // Names and folders only. No method here can return a secret value.
+  [WS_METHODS.workspacesSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.workspacesUpsert]: AuthSettingsWriteScope,
+  [WS_METHODS.workspacesDelete]: AuthSettingsWriteScope,
+  [WS_METHODS.workspacesRestore]: AuthSettingsWriteScope,
+  [WS_METHODS.workspacesPurge]: AuthSettingsWriteScope,
+  [WS_METHODS.workspacesAttach]: AuthSettingsWriteScope,
+  [WS_METHODS.workspacesSetSecret]: AuthSettingsWriteScope,
+  [WS_METHODS.workspacesRemoveSecret]: AuthSettingsWriteScope,
+  [WS_METHODS.conversationFoldersSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.conversationFoldersMutate]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.secretsAnswerRequest]: AuthOrchestrationOperateScope,
   // Delivery logs hold request bodies, so they need the same scope as the URL.

@@ -68,6 +68,22 @@ import {
   ThreadRewindResult,
 } from "./threadBranching.ts";
 import {
+  ConversationFolderError,
+  ConversationFolderMutation,
+  ConversationFolderMutationResult,
+  ConversationFolderStreamEvent,
+} from "./conversationFolders.ts";
+import {
+  Workspace,
+  WorkspaceAttachInput,
+  WorkspaceCatalog,
+  WorkspaceError,
+  WorkspaceRemoveSecretInput,
+  WorkspaceSetSecretInput,
+  WorkspaceTargetInput,
+  WorkspaceUpsertInput,
+} from "./workspaces.ts";
+import {
   McpAppCallToolInput,
   McpAppCallToolResult,
   McpAppReadResourceInput,
@@ -638,6 +654,16 @@ export const WS_METHODS = {
   backgroundTaskList: "backgroundTasks.list",
   backgroundTaskReadLog: "backgroundTasks.readLog",
   backgroundTaskSubscribe: "backgroundTasks.subscribe",
+  workspacesSubscribe: "workspaces.subscribe",
+  workspacesUpsert: "workspaces.upsert",
+  workspacesDelete: "workspaces.delete",
+  workspacesRestore: "workspaces.restore",
+  workspacesPurge: "workspaces.purge",
+  workspacesAttach: "workspaces.attach",
+  workspacesSetSecret: "workspaces.setSecret",
+  workspacesRemoveSecret: "workspaces.removeSecret",
+  conversationFoldersSubscribe: "conversationFolders.subscribe",
+  conversationFoldersMutate: "conversationFolders.mutate",
   guestShareCreate: "guestShare.create",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
@@ -2185,6 +2211,63 @@ const WsAuditSubscribeRpc = Rpc.make(WS_METHODS.auditSubscribe, {
   stream: true,
 });
 
+const WsWorkspacesSubscribeRpc = Rpc.make(WS_METHODS.workspacesSubscribe, {
+  payload: Schema.Struct({}),
+  success: WorkspaceCatalog,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsWorkspacesUpsertRpc = Rpc.make(WS_METHODS.workspacesUpsert, {
+  payload: WorkspaceUpsertInput,
+  success: Workspace,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspacesDeleteRpc = Rpc.make(WS_METHODS.workspacesDelete, {
+  payload: WorkspaceTargetInput,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspacesRestoreRpc = Rpc.make(WS_METHODS.workspacesRestore, {
+  payload: WorkspaceTargetInput,
+  success: Workspace,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspacesPurgeRpc = Rpc.make(WS_METHODS.workspacesPurge, {
+  payload: WorkspaceTargetInput,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspacesAttachRpc = Rpc.make(WS_METHODS.workspacesAttach, {
+  payload: WorkspaceAttachInput,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspacesSetSecretRpc = Rpc.make(WS_METHODS.workspacesSetSecret, {
+  payload: WorkspaceSetSecretInput,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspacesRemoveSecretRpc = Rpc.make(WS_METHODS.workspacesRemoveSecret, {
+  payload: WorkspaceRemoveSecretInput,
+  error: Schema.Union([WorkspaceError, EnvironmentAuthorizationError]),
+});
+
+const WsConversationFoldersSubscribeRpc = Rpc.make(WS_METHODS.conversationFoldersSubscribe, {
+  payload: Schema.Struct({}),
+  success: ConversationFolderStreamEvent,
+  error: Schema.Union([ConversationFolderError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsConversationFoldersMutateRpc = Rpc.make(WS_METHODS.conversationFoldersMutate, {
+  payload: ConversationFolderMutation,
+  success: ConversationFolderMutationResult,
+  error: Schema.Union([ConversationFolderError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksSubscribeRpc = Rpc.make(WS_METHODS.scheduledTasksSubscribe, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -2307,6 +2390,16 @@ export const WsRpcGroup = RpcGroup.make(
   WsBackgroundTaskListRpc,
   WsBackgroundTaskReadLogRpc,
   WsBackgroundTaskSubscribeRpc,
+  WsWorkspacesSubscribeRpc,
+  WsWorkspacesUpsertRpc,
+  WsWorkspacesDeleteRpc,
+  WsWorkspacesRestoreRpc,
+  WsWorkspacesPurgeRpc,
+  WsWorkspacesAttachRpc,
+  WsWorkspacesSetSecretRpc,
+  WsWorkspacesRemoveSecretRpc,
+  WsConversationFoldersSubscribeRpc,
+  WsConversationFoldersMutateRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

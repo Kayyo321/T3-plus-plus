@@ -35,6 +35,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
+import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
@@ -1670,7 +1671,9 @@ export const makeMuseAdapterV2 = Effect.fn("makeMuseAdapterV2")(function* (
         const epoch = ++hostEpoch;
         const mcpSession = yield* mcpSessions.read(input.threadId);
         const environment = McpProviderSession.withAgentDeviceEnvironment(
-          options.environment,
+          input.workspace === undefined
+            ? options.environment
+            : { ...options.environment, ...Redacted.value(input.workspace.environment) },
           mcpSession,
         );
         const launch = yield* agentScope.wrap({

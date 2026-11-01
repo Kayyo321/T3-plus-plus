@@ -171,7 +171,9 @@ export const AntigravityDriver: ProviderDriver<
       );
 
     const makeRuntime = Effect.fn("AntigravityDriver.makeRuntime")(function* (
-      input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner">,
+      input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner"> & {
+        readonly processEnvironment?: NodeJS.ProcessEnv;
+      },
     ): Effect.fn.Return<
       AcpSessionRuntime.AcpSessionRuntime["Service"],
       AcpError | ProviderSetupError,
@@ -248,7 +250,7 @@ export const AntigravityDriver: ProviderDriver<
           installation: executable,
           profile,
           cwd: input.cwd,
-          baseEnv: processEnvironment,
+          baseEnv: { ...processEnvironment, ...input.processEnvironment },
           auth,
           runtimeTempDirectory,
         }),

@@ -135,6 +135,7 @@ import {
   useEnvironments,
   usePrimaryEnvironmentId,
 } from "../state/environments";
+import { useWorkspacePaletteItems } from "./commandPaletteWorkspaceItems";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
 import { DEFAULT_BUILT_IN_LAYOUT_ID } from "../layouts/layoutDocument";
 import { selectLayouts, useLayoutStore } from "../layouts/layoutStore";
@@ -476,6 +477,7 @@ function OpenCommandPaletteDialog(props: {
       selectThreadRightPanelState(state.byThreadKey, layoutThreadRef).arrangement?.layoutId,
   );
   const projects = useProjects();
+  const workspacePaletteItems = useWorkspacePaletteItems(activeThread ?? undefined);
   const referenceThreadRef =
     pathname === "/pull-requests"
       ? environments.some((environment) => environment.serverConfig !== null)
@@ -1239,6 +1241,7 @@ function OpenCommandPaletteDialog(props: {
   };
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
+  actionItems.push(...workspacePaletteItems);
 
   if (projects.length > 0) {
     const activeProjectTitle =

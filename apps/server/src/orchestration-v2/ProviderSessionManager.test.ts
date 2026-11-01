@@ -2,6 +2,7 @@ import * as NetAddress from "effect/net/NetAddress";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { AgentScope } from "@t3tools/shared/AgentScope";
+import { makeSecretMask } from "@t3tools/shared/secretRedaction";
 import {
   EnvironmentId,
   type ModelSelection,
@@ -16,6 +17,7 @@ import {
   ProviderInstanceId,
   type ProviderSessionId,
   ThreadId,
+  WorkspaceId,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
@@ -27,6 +29,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
@@ -35,6 +38,7 @@ import { HttpServer } from "effect/http";
 import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
@@ -329,10 +333,9 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     readonly mcpConfigs?: Ref.Ref<
       ReadonlyArray<McpProviderSession.McpProviderSessionConfig | undefined>
     >;
-    readonly beforeOpen?: (input: {
-      readonly providerSessionId: ProviderSessionId;
-      readonly initialProviderItemIdentityVersion?: 2;
-    }) => Effect.Effect<void>;
+    readonly beforeOpen?: (
+      input: ProviderAdapter.ProviderAdapterV2OpenSessionInput,
+    ) => Effect.Effect<void>;
     readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
     readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
     readonly backgroundTasksEndWithProcess?: boolean;
@@ -469,10 +472,10 @@ function layerTest(input: {
   readonly mcpConfigs?: Ref.Ref<
     ReadonlyArray<McpProviderSession.McpProviderSessionConfig | undefined>
   >;
-  readonly beforeOpen?: (input: {
-    readonly providerSessionId: ProviderSessionId;
-    readonly initialProviderItemIdentityVersion?: 2;
-  }) => Effect.Effect<void>;
+  readonly beforeOpen?: (
+    input: ProviderAdapter.ProviderAdapterV2OpenSessionInput,
+  ) => Effect.Effect<void>;
+  readonly workspaceLaunch?: Ref.Ref<Option.Option<WorkspaceProcessEnvironment.WorkspaceLaunch>>;
   readonly failReleaseEventWrites?: boolean;
   readonly flakyReleaseWrites?: FlakyReleaseWrites;
   readonly pauseAttachWrite?: Parameters<typeof layerPausingAttachEventSink>[0];
@@ -574,6 +577,13 @@ function layerTest(input: {
           layerTestStores,
           ...(input.serverSettingsLayer === undefined ? [] : [input.serverSettingsLayer]),
           ...(input.projectServiceLayer === undefined ? [] : [input.projectServiceLayer]),
+          ...(input.workspaceLaunch === undefined
+            ? []
+            : [
+                Layer.succeed(WorkspaceProcessEnvironment.WorkspaceProcessEnvironment, {
+                  forThread: () => Ref.get(input.workspaceLaunch!),
+                }),
+              ]),
         ),
       ),
     ),
@@ -912,6 +922,143 @@ it.effect("ProviderSessionManagerV2 opens independent sessions concurrently", ()
           state,
           idleTimeoutMs: 60_000,
           beforeOpen,
+        }),
+      ),
+    );
+  }),
+);
+
+const WORKSPACE_SECRET = "workspace-secret-value-4821";
+
+const workspaceLaunch = (
+  fingerprint: string,
+  value = WORKSPACE_SECRET,
+): WorkspaceProcessEnvironment.WorkspaceLaunch => ({
+  workspaceId: WorkspaceId.make("workspace-session"),
+  workspaceName: "staging",
+  workingRoot: null,
+  environment: Redacted.make({ API_KEY: value }),
+  secretNames: ["API_KEY"],
+  mask: makeSecretMask([{ name: "API_KEY", value }]),
+  settings: { allowedCommands: ["npm test"] },
+  fingerprint,
+});
+
+it.effect("ProviderSessionManagerV2 gives the session its workspace and masks what it says", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const opened = yield* Ref.make<
+      ReadonlyArray<ProviderAdapter.ProviderAdapterV2OpenSessionInput>
+    >([]);
+    const launch = yield* Ref.make(Option.some(workspaceLaunch("first")));
+    const effect = Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread-provider-session-manager-workspace");
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      yield* eventSink.write({
+        events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+      });
+      const session = yield* manager.open({
+        threadId,
+        providerSessionId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const masks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
+      assert.strictEqual(
+        masks.redactDeep({ log: `Authorization: ${WORKSPACE_SECRET}` }).log,
+        "Authorization: [secret:API_KEY]",
+        "while the session lives, log sinks mask its secrets",
+      );
+      const [input] = yield* Ref.get(opened);
+      assert.deepStrictEqual(Redacted.value(input!.workspace!.environment), {
+        API_KEY: WORKSPACE_SECRET,
+      });
+      assert.deepStrictEqual(input!.workspace!.allowedCommands, ["npm test"]);
+      assert.notInclude(JSON.stringify(input), WORKSPACE_SECRET);
+
+      const subscription = yield* session.subscribeEvents!;
+      const queue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId))!;
+      yield* Queue.offer(queue, {
+        type: "plan.updated",
+        driver: CODEX_DRIVER,
+        plan: { text: `export API_KEY=${WORKSPACE_SECRET}` },
+      } as unknown as ProviderAdapter.ProviderAdapterV2Event);
+      const [signal] = yield* subscription.events.pipe(Stream.take(1), Stream.runCollect);
+      assert.include(JSON.stringify(signal), "[secret:API_KEY]");
+      assert.notInclude(JSON.stringify(signal), WORKSPACE_SECRET);
+
+      // Secrets apply at launch, so a changed workspace means a new process.
+      yield* Ref.set(launch, Option.some(workspaceLaunch("second", "rotated-secret-value-7763")));
+      yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+      const current = yield* Ref.get(state);
+      assert.equal(current.openCount, 2);
+      assert.equal(current.closeCount, 1);
+      assert.deepStrictEqual(Redacted.value((yield* Ref.get(opened))[1]!.workspace!.environment), {
+        API_KEY: "rotated-secret-value-7763",
+      });
+    });
+    yield* effect.pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 60_000,
+          capabilities: ExclusiveCapabilities,
+          workspaceLaunch: launch,
+          beforeOpen: (input) => Ref.update(opened, (inputs) => [...inputs, input]),
+        }),
+      ),
+    );
+  }),
+);
+
+it.effect("ProviderSessionManagerV2 refuses to change the workspace of a shared process", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const launch = yield* Ref.make(Option.none<WorkspaceProcessEnvironment.WorkspaceLaunch>());
+    const effect = Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const firstThreadId = ThreadId.make("thread-provider-session-manager-shared-a");
+      const secondThreadId = ThreadId.make("thread-provider-session-manager-shared-b");
+      const providerSessionId = idAllocator.derive.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+      });
+      yield* eventSink.write({
+        events: [
+          yield* makeThreadCreatedEvent({ idAllocator, threadId: firstThreadId, now }),
+          yield* makeThreadCreatedEvent({ idAllocator, threadId: secondThreadId, now }),
+        ],
+      });
+      yield* manager.open({
+        threadId: firstThreadId,
+        providerSessionId,
+        modelSelection,
+        runtimePolicy,
+      });
+      yield* Ref.set(launch, Option.some(workspaceLaunch("secret-bearing")));
+      const refused = yield* manager
+        .open({ threadId: secondThreadId, providerSessionId, modelSelection, runtimePolicy })
+        .pipe(Effect.flip);
+      assert.strictEqual(refused._tag, "ProviderSessionOpenError");
+      const current = yield* Ref.get(state);
+      assert.equal(current.openCount, 1, "the other thread's process keeps running");
+      assert.equal(current.closeCount, 0);
+    });
+    yield* effect.pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 60_000,
+          workspaceLaunch: launch,
         }),
       ),
     );

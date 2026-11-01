@@ -147,6 +147,14 @@
       "types": "./src/relay/index.ts",
       "default": "./src/relay/index.ts"
     },
+    "./state/conversationFolders": {
+      "types": "./src/state/conversationFolders.ts",
+      "import": "./src/state/conversationFolders.ts"
+    },
+    "./state/workspaces": {
+      "types": "./src/state/workspaces.ts",
+      "import": "./src/state/workspaces.ts"
+    },
     "./state/auth": {
       "types": "./src/state/auth.ts",
       "default": "./src/state/auth.ts"

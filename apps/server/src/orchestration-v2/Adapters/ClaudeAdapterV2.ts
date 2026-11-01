@@ -128,6 +128,8 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import type { SecretMask } from "@t3tools/shared/secretRedaction";
+import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -1395,6 +1397,30 @@ function claudeLiveSelectionFlagSettings(
   };
 }
 
+export const withWorkspaceEnvironment = (
+  environment: NodeJS.ProcessEnv,
+  workspace: ProviderAdapter.ProviderAdapterV2SessionWorkspace | undefined,
+): NodeJS.ProcessEnv =>
+  workspace === undefined
+    ? environment
+    : { ...environment, ...Redacted.value(workspace.environment) };
+
+/** Runs before the model sees a result, so a value printed by a tool never enters the context. */
+const maskToolOutput =
+  (mask: SecretMask): HookCallback =>
+  (input) => {
+    if (input.hook_event_name !== "PostToolUse") return Promise.resolve({ continue: true });
+    const masked = mask.redactDeep(input.tool_response);
+    return Promise.resolve(
+      masked === input.tool_response
+        ? { continue: true }
+        : {
+            continue: true,
+            hookSpecificOutput: { hookEventName: "PostToolUse", updatedToolOutput: masked },
+          },
+    );
+  };
+
 // A delegated child is its own SDK session, so Claude Code gives it the main-conversation cache
 // TTL. When the user sets Claude's subagentPromptCacheTtl, the child follows it like a native
 // subagent would. An explicit CLAUDE_CODE_PROMPT_CACHE_TTL on the instance still wins.
@@ -1474,6 +1500,7 @@ export function makeClaudeQueryOptions(input: {
   /** The thread's T3 MCP session holds the `device` capability. */
   readonly deviceToolsAvailable?: boolean;
   readonly tools?: ClaudeAgentSdkQueryTools;
+  readonly workspace?: ProviderAdapter.ProviderAdapterV2SessionWorkspace;
   readonly allowedTools?: ReadonlyArray<string>;
   readonly disallowedTools?: ReadonlyArray<string>;
   readonly permissionMode?: PermissionMode;
@@ -1541,6 +1568,24 @@ export function makeClaudeQueryOptions(input: {
           env: { ...compactQuerySettings?.env, ENABLE_TOOL_SEARCH: input.toolSearchOverride },
         } as ClaudeSdkSettings);
   const deviceInstructions = input.mcpServers !== undefined && input.deviceToolsAvailable === true;
+  const workspaceAllowedTools = (input.workspace?.allowedCommands ?? []).map(
+    (command) => `Bash(${command}:*)`,
+  );
+  const workspaceMcpServers =
+    input.workspace === undefined || input.workspace.mcpServers.length === 0
+      ? undefined
+      : Object.fromEntries(
+          input.workspace.mcpServers.map((server) => [
+            server.name,
+            {
+              type: "stdio" as const,
+              command: server.command,
+              ...(server.args === undefined ? {} : { args: [...server.args] }),
+            },
+          ]),
+        );
+  const maskOutput =
+    input.workspace === undefined ? undefined : maskToolOutput(input.workspace.mask);
   const options: ClaudeAgentSdkQueryOptions = {
     model: compiledSelection.apiModelId,
     tools: claudeAgentSdkQueryToolsForSdk(selectedTools),
@@ -1557,7 +1602,9 @@ export function makeClaudeQueryOptions(input: {
         }),
     ...threadIdentity,
     ...(input.resumeSessionAt === undefined ? {} : { resumeSessionAt: input.resumeSessionAt }),
-    ...(input.allowedTools === undefined ? {} : { allowedTools: [...input.allowedTools] }),
+    ...(input.allowedTools === undefined && workspaceAllowedTools.length === 0
+      ? {}
+      : { allowedTools: [...(input.allowedTools ?? []), ...workspaceAllowedTools] }),
     ...(input.disallowedTools === undefined ? {} : { disallowedTools: [...input.disallowedTools] }),
     ...(input.canUseTool === undefined ? {} : { canUseTool: input.canUseTool }),
     ...(input.allowDangerouslySkipPermissions === true
@@ -1586,7 +1633,9 @@ export function makeClaudeQueryOptions(input: {
       ? { pathToClaudeCodeExecutable: input.settings.binaryPath }
       : {}),
     ...(input.environment === undefined ? {} : { env: input.environment }),
-    ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
+    ...(input.mcpServers === undefined && workspaceMcpServers === undefined
+      ? {}
+      : { mcpServers: { ...workspaceMcpServers, ...input.mcpServers } }),
     systemPrompt: {
       type: "preset" as const,
       preset: "claude_code" as const,
@@ -1602,8 +1651,15 @@ export function makeClaudeQueryOptions(input: {
         ...launchAppendSystemPrompt,
       ].join("\n\n"),
     },
-    ...(deviceInstructions
-      ? { hooks: { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] } }
+    ...(deviceInstructions || maskOutput !== undefined
+      ? {
+          hooks: {
+            ...(deviceInstructions
+              ? { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] }
+              : {}),
+            ...(maskOutput === undefined ? {} : { PostToolUse: [{ hooks: [maskOutput] }] }),
+          },
+        }
       : {}),
     ...(Object.keys(extraArgs).length === 0 ? {} : { extraArgs }),
   };
@@ -1706,6 +1762,8 @@ export const CLAUDE_READ_ONLY_T3_MCP_ALLOWED_TOOLS: ReadonlyArray<string> = [
   "mcp__t3-code__t3_preview_list",
   "mcp__t3-code__t3_environment_read",
   "mcp__t3-code__t3_environment_links",
+  "mcp__t3-code__t3_workspace_list",
+  "mcp__t3-code__t3_folder_list",
   "mcp__t3-code__html_preview",
   "mcp__t3-code__html_render",
 ];
@@ -10253,14 +10311,18 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ...(launchArgSettings === undefined
               ? {}
               : { sdkSettings: claudeSdkLaunchArgSettings(launchArgSettings) }),
-            environment: claudeQueryEnvironment(
-              adapterOptions.environment,
-              turnInput.appThread,
-              turnInput.appThread.lineage.relationshipToParent === "subagent"
-                ? yield* resolveSubagentPromptCacheTtl(turnInput.runtimePolicy.cwd)
-                : undefined,
+            environment: withWorkspaceEnvironment(
+              claudeQueryEnvironment(
+                adapterOptions.environment,
+                turnInput.appThread,
+                turnInput.appThread.lineage.relationshipToParent === "subagent"
+                  ? yield* resolveSubagentPromptCacheTtl(turnInput.runtimePolicy.cwd)
+                  : undefined,
+              ),
+              input.workspace,
             ),
             tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
+            ...(input.workspace === undefined ? {} : { workspace: input.workspace }),
             ...(mcpOverrides.allowedTools === undefined
               ? {}
               : { allowedTools: mcpOverrides.allowedTools }),

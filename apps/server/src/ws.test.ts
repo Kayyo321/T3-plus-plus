@@ -89,6 +89,8 @@ import * as GitGraphService from "./git/graph/GitGraphService.ts";
 import * as BackgroundTaskService from "./backgroundTasks/BackgroundTaskService.ts";
 import * as NestedSessionService from "./orchestration-v2/NestedSessionService.ts";
 import * as ThreadBranchService from "./orchestration-v2/ThreadBranchService.ts";
+import * as ConversationFolderService from "./conversationFolders/ConversationFolderService.ts";
+import * as WorkspaceService from "./workspace/WorkspaceService.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -590,6 +592,8 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(BackgroundTaskService.BackgroundTaskService)({}),
   Layer.mock(NestedSessionService.NestedSessionService)({}),
   Layer.mock(ThreadBranchService.ThreadBranchService)({}),
+  Layer.mock(WorkspaceService.WorkspaceService)({}),
+  Layer.mock(ConversationFolderService.ConversationFolderService)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
   Layer.mock(SecretResolver.SecretResolver)({}),

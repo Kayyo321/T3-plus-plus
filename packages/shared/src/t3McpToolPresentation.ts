@@ -370,6 +370,13 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Read", "Reading", "Read", "environment preferences"],
     "environment-read",
   ),
+  t3_workspace_list: tool(["List", "Listing", "Listed", "workspaces"], "environment-read"),
+  t3_workspace_attach: tool(["Attach", "Attaching", "Attached", "a workspace"], "thread-organize"),
+  t3_folder_list: tool(["List", "Listing", "Listed", "conversation folders"], "thread-transfers"),
+  t3_folder_update: tool(
+    ["Organize", "Organizing", "Organized", "conversation folders"],
+    "thread-organize",
+  ),
   t3_environment_links: tool(
     ["List", "Listing", "Listed", "linked environments"],
     "environment-links",

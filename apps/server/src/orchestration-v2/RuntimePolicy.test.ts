@@ -9,14 +9,18 @@ import {
   type ServerProvider,
   type ThreadCapabilityMode,
   ThreadId,
+  WorkspaceId,
 } from "@t3tools/contracts";
+import { noSecretMask } from "@t3tools/shared/secretRedaction";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 
@@ -109,6 +113,62 @@ const layerTest = RuntimePolicy.layerFromProjectStore.pipe(
           deletedAt: null,
         }),
     }),
+  ),
+);
+
+const workspaceLaunch = (
+  secretNames: ReadonlyArray<string>,
+): WorkspaceProcessEnvironment.WorkspaceLaunch => ({
+  workspaceId: WorkspaceId.make("workspace-staging"),
+  workspaceName: "staging",
+  workingRoot: "/srv/staging",
+  environment: Redacted.make({}),
+  secretNames,
+  mask: noSecretMask,
+  settings: {},
+  fingerprint: "",
+});
+
+const withWorkspace = (secretNames: ReadonlyArray<string>) =>
+  Layer.fresh(layerTest).pipe(
+    Layer.provide(
+      Layer.succeed(WorkspaceProcessEnvironment.WorkspaceProcessEnvironment, {
+        forThread: () => Effect.succeedSome(workspaceLaunch(secretNames)),
+      }),
+    ),
+  );
+
+const resolveOn = (driver: string) =>
+  Effect.gen(function* () {
+    const policy = yield* RuntimePolicy.RuntimePolicyV2;
+    const now = yield* DateTime.now;
+    return yield* policy.resolve({
+      thread: makeThread({ now, worktreePath: null, runtimeMode: "full-access" }),
+      modelSelection: { instanceId: ProviderInstanceId.make(driver), model: "test-model" },
+    });
+  });
+
+it.effect.each(["codex", "opencode", "cursor"])(
+  "refuses to run %s, whose process other threads share, with workspace secrets",
+  (driver) =>
+    Effect.gen(function* () {
+      const error = yield* resolveOn(driver).pipe(Effect.flip);
+      assert.strictEqual(error._tag, "WorkspaceSecretsUnavailableError");
+      assert.include(error.message, "staging");
+    }).pipe(Effect.provide(withWorkspace(["DATABASE_URL"]))),
+);
+
+it.effect("runs a shared-process provider in a workspace that holds no secrets", () =>
+  resolveOn("codex").pipe(
+    Effect.map((policy) => assert.strictEqual(policy.cwd, "/srv/staging")),
+    Effect.provide(withWorkspace([])),
+  ),
+);
+
+it.effect("runs a per-session provider in the workspace's working root with its secrets", () =>
+  resolveOn("claudeAgent").pipe(
+    Effect.map((policy) => assert.strictEqual(policy.cwd, "/srv/staging")),
+    Effect.provide(withWorkspace(["DATABASE_URL"])),
   ),
 );
 

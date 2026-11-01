@@ -34,6 +34,7 @@ import {
   ClaudeSettings,
   CodexSettings,
   ProviderInstanceId,
+  ThreadId,
 } from "@t3tools/contracts";
 import { makeKeyedCoalescingWorker } from "@t3tools/shared/KeyedCoalescingWorker";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
@@ -56,6 +57,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -64,6 +66,8 @@ import * as SynchronizedRef from "effect/SynchronizedRef";
 
 import * as ServerConfig from "../config.ts";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import type { SecretMaskStream } from "@t3tools/shared/secretRedaction";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
 import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 import { deriveProviderInstanceConfigMap } from "../provider/ProviderInstanceRegistryHydration.ts";
@@ -304,6 +308,8 @@ interface TerminalSessionState {
   hasRunningSubprocess: boolean;
   childCommandLabel: string | null;
   runtimeEnv: Record<string, string> | null;
+  /** Masks this thread's workspace secrets before output reaches history or a client. */
+  secretOutput: SecretMaskStream | null;
 }
 
 interface TerminalGrid {
@@ -482,6 +488,8 @@ interface QuietTerminalSession {
   readonly mark: number;
   readonly idleSnapshots: number;
 }
+
+const HELD_SECRET_OUTPUT_FLUSH = "40 millis";
 
 function cleanupProcessHandles(session: TerminalSessionState): void {
   session.unsubscribeData?.();
@@ -1556,6 +1564,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const baseEnv = options.env ?? process.env;
   const shellResolver = options.shellResolver ?? (() => defaultShellResolver(platform, baseEnv));
   const processRunner = yield* ProcessRunner.ProcessRunner;
+  const workspaceEnvironment = yield* WorkspaceProcessEnvironment.WorkspaceProcessEnvironment;
   const resolveLaunchInputEnvironment = Effect.fn("terminal.resolveLaunchInputEnvironment")(
     function* <Input extends TerminalOpenInput | TerminalAttachInput>(
       input: Input,
@@ -1563,15 +1572,26 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       Input,
       TerminalProviderInstanceNotFoundError | TerminalProviderEnvironmentError
     > {
-      if (input.providerInstanceId === undefined) return input;
+      const workspace = Option.getOrUndefined(
+        yield* workspaceEnvironment.forThread(ThreadId.make(input.threadId)),
+      );
+      const located =
+        workspace === undefined
+          ? input
+          : {
+              ...input,
+              env: { ...input.env, ...Redacted.value(workspace.environment) },
+              ...(workspace.workingRoot === null ? {} : { cwd: workspace.workingRoot }),
+            };
+      if (input.providerInstanceId === undefined) return located;
       const resolver = options.resolveProviderInstanceEnvironment;
       if (resolver === undefined) {
         return yield* new TerminalProviderInstanceNotFoundError({
           providerInstanceId: ProviderInstanceId.make(input.providerInstanceId),
         });
       }
-      const env = yield* resolver(input.providerInstanceId, input.env);
-      return { ...input, env };
+      const env = yield* resolver(input.providerInstanceId, located.env);
+      return { ...located, env };
     },
   );
   // Share one process table per poll; per-terminal scans can exhaust PIDs on busy hosts.
@@ -2509,12 +2529,25 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
                 }
               }
             }
+            const workspace = yield* workspaceEnvironment.forThread(
+              ThreadId.make(session.threadId),
+            );
+            session.secretOutput = Option.isSome(workspace) ? workspace.value.mask.stream() : null;
             const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
             ptyProcess = spawnResult.process;
             startedShell = spawnResult.shellLabel;
 
             const processPid = ptyProcess.pid;
             let eventsActivated = false;
+            const enqueueOutput = (data: string) => {
+              if (!enqueueProcessEvent(session, processPid, { type: "output", data })) return;
+              if (eventsActivated) runFork(drainProcessEvents(session, processPid));
+            };
+            const flushHeldOutput = () => {
+              const held = session.secretOutput?.flush() ?? "";
+              if (held.length > 0) enqueueOutput(held);
+            };
+            let heldOutputGeneration = 0;
 
             let eventStamp: ReturnType<typeof advanceEventSequence> = {
               updatedAt: session.updatedAt,
@@ -2526,13 +2559,25 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
               session.pid = processPid;
               session.status = "running";
               // onExit may replay an exit immediately; accept it before subscribing.
-              session.unsubscribeData = spawnResult.process.onData((data) => {
-                if (!enqueueProcessEvent(session, processPid, { type: "output", data })) {
-                  return;
-                }
-                if (eventsActivated) runFork(drainProcessEvents(session, processPid));
+              session.unsubscribeData = spawnResult.process.onData((raw) => {
+                const secretOutput = session.secretOutput;
+                const data = secretOutput === null ? raw : secretOutput.write(raw);
+                if (data.length > 0) enqueueOutput(data);
+                if (secretOutput?.holding() !== true) return;
+                // A prompt that happens to end like a secret must not sit unprinted.
+                const generation = (heldOutputGeneration += 1);
+                runFork(
+                  Effect.sleep(HELD_SECRET_OUTPUT_FLUSH).pipe(
+                    Effect.andThen(
+                      Effect.sync(() => {
+                        if (generation === heldOutputGeneration) flushHeldOutput();
+                      }),
+                    ),
+                  ),
+                );
               });
               session.unsubscribeExit = spawnResult.process.onExit((event) => {
+                flushHeldOutput();
                 if (!enqueueProcessEvent(session, processPid, { type: "exit", event })) {
                   return;
                 }
@@ -2905,6 +2950,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         hasRunningSubprocess: false,
         childCommandLabel: null,
         runtimeEnv: normalizedRuntimeEnv(input.env),
+        secretOutput: null,
       };
 
       const createdSession = session;

@@ -34,6 +34,7 @@ import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
@@ -463,7 +464,10 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
       }
       const launch = buildPiRpcLaunch({
         launchArgs: resolvedLaunchArgs.args,
-        environment: options.environment,
+        environment:
+          input.workspace === undefined
+            ? options.environment
+            : { ...options.environment, ...Redacted.value(input.workspace.environment) },
         mcpSession,
         extensionPath,
         runtimeMode: input.runtimePolicy.runtimeMode,

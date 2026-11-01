@@ -34,10 +34,13 @@ import {
   RunId,
   ThreadId,
   TurnItemId,
+  type WorkspaceMcpServer,
 } from "@t3tools/contracts";
+import type { SecretMask } from "@t3tools/shared/secretRedaction";
 import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
 import type * as Effect from "effect/Effect";
+import type * as Redacted from "effect/Redacted";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
@@ -421,11 +424,24 @@ export const ProviderAdapterV2Error = Schema.Union([
 ]);
 export type ProviderAdapterV2Error = typeof ProviderAdapterV2Error.Type;
 
+/**
+ * What a thread's workspace adds to its session. `environment` goes to the process this session
+ * spawns and nowhere else; a driver that cannot scope it to one thread never receives secrets
+ * (see `workspaceSecretsReachDriver`).
+ */
+export interface ProviderAdapterV2SessionWorkspace {
+  readonly environment: Redacted.Redacted<Readonly<Record<string, string>>>;
+  readonly mask: SecretMask;
+  readonly allowedCommands: ReadonlyArray<string>;
+  readonly mcpServers: ReadonlyArray<WorkspaceMcpServer>;
+}
+
 export interface ProviderAdapterV2OpenSessionInput {
   readonly threadId: ThreadId;
   readonly providerSessionId: ProviderSessionId;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
+  readonly workspace?: ProviderAdapterV2SessionWorkspace;
   readonly resumeFromSession?: OrchestrationV2ProviderSession;
   readonly initialNativeThreadId?: string;
   readonly initialProviderItemIdentityVersion?: 2;

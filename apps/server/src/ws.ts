@@ -129,6 +129,8 @@ import * as GitGraphService from "./git/graph/GitGraphService.ts";
 import * as BackgroundTaskService from "./backgroundTasks/BackgroundTaskService.ts";
 import * as NestedSessionService from "./orchestration-v2/NestedSessionService.ts";
 import * as ThreadBranchService from "./orchestration-v2/ThreadBranchService.ts";
+import * as ConversationFolderService from "./conversationFolders/ConversationFolderService.ts";
+import * as WorkspaceService from "./workspace/WorkspaceService.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
@@ -1332,6 +1334,8 @@ export const layerWsRpc = (
         createdBy: "user",
         creationSource: "web",
       };
+      const workspaces = yield* WorkspaceService.WorkspaceService;
+      const conversationFolders = yield* ConversationFolderService.ConversationFolderService;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
@@ -2242,6 +2246,16 @@ export const layerWsRpc = (
         [WS_METHODS.backgroundTaskList]: (input) => backgroundTasks.list(input),
         [WS_METHODS.backgroundTaskReadLog]: (input) => backgroundTasks.readLog(input),
         [WS_METHODS.backgroundTaskSubscribe]: (_input) => backgroundTasks.stream,
+        [WS_METHODS.workspacesSubscribe]: (_input) => workspaces.subscribe,
+        [WS_METHODS.workspacesUpsert]: (input) => workspaces.upsert(input),
+        [WS_METHODS.workspacesDelete]: (input) => workspaces.remove(input),
+        [WS_METHODS.workspacesRestore]: (input) => workspaces.restore(input),
+        [WS_METHODS.workspacesPurge]: (input) => workspaces.purge(input),
+        [WS_METHODS.workspacesAttach]: (input) => workspaces.attach(input),
+        [WS_METHODS.workspacesSetSecret]: (input) => workspaces.setSecret(input),
+        [WS_METHODS.workspacesRemoveSecret]: (input) => workspaces.removeSecret(input),
+        [WS_METHODS.conversationFoldersSubscribe]: (_input) => conversationFolders.subscribe,
+        [WS_METHODS.conversationFoldersMutate]: (input) => conversationFolders.mutate(input),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),

@@ -4,6 +4,8 @@ import type { AnyRouter } from "@tanstack/react-router";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { isPreviewAvailableFor } from "../browser/previewRuntime";
 import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
+import { requestWorkspaceChipMenu } from "../components/chat/ThreadWorkspaceChip";
+import { useConversationFolderViewStore } from "../conversationFolderViewStore";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { dispatchPreviewAction, type PreviewAction } from "../components/preview/previewActionBus";
 import { isAppModalPage } from "../components/sidebar/mainAppLocation";
@@ -112,6 +114,14 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
 
   return registerCommands(
     {
+      "workspaceBundle.switch": (event) => {
+        claim(event);
+        requestWorkspaceChipMenu();
+      },
+      "conversationFolders.toggleView": (event) => {
+        claim(event);
+        useConversationFolderViewStore.getState().toggleFoldersVisible();
+      },
       "chat.newLocal": startNewLocal,
       "chat.newWithoutProject": (event) => {
         const { activeThread, activeDraftThread } = readThreadContext();

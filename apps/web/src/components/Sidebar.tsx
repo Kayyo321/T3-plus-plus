@@ -1,7 +1,11 @@
 import { nestedSessionsByParent } from "@t3tools/client-runtime/state/thread-relationships";
 import { liveShellEnvironmentIdsAtom } from "../state/shell";
 import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
-import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
+import {
+  type EnvironmentId,
+  isListedThreadLineage,
+  type ScopedProjectRef,
+} from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
 import {
@@ -66,6 +70,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FolderIcon,
+  FoldersIcon,
   ListFilterIcon,
   PlusIcon,
   SettingsIcon,
@@ -254,6 +259,8 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
+import { SidebarConversationFolders } from "./sidebar/SidebarConversationFolders";
+import { useConversationFolderViewStore } from "../conversationFolderViewStore";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
@@ -1122,6 +1129,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         );
   const threads = useQuietThreadShells();
   const nestedSessions = nestedSessionsByParent(threads);
+  const conversationFoldersVisible = useConversationFolderViewStore(
+    (state) => state.foldersVisible,
+  );
+  const toggleConversationFolders = useConversationFolderViewStore(
+    (state) => state.toggleFoldersVisible,
+  );
+  // One tree at a time: folders belong to an environment, so the open thread's is the one shown.
+  const folderEnvironmentId = routeThreadRef?.environmentId ?? primaryEnvironmentId;
   const routeRowThreadKey =
     routeThreadRef === null
       ? null
@@ -3206,6 +3221,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               searchResultCount={threadSearchResults.length}
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
+              viewToggle={
+                <SidebarHeaderIconButton
+                  label={conversationFoldersVisible ? "Show projects" : "Show folders"}
+                  onClick={toggleConversationFolders}
+                >
+                  <FoldersIcon />
+                </SidebarHeaderIconButton>
+              }
             />
           </SidebarGroup>
         }
@@ -3280,7 +3303,24 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               </p>
             )
           ) : null}
-          {!isSearchingThreads ? (
+          {!isSearchingThreads && conversationFoldersVisible && folderEnvironmentId !== null ? (
+            <div className="relative min-h-[calc(100dvh-8rem)] flex-1">
+              <div className="absolute inset-0">
+                <SidebarConversationFolders
+                  environmentId={folderEnvironmentId}
+                  threads={threads.filter(
+                    (thread) =>
+                      thread.environmentId === folderEnvironmentId &&
+                      thread.archivedAt === null &&
+                      isListedThreadLineage(thread.lineage),
+                  )}
+                  activeThreadKey={routeRowThreadKey}
+                  onOpenThread={selectThreadSearchResult}
+                />
+              </div>
+            </div>
+          ) : null}
+          {!isSearchingThreads && !(conversationFoldersVisible && folderEnvironmentId !== null) ? (
             <TooltipProvider
               key="sidebar-thread-tooltips-150"
               delay={150}

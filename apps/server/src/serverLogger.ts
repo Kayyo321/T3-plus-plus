@@ -10,11 +10,21 @@ import * as OtlpExporter from "effect/observability/OtlpExporter";
 import * as OtlpLogger from "effect/observability/OtlpLogger";
 
 import * as ServerConfig from "./config.ts";
+import * as WorkspaceProcessEnvironment from "./workspace/WorkspaceProcessEnvironment.ts";
 
 // HTTP errors logged with --log-ws-events carry the request URL and its connection ticket.
 const redactingCredentials = <Output>(logger: Logger.Logger<unknown, Output>) =>
   Logger.make<unknown, Output>((options) =>
     logger.log({ ...options, cause: SharedObservability.redactCauseCredentials(options.cause) }),
+  );
+
+// A provider's error text can repeat what its process printed, so logs get the same backstop.
+const maskingSecrets = <Output>(
+  logger: Logger.Logger<unknown, Output>,
+  masks: WorkspaceProcessEnvironment.ActiveSecretMaskSet,
+) =>
+  Logger.make<unknown, Output>((options) =>
+    logger.log({ ...options, message: masks.redactDeep(options.message) }),
   );
 
 // consolePretty collapses Cause fields via util.inspect; render them with Cause.pretty like standalone arguments.
@@ -66,10 +76,14 @@ export const layer = Effect.gen(function* () {
 
   // Logger.layer replaces the whole set; name every logger here.
   // OTLP includes traced messages as log records, so also using tracerLogger would duplicate in-span exports.
+  const masks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
   const layerLogger = Logger.layer(
     otlpLogger === undefined
-      ? [consolePretty(), Logger.tracerLogger]
-      : [consolePretty(), otlpLogger],
+      ? [maskingSecrets(consolePretty(), masks), maskingSecrets(Logger.tracerLogger, masks)]
+      : [
+          maskingSecrets(consolePretty(), masks),
+          otlpLogger.pipe(Effect.map((logger) => maskingSecrets(logger, masks))),
+        ],
     { mergeWithExisting: false },
   ).pipe(
     Layer.provide(OtlpExporter.layerFlusher),

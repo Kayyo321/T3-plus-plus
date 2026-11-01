@@ -80,6 +80,7 @@ import Migration0074 from "./Migrations/074_ExcludeAttachmentPlaceholdersFromSea
 import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
 import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 import Migration0077 from "./Migrations/077_AuditTrail.ts";
+import Migration0079 from "./Migrations/079_WorkspacesAndConversationFolders.ts";
 import Migration0080 from "./Migrations/080_BackgroundTasks.ts";
 import Migration0084 from "./Migrations/084_OrchestratorAgent.ts";
 import Migration0085 from "./Migrations/085_CheckpointRefIndex.ts";
@@ -163,6 +164,7 @@ const migrationEntries = [
   [75, "SubagentDeliveryState", Migration0075],
   [76, "ProjectionProjectsPinArchive", Migration0076],
   [77, "AuditTrail", Migration0077],
+  [79, "WorkspacesAndConversationFolders", Migration0079],
   [80, "BackgroundTasks", Migration0080],
   [84, "OrchestratorAgent", Migration0084],
   [85, "CheckpointRefIndex", Migration0085],

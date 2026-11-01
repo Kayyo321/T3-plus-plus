@@ -12,7 +12,7 @@ import * as NodeHttp from "node:http";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentHttpApi, type RepositoryIdentity } from "@t3tools/contracts";
+import { EnvironmentHttpApi, type RepositoryIdentity, type ThreadId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -133,6 +133,10 @@ import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as AuthHttp from "./auth/http.ts";
 import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import * as AuditTrail from "./audit/AuditTrail.ts";
+import * as ConversationFolderService from "./conversationFolders/ConversationFolderService.ts";
+import * as WorkspaceProcessEnvironment from "./workspace/WorkspaceProcessEnvironment.ts";
+import * as WorkspaceService from "./workspace/WorkspaceService.ts";
 import * as CodexManagedTokenBroker from "./provider/CodexManagedTokenBroker.ts";
 import * as WebhookRoute from "./scheduledTasks/webhookRoute.ts";
 import * as RelayDeliveryProof from "./scheduledTasks/RelayDeliveryProof.ts";
@@ -236,7 +240,16 @@ const layerProviderEventLoggers = Layer.effect(
     );
     if (!store) return ProviderEventLoggers.NoOpProviderEventLoggers;
     yield* Effect.addFinalizer(() => store.close());
-    return { native: store.logger("native"), canonical: store.logger("canonical") };
+    const masks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
+    const masked = (logger: ProviderEventLoggers.EventNdjsonLogger) => ({
+      ...logger,
+      write: (event: unknown, threadId: ThreadId | null) =>
+        logger.write(masks.redactDeep(event), threadId),
+    });
+    return {
+      native: masked(store.logger("native")),
+      canonical: masked(store.logger("canonical")),
+    };
   }),
 );
 
@@ -443,6 +456,15 @@ const layerCheckpointStore = CheckpointStore.layer.pipe(Layer.provide(layerVcsDr
 
 const layerPortScanner = PortScanner.layer.pipe(Layer.provide(ProcessRunner.layer));
 
+const layerWorkspaces = Layer.mergeAll(
+  WorkspaceService.layerProcessEnvironment,
+  ConversationFolderService.layer,
+).pipe(
+  Layer.provideMerge(WorkspaceService.layer),
+  Layer.provideMerge(AuditTrail.layer),
+  Layer.provide(ProjectionStoreV2.layer),
+);
+
 const layerTerminal = TerminalManager.layer.pipe(
   Layer.provide(layerPtyAdapter),
   Layer.provide(layerPortScanner),
@@ -630,12 +652,13 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
-  Layer.provideMerge(SecretResolver.layer),
-  Layer.provideMerge(layerServerSettings),
   Layer.provideMerge(layerSourceControlProviderRegistry),
   Layer.provideMerge(layerGit),
   Layer.provideMerge(layerVcs),
   Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
+  Layer.provideMerge(layerWorkspaces),
+  Layer.provideMerge(SecretResolver.layer),
+  Layer.provideMerge(layerServerSettings),
   Layer.provideMerge(layerPersistence),
   Layer.provideMerge(
     Layer.mergeAll(Keybindings.layer, EnvironmentTheme.layer, UsageLimitSources.layer),

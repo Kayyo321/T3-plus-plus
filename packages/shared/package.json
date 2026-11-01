@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./secretRedaction": {
+      "types": "./src/secretRedaction.ts",
+      "import": "./src/secretRedaction.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"
