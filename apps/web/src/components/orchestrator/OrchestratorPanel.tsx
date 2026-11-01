@@ -30,6 +30,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import OrchestratorActivity from "./OrchestratorActivity";
+import OrchestratorGrantsEditor from "./OrchestratorGrantsEditor";
 
 const VISIBLE_ITEM_LIMIT = 200;
 
@@ -236,7 +237,7 @@ export default function OrchestratorPanel(props: {
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  const [showActivity, setShowActivity] = useState(false);
+  const [view, setView] = useState<"conversation" | "activity" | "grants">("conversation");
 
   const checkOnOpen = useEffectEvent((target: EnvironmentId) => {
     void checkAvailability({ environmentId: target, input: {} });
@@ -302,14 +303,17 @@ export default function OrchestratorPanel(props: {
         ) : (
           <span className="flex-1" />
         )}
-        <Button
-          variant="ghost"
-          size="xs"
-          aria-pressed={showActivity}
-          onClick={() => setShowActivity((value) => !value)}
-        >
-          Activity
-        </Button>
+        {(["activity", "grants"] as const).map((target) => (
+          <Button
+            key={target}
+            variant="ghost"
+            size="xs"
+            aria-pressed={view === target}
+            onClick={() => setView(view === target ? "conversation" : target)}
+          >
+            {target === "activity" ? "Activity" : "Grants"}
+          </Button>
+        ))}
         <Button
           variant="ghost"
           size="icon-xs"
@@ -335,8 +339,10 @@ export default function OrchestratorPanel(props: {
           onChoose={(selection, interruptRun) => void choose(selection, interruptRun)}
           onCancel={snapshot?.brain ? () => setPicking(false) : undefined}
         />
-      ) : showActivity ? (
+      ) : view === "activity" ? (
         <OrchestratorActivity environmentId={environmentId} />
+      ) : view === "grants" && snapshot !== null ? (
+        <OrchestratorGrantsEditor environmentId={environmentId} grants={snapshot.grants} />
       ) : snapshot?.threadId != null ? (
         <Transcript environmentId={environmentId} threadId={snapshot.threadId} />
       ) : (
@@ -371,7 +377,7 @@ export default function OrchestratorPanel(props: {
           {sendError}
         </p>
       )}
-      {showPicker ? null : (
+      {showPicker || view !== "conversation" ? null : (
         <form
           className="flex items-end gap-2 border-t border-border p-2"
           onSubmit={(event) => {
