@@ -9,6 +9,7 @@ import {
   TrimmedNonEmptyString,
   ModelSelection,
   RuntimeMode,
+  ThreadCapabilityMode,
   ProviderInteractionMode,
   RuntimeRequestId,
   ProviderUserInputAnswers,
@@ -162,6 +163,21 @@ const ThreadConfigureTool = Tool.make("t3_thread_configure", {
   success: Schema.Union([threadConfiguration, OrchestrationV2DispatchCommandResult]),
 }).annotate(Tool.Destructive, true);
 
+const ThreadCapabilityTool = Tool.make("t3_thread_capability", {
+  ...commandTool,
+  description:
+    "Read a conversation's Chat/Code capability, or set mode to chat or code on the owner's behalf. Chat cannot access project files or run commands; its documents stay. Permission modes do not change. Omit threadId for this thread.",
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    threadId: Schema.optional(ThreadId),
+    mode: Schema.optional(ThreadCapabilityMode),
+  }),
+  success: Schema.Union([
+    Schema.Struct({ mode: ThreadCapabilityMode }),
+    OrchestrationV2DispatchCommandResult,
+  ]),
+}).annotate(Tool.Destructive, true);
+
 const ThreadTransferTool = Tool.make("t3_thread_transfer", {
   ...commandTool,
   description:
@@ -241,6 +257,7 @@ export const ThreadToolkit = Toolkit.make(
   ScheduledTaskRunTool,
   ThreadSearchTool,
   ThreadConfigureTool,
+  ThreadCapabilityTool,
   ThreadTransferTool,
   ThreadOrganizeTool,
   PendingRequestTool,

@@ -1,3 +1,4 @@
+import * as ConversationFolderService from "../conversationFolders/ConversationFolderService.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as NodeUtil from "node:util";
 
@@ -188,7 +189,13 @@ it.effect(
         Effect.gen(function* () {
           yield* Layer.build(
             Layer.provideMerge(
-              ScheduledTaskService.layer,
+              ScheduledTaskService.layer.pipe(
+                Layer.provide(
+                  Layer.mock(ConversationFolderService.ConversationFolderService)({
+                    fileScheduledRun: () => Effect.succeed("scheduled" as never),
+                  }),
+                ),
+              ),
               Layer.mergeAll(
                 Layer.mock(ThreadLaunchService.ThreadLaunchService)({
                   launch: () =>
@@ -281,7 +288,13 @@ it.effect(
         Effect.gen(function* () {
           yield* Layer.build(
             Layer.provideMerge(
-              ScheduledTaskService.layer,
+              ScheduledTaskService.layer.pipe(
+                Layer.provide(
+                  Layer.mock(ConversationFolderService.ConversationFolderService)({
+                    fileScheduledRun: () => Effect.succeed("scheduled" as never),
+                  }),
+                ),
+              ),
               Layer.mergeAll(
                 Layer.mock(ThreadLaunchService.ThreadLaunchService)({
                   launch: () =>
@@ -345,6 +358,11 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
     const running = yield* Deferred.make<void>();
     const removed = yield* Deferred.make<void>();
     const layer = ScheduledTaskService.layer.pipe(
+      Layer.provide(
+        Layer.mock(ConversationFolderService.ConversationFolderService)({
+          fileScheduledRun: () => Effect.succeed("scheduled" as never),
+        }),
+      ),
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
@@ -412,6 +430,11 @@ it.effect("a bound run follows its thread when promotion moves it mid-send", () 
     // Rebind lands first, then the promotion commits between the shell read and the retry.
     const shellProjects = yield* Ref.make([scratch, promoted]);
     const layer = ScheduledTaskService.layer.pipe(
+      Layer.provide(
+        Layer.mock(ConversationFolderService.ConversationFolderService)({
+          fileScheduledRun: () => Effect.succeed("scheduled" as never),
+        }),
+      ),
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
@@ -482,6 +505,11 @@ it.effect("a run interrupted right after it reserves the task does not block the
   Effect.gen(function* () {
     const launches = yield* Ref.make(0);
     const layer = ScheduledTaskService.layer.pipe(
+      Layer.provide(
+        Layer.mock(ConversationFolderService.ConversationFolderService)({
+          fileScheduledRun: () => Effect.succeed("scheduled" as never),
+        }),
+      ),
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({

@@ -21,6 +21,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -31,6 +32,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as ComputerUseService from "../computerUse/ComputerUseService.ts";
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
@@ -109,7 +111,25 @@ const layerThreads = ThreadManagementService.layer.pipe(
   Layer.provide(layerCleanup),
 );
 
+const computerState = (id: ThreadId) => ({
+  threadId: id,
+  status: "off" as const,
+  target: null,
+  startedAt: null,
+  display: null,
+  pendingApproval: null,
+});
+const layerComputer = Layer.mock(ComputerUseService.ComputerUseService)({
+  subscribe: (id) =>
+    Stream.make({ state: computerState(id), recentSteps: [] }).pipe(Stream.concat(Stream.never)),
+  getScreenshot: ({ threadId: id }) =>
+    Effect.succeed({ mimeType: "image/png", data: Buffer.from(id).toString("base64") }),
+  answerApproval: ({ threadId: id }) => Effect.succeed(computerState(id)),
+  stop: (id) => Effect.succeed(computerState(id)),
+});
+
 const layerTest = RemoteControl.layer.pipe(
+  Layer.provide(layerComputer),
   Layer.provideMerge(CommandOutputHub.layer.pipe(Layer.provideMerge(layerThreads))),
   Layer.provideMerge(AuditTrail.layer.pipe(Layer.provide(layerDatabase))),
   Layer.provide(OrchestrationEventStore.layer.pipe(Layer.provide(layerDatabase))),
@@ -128,7 +148,7 @@ const threadId = ThreadId.make("thread:remote-control");
 const otherThreadId = ThreadId.make("thread:remote-control-other");
 const label = GuestDisplayName.make("Pixel 8");
 
-const createThread = Effect.fn(function* (id: ThreadId) {
+const createThread = Effect.fn(function* (id: ThreadId, orchestratorAgent = false) {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   yield* orchestrator.dispatch({
     type: "thread.create",
@@ -136,6 +156,7 @@ const createThread = Effect.fn(function* (id: ThreadId) {
     threadId: id,
     projectId: ProjectId.make("project:remote-control"),
     title: "Ship it",
+    ...(orchestratorAgent ? { orchestratorAgent: true } : {}),
     modelSelection: { instanceId, model: "gpt-5.1-codex" },
     runtimeMode: "full-access",
     interactionMode: "default",
@@ -514,11 +535,23 @@ it.effect("ends an open stream the moment one device is revoked, leaving others"
 
     const snapshot = Option.getOrThrow(yield* Stream.runHead(remote.changes));
     const target = snapshot.switches[0]!.devices.find((device) => device.label === label)!;
+    const computerStarted = yield* Deferred.make<void>();
+    const computer = yield* (yield* remote.computerStream(first)).pipe(
+      Stream.tap((snapshot) => {
+        assert.equal(snapshot.state.threadId, threadId);
+        return Deferred.succeed(computerStarted, undefined);
+      }),
+      Stream.runCollect,
+      Effect.forkChild,
+    );
+    yield* Deferred.await(computerStarted);
     yield* expectStreamEnds(
       first,
       remote.revokeDevice({ threadId, deviceId: target.id }),
       "revoked",
     );
+    assert.equal((yield* Fiber.join(computer)).length, 1);
+    assert.equal(yield* failureReason(remote.computerScreenshot(first, "step")), "ended");
     assert.equal(yield* failureReason(remote.session(first)), "ended");
     assert.equal(yield* failureReason(remote.session(second)), "ok");
   }).pipe(Effect.scoped, Effect.provide(layerTest)),
@@ -623,6 +656,23 @@ const ACTIONS: ReadonlyArray<{
         decision: "accept",
       }),
   },
+  {
+    name: "computer stream",
+    required: "view",
+    run: (remote, device) => remote.computerStream(device),
+  },
+  {
+    name: "computer screenshot",
+    required: "view",
+    run: (remote, device) => remote.computerScreenshot(device, "step"),
+  },
+  {
+    name: "computer approval",
+    required: "approve",
+    run: (remote, device) =>
+      remote.answerComputerApproval(device, { approvalId: "approval", approved: true }),
+  },
+  { name: "computer stop", required: "full", run: (remote, device) => remote.stopComputer(device) },
   { name: "stop", required: "full", run: (remote, device) => remote.stop(device) },
   {
     name: "mode",
@@ -639,6 +689,8 @@ it.effect("enforces the access level on every action", () =>
   Effect.gen(function* () {
     const remote = yield* setup();
     const device = yield* pairDevice({ accessLevel: "view" });
+    const screenshot = yield* remote.computerScreenshot(device, "step");
+    assert.equal(Buffer.from(screenshot.data, "base64").toString(), threadId);
     for (const level of LEVEL_ORDER) {
       yield* remote.update({ threadId, accessLevel: level, confirmRaise: true });
       for (const action of ACTIONS) {
@@ -892,5 +944,15 @@ it.effect("never puts a credential in what owners or the audit trail can read", 
       assert.notInclude(snapshot, secret);
       assert.notInclude(trail, secret);
     }
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("never shares the owner orchestrator with remote guests", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const id = ThreadId.make("private-orchestrator");
+    yield* createThread(id, true);
+    const error = yield* remote.enable({ threadId: id }).pipe(Effect.flip);
+    assert.equal(error.reason, "thread_unavailable");
   }).pipe(Effect.provide(layerTest)),
 );

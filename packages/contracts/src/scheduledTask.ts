@@ -249,7 +249,6 @@ export type ScheduledTaskMissedRunPolicy = typeof ScheduledTaskMissedRunPolicy.T
 /** Catch up replays at most this many missed times, keeping the newest. */
 export const MAX_SCHEDULED_TASK_CATCH_UP_RUNS = 24;
 
-/** @public */
 export const MAX_SCHEDULED_TASK_ITERATIONS = 100;
 
 const PositiveBudgetInt = Schema.Int.check(Schema.isGreaterThan(0));
@@ -403,8 +402,13 @@ export type ScheduledTask = typeof ScheduledTask.Type;
 export const ScheduledTaskListInput = Schema.Struct({});
 export type ScheduledTaskListInput = typeof ScheduledTaskListInput.Type;
 
+/** What keeps tasks firing: only `service` runs with no client or app open. */
+export const ScheduledTaskHost = Schema.Literals(["service", "desktop", "terminal"]);
+export type ScheduledTaskHost = typeof ScheduledTaskHost.Type;
+
 export const ScheduledTaskListResult = Schema.Struct({
   tasks: ForwardCompatibleArray(ScheduledTask),
+  host: Schema.optional(ScheduledTaskHost),
 });
 export type ScheduledTaskListResult = typeof ScheduledTaskListResult.Type;
 

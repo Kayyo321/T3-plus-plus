@@ -1,4 +1,13 @@
 import {
+  TeamRun,
+  TeamStartInput,
+  TeamActInput,
+  TeamStartMemberInput,
+  TeamListInput,
+  TeamListResult,
+  TeamworkError,
+} from "./teamwork.ts";
+import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -683,6 +692,11 @@ export const WS_METHODS = {
   gitGraphPreview: "gitGraph.preview",
   gitGraphAct: "gitGraph.act",
   gitGraphDraftMessage: "gitGraph.draftMessage",
+  teamworkStart: "teamwork.start",
+  teamworkAct: "teamwork.act",
+  teamworkStartMember: "teamwork.startMember",
+  teamworkList: "teamwork.list",
+  teamworkSubscribe: "teamwork.subscribe",
   auditList: "audit.list",
   auditSubscribe: "audit.subscribe",
   threadRewindPreview: "threadBranch.previewRewind",
@@ -2187,6 +2201,34 @@ const WsGitGraphDraftMessageRpc = Rpc.make(WS_METHODS.gitGraphDraftMessage, {
   error: GitGraphRpcError,
 });
 
+const teamworkErrors = Schema.Union([TeamworkError, EnvironmentAuthorizationError]);
+const WsTeamworkStartRpc = Rpc.make(WS_METHODS.teamworkStart, {
+  payload: TeamStartInput,
+  success: TeamRun,
+  error: teamworkErrors,
+});
+const WsTeamworkActRpc = Rpc.make(WS_METHODS.teamworkAct, {
+  payload: TeamActInput,
+  success: TeamRun,
+  error: teamworkErrors,
+});
+const WsTeamworkStartMemberRpc = Rpc.make(WS_METHODS.teamworkStartMember, {
+  payload: TeamStartMemberInput,
+  success: TeamRun,
+  error: teamworkErrors,
+});
+const WsTeamworkListRpc = Rpc.make(WS_METHODS.teamworkList, {
+  payload: TeamListInput,
+  success: TeamListResult,
+  error: teamworkErrors,
+});
+const WsTeamworkSubscribeRpc = Rpc.make(WS_METHODS.teamworkSubscribe, {
+  payload: Schema.Struct({}),
+  success: TeamRun,
+  error: teamworkErrors,
+  stream: true,
+});
+
 const WsAuditListRpc = Rpc.make(WS_METHODS.auditList, {
   payload: AuditListInput,
   success: AuditListResult,
@@ -2627,6 +2669,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitGraphPreviewRpc,
   WsGitGraphActRpc,
   WsGitGraphDraftMessageRpc,
+  WsTeamworkStartRpc,
+  WsTeamworkActRpc,
+  WsTeamworkStartMemberRpc,
+  WsTeamworkListRpc,
+  WsTeamworkSubscribeRpc,
   WsAuditListRpc,
   WsAuditSubscribeRpc,
   WsThreadRewindPreviewRpc,

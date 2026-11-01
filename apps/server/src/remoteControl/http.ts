@@ -1,4 +1,10 @@
 import {
+  ComputerUseSnapshot,
+  REMOTE_CONTROL_COMPUTER_STREAM_ROUTE,
+  REMOTE_CONTROL_COMPUTER_SCREENSHOT_ROUTE,
+  REMOTE_CONTROL_COMPUTER_APPROVAL_ROUTE,
+  REMOTE_CONTROL_COMPUTER_STOP_ROUTE,
+  RemoteControlComputerApprovalRequest,
   OrchestrationV2CommandOutputFrame,
   REMOTE_CONTROL_ATTACHMENT_ROUTE,
   REMOTE_CONTROL_COMMAND_OUTPUT_ROUTE,
@@ -463,7 +469,66 @@ const modeRoute = HttpRouter.add(
   }),
 );
 
+const encodeComputerSnapshot = Schema.encodeEffect(Schema.fromJsonString(ComputerUseSnapshot));
+const computerStreamRoute = HttpRouter.add(
+  "GET",
+  REMOTE_CONTROL_COMPUTER_STREAM_ROUTE,
+  Effect.gen(function* () {
+    const remote = yield* RemoteControl.RemoteControlService;
+    return yield* remote.computerStream(yield* deviceCredential).pipe(
+      Effect.map((events) => eventStreamResponse(events, encodeComputerSnapshot)),
+      Effect.catchTags({ RemoteControlAccessError: errorResponse }),
+    );
+  }),
+);
+const computerScreenshotRoute = HttpRouter.add(
+  "GET",
+  REMOTE_CONTROL_COMPUTER_SCREENSHOT_ROUTE,
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const stepId = queryOf(request).get("stepId");
+    if (stepId === null || stepId.length === 0) return yield* badRequest;
+    const remote = yield* RemoteControl.RemoteControlService;
+    return yield* remote.computerScreenshot(yield* deviceCredential, stepId).pipe(
+      Effect.flatMap((snapshot) => HttpServerResponse.json(snapshot, { headers: NO_STORE })),
+      Effect.catchTags({ RemoteControlAccessError: errorResponse }),
+    );
+  }),
+);
+const computerApprovalRoute = HttpRouter.add(
+  "POST",
+  REMOTE_CONTROL_COMPUTER_APPROVAL_ROUTE,
+  Effect.gen(function* () {
+    const remote = yield* RemoteControl.RemoteControlService;
+    const credential = yield* deviceCredential;
+    yield* remote.session(credential, "approve");
+    const body = yield* readJson.pipe(
+      Effect.flatMap(Schema.decodeUnknownEffect(RemoteControlComputerApprovalRequest)),
+      Effect.option,
+    );
+    if (body._tag === "None") return yield* badRequest;
+    return yield* remote
+      .answerComputerApproval(credential, body.value)
+      .pipe(Effect.flatMap((state) => HttpServerResponse.json(state, { headers: NO_STORE })));
+  }).pipe(Effect.catchTags({ RemoteControlAccessError: errorResponse })),
+);
+const computerStopRoute = HttpRouter.add(
+  "POST",
+  REMOTE_CONTROL_COMPUTER_STOP_ROUTE,
+  Effect.gen(function* () {
+    const remote = yield* RemoteControl.RemoteControlService;
+    return yield* remote.stopComputer(yield* deviceCredential).pipe(
+      Effect.flatMap((state) => HttpServerResponse.json(state, { headers: NO_STORE })),
+      Effect.catchTags({ RemoteControlAccessError: errorResponse }),
+    );
+  }),
+);
+
 export const layer = Layer.mergeAll(
+  computerStreamRoute,
+  computerScreenshotRoute,
+  computerApprovalRoute,
+  computerStopRoute,
   pairStartRoute,
   pairStatusRoute,
   pairCodeRoute,

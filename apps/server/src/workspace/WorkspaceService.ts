@@ -342,6 +342,7 @@ const make = Effect.gen(function* () {
   const upsert: WorkspaceService["Service"]["upsert"] = Effect.fn("WorkspaceService.upsert")(
     function* (input, actor = USER_ACTOR) {
       yield* validateFolders(input);
+      const ownerSettings = actor.actor !== "agent" && actor.actor !== "orchestrator";
       const now = yield* nowIso;
       if (input.id !== undefined) {
         yield* requireLive(input.id);
@@ -350,7 +351,7 @@ const make = Effect.gen(function* () {
             name = ${input.name},
             folders_json = ${encodeFolders(input.folders)},
             working_root = ${input.workingRoot},
-            settings_json = ${encodeSettings(input.settings)},
+            settings_json = ${ownerSettings ? sql`${encodeSettings(input.settings)}` : sql`settings_json`},
             updated_at = ${now}
           WHERE id = ${input.id}
         `);
@@ -365,7 +366,7 @@ const make = Effect.gen(function* () {
             name: input.name,
             folders_json: encodeFolders(input.folders),
             working_root: input.workingRoot,
-            settings_json: encodeSettings(input.settings),
+            settings_json: encodeSettings(ownerSettings ? input.settings : {}),
             created_at: now,
             updated_at: now,
             deleted_at: null,

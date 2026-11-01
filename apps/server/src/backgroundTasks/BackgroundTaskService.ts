@@ -21,6 +21,9 @@ import {
   type OrchestrationV2ThreadShell,
   type ThreadId,
 } from "@t3tools/contracts";
+import { noSecretMask } from "@t3tools/shared/secretRedaction";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
+import * as Redacted from "effect/Redacted";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -175,6 +178,8 @@ const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
   const platform = yield* HostProcess.Platform;
+  const workspaces = yield* WorkspaceProcessEnvironment.WorkspaceProcessEnvironment;
+  const activeMasks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
   const randomId = crypto.randomUUIDv4().pipe(Effect.orDie);
   const scope = yield* Effect.scope;
   const changes = yield* PubSub.sliding<BackgroundTaskStreamItem>(256);
@@ -296,6 +301,7 @@ const make = Effect.gen(function* () {
     initial: BackgroundTask,
     command: string,
     cwd: string,
+    workspace: WorkspaceProcessEnvironment.WorkspaceLaunch | undefined,
   ) {
     const stopRequested = { value: false };
     let latestLine = initial.lastOutputLine;
@@ -303,12 +309,16 @@ const make = Effect.gen(function* () {
     let publishedAt = 0;
     const log = yield* makeBoundedLog({ dir: logDir(initial.id) });
     const decoder = new TextDecoder();
+    const mask = workspace?.mask ?? noSecretMask;
+    const masking = mask.stream();
+    const releaseMask = activeMasks.add(mask);
     const shell = platform === "win32" ? "cmd.exe" : (process.env.SHELL ?? "/bin/sh");
     const code = yield* Effect.scoped(
       Effect.gen(function* () {
         const child = yield* spawner.spawn(
           ChildProcess.make(shell, platform === "win32" ? ["/c", command] : ["-c", command], {
             cwd,
+            ...(workspace === undefined ? {} : { env: Redacted.value(workspace.environment) }),
             stdin: "ignore",
             // Its own process group, so stopping a dev server takes its children with it.
             detached: platform !== "win32",
@@ -318,24 +328,29 @@ const make = Effect.gen(function* () {
           stopRequested,
           kill: child.kill({ forceKillAfter: STOP_GRACE }).pipe(Effect.ignore),
         });
+        const append = Effect.fn("BackgroundTaskService.appendOutput")(function* (text: string) {
+          yield* log.append(new TextEncoder().encode(text));
+          const line = lastOutputLine(text);
+          if (line === null) return;
+          latestLine = line;
+          const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
+          if (line === publishedLine || nowMs - publishedAt < LINE_PUBLISH_INTERVAL_MS) return;
+          publishedLine = line;
+          publishedAt = nowMs;
+          yield* publish({
+            type: "upsert",
+            task: { ...initial, lastOutputLine: line },
+          });
+        });
         yield* child.all.pipe(
           Stream.runForEach((chunk) =>
-            Effect.gen(function* () {
-              yield* log.append(chunk);
-              const line = lastOutputLine(decoder.decode(chunk, { stream: true }));
-              if (line === null) return;
-              latestLine = line;
-              const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
-              if (line === publishedLine || nowMs - publishedAt < LINE_PUBLISH_INTERVAL_MS) return;
-              publishedLine = line;
-              publishedAt = nowMs;
-              yield* publish({
-                type: "upsert",
-                task: { ...initial, lastOutputLine: line },
-              });
-            }),
+            append(masking.write(decoder.decode(chunk, { stream: true }))),
           ),
-          Effect.ignore,
+          Effect.ensuring(
+            Effect.suspend(() => append(masking.write(decoder.decode()) + masking.flush())).pipe(
+              Effect.orDie,
+            ),
+          ),
         );
         return yield* child.exitCode;
       }),
@@ -346,7 +361,12 @@ const make = Effect.gen(function* () {
           Effect.as(null),
         ),
       ),
-      Effect.ensuring(Effect.sync(() => processes.delete(initial.id))),
+      Effect.ensuring(
+        Effect.sync(() => {
+          processes.delete(initial.id);
+          releaseMask();
+        }),
+      ),
     );
     const latest = Option.getOrElse(yield* read(initial.id), () => initial);
     yield* transition(latest, {
@@ -391,7 +411,16 @@ const make = Effect.gen(function* () {
       const project = yield* projects
         .get(shell.projectId)
         .pipe(Effect.mapError(() => failed("The conversation's project could not be read.")));
-      const cwd = shell.worktreePath ?? Option.getOrUndefined(project)?.workspaceRoot ?? undefined;
+      const workspace =
+        input.command === undefined
+          ? undefined
+          : Option.getOrUndefined(yield* workspaces.forThread(input.threadId));
+      const cwd =
+        shell.worktreePath ??
+        workspace?.workingRoot ??
+        Option.getOrUndefined(project)?.workspaceRoot ??
+        undefined;
+      const mask = workspace?.mask ?? noSecretMask;
       if (input.command !== undefined && cwd === undefined) {
         return yield* failed("The conversation has no folder to run in.");
       }
@@ -399,7 +428,7 @@ const make = Effect.gen(function* () {
       const now = DateTime.formatIso(yield* DateTime.now);
       const childShell =
         input.childThreadId === undefined ? null : yield* threadShell(input.childThreadId);
-      const task: BackgroundTask = {
+      const task: BackgroundTask = mask.redactDeep({
         id,
         threadId: input.threadId,
         kind: input.kind ?? (input.childThreadId === undefined ? "command" : "nested_session"),
@@ -418,7 +447,7 @@ const make = Effect.gen(function* () {
         startedAt: now,
         endedAt: null,
         updatedAt: now,
-      };
+      });
       yield* save(task).pipe(
         Effect.mapError(() => failed("The background task could not be recorded.")),
       );
@@ -431,10 +460,10 @@ const make = Effect.gen(function* () {
         outcome: "succeeded",
         threadId: input.threadId,
         target: { kind: "background-task", id, label: task.name },
-        ...(input.command === undefined ? {} : { request: input.command }),
+        ...(input.command === undefined ? {} : { request: mask.redact(input.command) }),
       });
       if (input.command !== undefined && cwd !== undefined) {
-        yield* supervise(task, input.command, cwd).pipe(
+        yield* supervise(task, input.command, cwd, workspace).pipe(
           Effect.provide(context),
           Effect.catchCause((cause) =>
             Effect.logWarning("A background task ended badly", { id, cause }),

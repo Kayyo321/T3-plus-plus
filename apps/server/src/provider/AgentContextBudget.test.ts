@@ -1,3 +1,4 @@
+import { TeamworkService } from "../teamwork/TeamworkService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ConversationFolderService } from "../conversationFolders/ConversationFolderService.ts";
 import { WorkspaceService } from "../workspace/WorkspaceService.ts";
@@ -54,11 +55,13 @@ import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
 import { buildCodexAdditionalContext } from "./CodexDeveloperInstructions.ts";
 import { DocumentText } from "./DocumentText.ts";
 import { ProviderRegistry } from "./ProviderRegistry.ts";
+import { ORCHESTRATOR_TOOL_POLICY } from "../orchestratorAgent/toolPolicy.ts";
 import budget from "./agentContextBudget.json" with { type: "json" };
 
 // Registration only stores tool definitions, so the handlers' services are never called.
 const toolHandlerServices = Layer.mergeAll(
   Layer.mock(BackgroundTaskService)({}),
+  Layer.mock(TeamworkService)({}),
   Layer.mock(NestedSessionService)({}),
   Layer.mock(ThreadBranchService)({}),
   Layer.mock(DeviceService)({}),
@@ -170,6 +173,12 @@ it.effect("the orchestrator's endpoint adds its tools to no other agent's list",
     expect(names).toContain("editor_ui");
     expect(names).toContain("t3_thread_read");
     expect(names).not.toContain("device_open");
+    expect(names).toContain("t3_git_graph");
+    expect(
+      names.filter(
+        (name) => name !== "request_secret" && ORCHESTRATOR_TOOL_POLICY[name] === undefined,
+      ),
+    ).toEqual([]);
   }).pipe(
     Effect.provide(
       McpHttpServer.layerOrchestratorTools.pipe(

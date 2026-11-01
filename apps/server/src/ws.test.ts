@@ -1,3 +1,4 @@
+import * as TeamworkService from "./teamwork/TeamworkService.ts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -588,6 +589,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ResourceTelemetry.ResourceTelemetry)({}),
   Layer.mock(ReviewService.ReviewService)({}),
   Layer.mock(AuditTrail.AuditTrail)({}),
+  Layer.mock(TeamworkService.TeamworkService)({}),
   Layer.mock(OrchestratorAgent.OrchestratorAgent)({}),
   Layer.mock(SupervisionMonitor.SupervisionMonitor)({}),
   Layer.mock(GitGraphService.GitGraphService)({}),

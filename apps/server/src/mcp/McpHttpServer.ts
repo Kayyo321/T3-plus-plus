@@ -1,3 +1,5 @@
+import { TeamworkToolkit } from "./toolkits/teamwork/tools.ts";
+import * as TeamworkHandlers from "./toolkits/teamwork/handlers.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1214,19 +1216,15 @@ export const layerMcpTransport = McpServer.layerHttp({
 
 /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
 export const layerTools = Layer.mergeAll(
+  toolkitRegistration(TeamworkToolkit, TeamworkHandlers.layer),
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,
   layerSessionsToolkit,
-  layerRemoteControlToolkit,
   layerAttachmentToolkit,
-  layerProjectRegistration,
-  layerEnvironmentToolkit,
-  layerWorkspacesToolkit,
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,
-  layerGitToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
   layerDocumentsToolkit,
@@ -1238,8 +1236,15 @@ export const layerTools = Layer.mergeAll(
  * Its session has no preview or device tools; its other tools are governed by grants.
  */
 export const layerOrchestratorTools = Layer.mergeAll(
+  toolkitRegistration(TeamworkToolkit, TeamworkHandlers.layer),
   layerOrchestratorToolkit,
   layerThreadToolkit,
+  layerSessionsToolkit,
+  layerRemoteControlToolkit,
+  layerWorkspacesToolkit,
+  layerGitToolkit,
+  layerDocumentsToolkit,
+  layerComputerUseToolkit,
   layerAttachmentToolkit,
   layerProjectRegistration,
   layerEnvironmentToolkit,

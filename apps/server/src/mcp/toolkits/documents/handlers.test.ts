@@ -45,7 +45,7 @@ const documentsLayer = ConversationDocumentService.layer.pipe(
 
 const call = (
   caller: McpInvocationContext.McpInvocationScope,
-  tool: "document_create" | "document_read" | "document_update" | "document_list",
+  tool: keyof typeof DocumentsToolkit.tools,
   input: unknown,
 ) =>
   Effect.gen(function* () {
@@ -67,6 +67,20 @@ it.layer(documentsLayer)("document tools", (it) => {
       expect(created).toMatchObject({ threadId, version: 1 });
       const documents = yield* ConversationDocumentService.ConversationDocumentService;
       expect((yield* documents.list(threadId)).documents[0]?.updatedBy).toBe("agent");
+      const id = (yield* documents.list(threadId)).documents[0]!.id;
+      yield* call(chat, "document_update", { id, expectedVersion: 1, content: "Two" });
+      expect(yield* call(chat, "document_versions", { id })).toMatchObject({
+        versions: [{ version: 2 }, { version: 1 }],
+      });
+      expect(yield* call(chat, "document_export", { id, version: 1 })).toMatchObject({
+        markdown: expect.stringContaining("One"),
+      });
+      yield* call(chat, "document_restore_version", { id, version: 1 });
+      expect((yield* documents.get({ id })).content).toBe("One");
+      yield* call(chat, "document_delete", { id });
+      expect((yield* documents.get({ id })).deletedAt).not.toBeNull();
+      yield* call(chat, "document_restore", { id });
+      expect((yield* documents.get({ id })).deletedAt).toBeNull();
     }),
   );
 
@@ -94,6 +108,17 @@ it.layer(documentsLayer)("document tools", (it) => {
         content: "Mine now",
       });
       expect(write).toMatchObject({ code: "invalid_request" });
+      for (const tool of [
+        "document_delete",
+        "document_restore",
+        "document_versions",
+        "document_restore_version",
+        "document_export",
+      ] as const) {
+        expect(yield* call(chat, tool, { id: theirs.id, version: 1 })).toMatchObject({
+          code: "invalid_request",
+        });
+      }
       expect((yield* documents.get({ id: theirs.id })).content).toBe("Secret");
     }),
   );

@@ -14,6 +14,7 @@ import type {
   ProjectId,
   ProviderInstanceId,
   RunId,
+  ThreadCapabilityMode,
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -143,6 +144,8 @@ export interface EnvironmentThreadShell {
   readonly modelSelection: OrchestrationV2ThreadShell["modelSelection"];
   readonly runtimeMode: OrchestrationV2ThreadShell["runtimeMode"];
   readonly interactionMode: OrchestrationV2ThreadShell["interactionMode"];
+  /** Absent means Code. */
+  readonly capabilityMode?: ThreadCapabilityMode;
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly lineage: OrchestrationV2ThreadShell["lineage"];
@@ -289,6 +292,7 @@ export function presentThreadShell(
     modelSelection: thread.modelSelection,
     runtimeMode: thread.runtimeMode,
     interactionMode: thread.interactionMode,
+    ...(thread.capabilityMode === undefined ? {} : { capabilityMode: thread.capabilityMode }),
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     pullRequests: threadPullRequestsOf(thread),

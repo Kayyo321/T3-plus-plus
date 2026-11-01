@@ -1,3 +1,4 @@
+import * as ConversationFolderService from "../conversationFolders/ConversationFolderService.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import { ScheduledTaskUpsertInput } from "@t3tools/contracts";
@@ -32,7 +33,14 @@ const dependencies = Layer.mergeAll(
   Layer.mock(ThreadManagementService.ThreadManagementService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
 );
-const serviceLayer = ScheduledTaskService.layer.pipe(Layer.provide(dependencies));
+const serviceLayer = ScheduledTaskService.layer.pipe(
+  Layer.provide(
+    Layer.mock(ConversationFolderService.ConversationFolderService)({
+      fileScheduledRun: () => Effect.succeed("scheduled" as never),
+    }),
+  ),
+  Layer.provide(dependencies),
+);
 const decodeInput = Schema.decodeUnknownEffect(ScheduledTaskUpsertInput);
 const input = {
   commandId: "interval-duration",
@@ -134,6 +142,11 @@ it.effect.each([
 // Each launch takes two minutes, so a manual run can start before the run time and end after it.
 const slowLaunchLayer = ScheduledTaskService.layer.pipe(
   Layer.provide(
+    Layer.mock(ConversationFolderService.ConversationFolderService)({
+      fileScheduledRun: () => Effect.succeed("scheduled" as never),
+    }),
+  ),
+  Layer.provide(
     Layer.merge(
       dependencies,
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({
@@ -228,6 +241,11 @@ it.effect.each([
         }),
       );
       const layer = ScheduledTaskService.layer.pipe(
+        Layer.provide(
+          Layer.mock(ConversationFolderService.ConversationFolderService)({
+            fileScheduledRun: () => Effect.succeed("scheduled" as never),
+          }),
+        ),
         Layer.provide(Layer.merge(dependencies, writeMidSave)),
       );
       yield* Effect.gen(function* () {
@@ -298,6 +316,11 @@ it.effect("reports the stored task when the row was replaced during the run", ()
       }),
     );
     const layer = ScheduledTaskService.layer.pipe(
+      Layer.provide(
+        Layer.mock(ConversationFolderService.ConversationFolderService)({
+          fileScheduledRun: () => Effect.succeed("scheduled" as never),
+        }),
+      ),
       Layer.provide(Layer.merge(dependencies, replaceRowDuringLaunch)),
     );
     yield* Effect.gen(function* () {

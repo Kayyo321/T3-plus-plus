@@ -1,7 +1,9 @@
 import {
+  BackgroundTask,
   CommandId,
   type OrchestrationV2ThreadShell,
-  type RunId,
+  RunId,
+  OrchestratorMcpFailure,
   type SupervisionSetThreadInput,
   SupervisionThreadState,
   type SupervisionThresholds,
@@ -15,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
@@ -26,6 +29,7 @@ import {
   ACTION_ITEM_TYPES,
   computeSignals,
   ownerIsPresent,
+  supervisionEnabled,
   type SupervisionSignal,
 } from "./supervisionSignals.ts";
 
@@ -33,6 +37,7 @@ const TICK = "1 minute";
 const RECENT_ITEM_LIMIT = 60;
 
 const StateJson = Schema.fromJsonString(SupervisionThreadState);
+const decodeTask = Schema.decodeUnknownOption(Schema.fromJsonString(BackgroundTask));
 const decodeState = Schema.decodeUnknownOption(StateJson);
 const encodeState = Schema.encodeSync(StateJson);
 
@@ -58,6 +63,11 @@ export class SupervisionMonitor extends Context.Service<
       readonly note: string;
       readonly snoozeMinutes?: number | undefined;
     }) => Effect.Effect<void>;
+    readonly governIntervention: <A, E, R>(
+      target: ThreadId | { readonly backgroundTaskId: string },
+      run: Effect.Effect<A, E, R>,
+      expectedRunId?: RunId,
+    ) => Effect.Effect<A, E | OrchestratorMcpFailure, R>;
     readonly status: Effect.Effect<
       ReadonlyArray<{
         readonly threadId: ThreadId;
@@ -106,12 +116,31 @@ const make = Effect.gen(function* () {
       );
     });
 
+  const unattended = sql<{ readonly threadId: string }>`
+    SELECT thread_id AS "threadId" FROM scheduled_task_runs WHERE finished_at IS NULL AND thread_id IS NOT NULL
+    UNION SELECT thread_id AS "threadId" FROM background_tasks WHERE state IN ('running', 'needs_input')
+    UNION SELECT json_extract(task_json, '$.childThreadId') AS "threadId" FROM background_tasks
+      WHERE state IN ('running', 'needs_input') AND json_extract(task_json, '$.childThreadId') IS NOT NULL
+    UNION SELECT json_extract(member.value, '$.threadId') AS "threadId"
+      FROM teamwork_runs, json_each(run_json, '$.members') AS member
+      WHERE json_extract(run_json, '$.status') = 'running' AND json_extract(member.value, '$.threadId') IS NOT NULL
+  `.pipe(
+    Effect.orDie,
+    Effect.map((rows) => new Set(rows.map((row) => ThreadId.make(row.threadId)))),
+  );
+
+  const interventions = yield* Semaphore.make(1);
+
   const stateFor = (threadId: ThreadId) => states.get(threadId) ?? OFF;
 
   const setThreadMode: SupervisionMonitor["Service"]["setThreadMode"] = Effect.fn(
     "SupervisionMonitor.setThreadMode",
   )(function* (input) {
-    yield* save(input.threadId, { ...stateFor(input.threadId), mode: input.mode });
+    yield* save(input.threadId, {
+      ...stateFor(input.threadId),
+      mode: input.mode,
+      automatic: false,
+    });
     yield* audit.record({
       actor: "user",
       domain: "supervision",
@@ -119,7 +148,7 @@ const make = Effect.gen(function* () {
       outcome: "succeeded",
       threadId: input.threadId,
     });
-  });
+  }, interventions.withPermits(1));
 
   const escalate = Effect.fn("SupervisionMonitor.escalate")(function* (
     shell: OrchestrationV2ThreadShell,
@@ -169,15 +198,22 @@ const make = Effect.gen(function* () {
         });
       }
     },
+    interventions.withPermits(1),
   );
 
   const reviewPrompt = (
     shell: OrchestrationV2ThreadShell,
     signals: ReadonlyArray<SupervisionSignal>,
+    backgroundTaskId?: string,
   ) =>
     [
       `Supervision: ${formatThreadLink({ environmentId, threadId: shell.id })} may be stuck.`,
       ...signals.map((signal) => `- ${signal.kind}: ${signal.detail}`),
+      ...(backgroundTaskId === undefined
+        ? []
+        : [
+            `The parent is idle; inspect background task ${backgroundTaskId} with background_task_log before deciding what to do.`,
+          ]),
       "",
       "Read its recent activity with t3_thread_read (view: activity) and judge whether it is making progress, waiting on something legitimate, stuck, or looping. In order of preference: leave it, talk to its agent with t3_thread_send, help directly by answering what it is blocked on, escalate to the owner, or interrupt or stop it. End by calling supervision_decide unless you sent it a message.",
     ].join("\n");
@@ -187,12 +223,44 @@ const make = Effect.gen(function* () {
     state: SupervisionThreadState,
     thresholds: SupervisionThresholds,
   ) {
-    const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
-    if (shell === null || shell.activeRunId === null) return;
+    state = states.get(threadId) ?? state;
+    if (state.mode === "off") return;
+    const actual = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+    if (actual === null) return;
+    const backgroundRows =
+      actual.activeRunId !== null
+        ? []
+        : yield* sql<{
+            readonly json: string;
+          }>`SELECT task_json AS json FROM background_tasks WHERE thread_id = ${threadId} AND state = 'running' ORDER BY started_at`.pipe(
+            Effect.orDie,
+          );
+    const background = backgroundRows
+      .flatMap((row) => Option.toArray(decodeTask(row.json)))
+      .find((task) => task.kind === "command");
+    const shell =
+      actual.activeRunId !== null || background === undefined
+        ? actual
+        : {
+            ...actual,
+            activeRunId: RunId.make(`background:${background.id}`),
+            latestRunStartedAt: DateTime.makeUnsafe(background.startedAt),
+            updatedAt: DateTime.makeUnsafe(background.updatedAt),
+            pendingRuntimeRequest: null,
+          };
+    if (shell.activeRunId === null) return;
     const current: SupervisionThreadState =
       state.runId === shell.activeRunId
         ? state
-        : { ...state, runId: shell.activeRunId as RunId, reviews: 0, escalatedAt: null };
+        : {
+            ...state,
+            runId: shell.activeRunId as RunId,
+            reviews: 0,
+            nudges: 0,
+            lastReviewAt: null,
+            lastNudgeAt: null,
+            escalatedAt: null,
+          };
     if (current !== state) yield* save(threadId, current);
 
     const now = yield* DateTime.now;
@@ -223,11 +291,11 @@ const make = Effect.gen(function* () {
     });
     if (signals.length === 0) return;
 
-    if (current.reviews >= thresholds.nudgeCap) {
+    if ((current.nudges ?? 0) >= thresholds.nudgeCap) {
       if (current.escalatedAt === null) {
         yield* escalate(
           shell,
-          `${shell.title} still looks stuck after ${current.reviews} reviews: ${signals[0]?.detail ?? ""}`,
+          `${shell.title} still looks stuck after ${current.nudges ?? 0} nudges: ${signals[0]?.detail ?? ""}`,
         );
       }
       return;
@@ -245,11 +313,103 @@ const make = Effect.gen(function* () {
       threadId,
       request: signals.map((signal) => `${signal.kind}: ${signal.detail}`).join("; "),
     });
-    yield* agent.review(reviewPrompt(shell, signals));
+    yield* agent.review(reviewPrompt(shell, signals, background?.id), {
+      threadId,
+      runId: shell.activeRunId,
+    });
+  }, interventions.withPermits(1));
+
+  const governIntervention: SupervisionMonitor["Service"]["governIntervention"] = Effect.fn(
+    "SupervisionMonitor.governIntervention",
+  )(function* (target, run, expectedRunId) {
+    const threadId =
+      typeof target === "string"
+        ? target
+        : (yield* sql<{
+            threadId: ThreadId;
+          }>`SELECT thread_id AS "threadId" FROM background_tasks WHERE id = ${target.backgroundTaskId}`.pipe(
+            Effect.orDie,
+          ))[0]?.threadId;
+    if (threadId === undefined)
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: "That background task no longer exists.",
+      });
+    yield* interventions.withPermits(1)(
+      Effect.gen(function* () {
+        const state = states.get(threadId);
+        if (
+          state === undefined ||
+          state.reviews === 0 ||
+          (expectedRunId !== undefined && expectedRunId !== state.runId)
+        )
+          return yield* new OrchestratorMcpFailure({
+            code: "capability_denied",
+            message: "The reviewed run has ended or changed.",
+          });
+        const automatic = yield* unattended;
+        const shell = yield* threads
+          .getThreadShell(threadId)
+          .pipe(Effect.orElseSucceed(() => null));
+        const backgroundRun =
+          shell?.activeRunId == null
+            ? (yield* sql<{
+                id: string;
+              }>`SELECT id FROM background_tasks WHERE thread_id = ${threadId} AND state = 'running' AND json_extract(task_json, '$.kind') = 'command' ORDER BY started_at LIMIT 1`.pipe(
+                Effect.orDie,
+              ))[0]
+            : undefined;
+        const runId =
+          shell?.activeRunId ??
+          (backgroundRun === undefined ? null : `background:${backgroundRun.id}`);
+        const snapshot = yield* agent.snapshot.pipe(Effect.orDie);
+        const now = yield* DateTime.now;
+        const nowMs = DateTime.toEpochMillis(now);
+        const reason = !supervisionEnabled(state, automatic.has(threadId))
+          ? "The owner chose let it run, or unattended work ended."
+          : shell === null || runId !== state.runId
+            ? "The reviewed run has ended or changed."
+            : ownerIsPresent(shell, now)
+              ? "The owner is present."
+              : snapshot.supervision.status !== "active"
+                ? snapshot.supervision.reason
+                : state.snoozedUntil !== null && Date.parse(state.snoozedUntil) > nowMs
+                  ? "Supervision is snoozed."
+                  : state.lastNudgeAt != null &&
+                      nowMs - Date.parse(state.lastNudgeAt) <
+                        snapshot.thresholds.cooldownMinutes * 60_000
+                    ? "The supervision nudge cooldown is active."
+                    : (state.nudges ?? 0) >= snapshot.thresholds.nudgeCap
+                      ? "The supervision nudge cap was reached."
+                      : null;
+        if (reason !== null)
+          return yield* new OrchestratorMcpFailure({ code: "capability_denied", message: reason });
+        // Reserve before dispatch: failures may have applied a partial side effect.
+        yield* save(threadId, {
+          ...state,
+          nudges: (state.nudges ?? 0) + 1,
+          lastNudgeAt: DateTime.formatIso(now),
+        });
+        yield* audit.record({
+          actor: "orchestrator",
+          domain: "supervision",
+          action: "nudge",
+          outcome: "pending",
+          threadId,
+        });
+      }),
+    );
+    return yield* run;
   });
 
   const tick: SupervisionMonitor["Service"]["tick"] = Effect.gen(function* () {
-    const watched = [...states].filter(([, state]) => state.mode === "on");
+    const automatic = yield* unattended;
+    const candidates = new Set([...states.keys(), ...automatic]);
+    const watched = [...candidates]
+      .filter((id) => supervisionEnabled(states.get(id), automatic.has(id)))
+      .map(
+        (id) => [id, states.get(id) ?? { ...OFF, mode: "on" as const, automatic: true }] as const,
+      );
     yield* agent.setWatching(watched.length);
     if (watched.length === 0) return;
     const snapshot = yield* agent.snapshot.pipe(Effect.option);
@@ -267,15 +427,29 @@ const make = Effect.gen(function* () {
 
   return SupervisionMonitor.of({
     threadState: Effect.fn("SupervisionMonitor.threadState")(function* (threadId) {
-      return stateFor(threadId);
+      const state = states.get(threadId);
+      const automatic = yield* unattended;
+      return state === undefined
+        ? automatic.has(threadId)
+          ? { ...OFF, mode: "on", automatic: true }
+          : OFF
+        : state.automatic === true && !automatic.has(threadId)
+          ? { ...state, mode: "off" }
+          : state;
     }),
     setThreadMode,
     decide,
-    status: Effect.sync(() =>
-      [...states]
-        .filter(([, state]) => state.mode === "on")
-        .map(([threadId, state]) => ({ threadId, state })),
-    ),
+    governIntervention,
+    status: Effect.gen(function* () {
+      const automatic = yield* unattended;
+      const candidates = new Set([...states.keys(), ...automatic]);
+      return [...candidates]
+        .filter((id) => supervisionEnabled(states.get(id), automatic.has(id)))
+        .map((threadId) => ({
+          threadId,
+          state: states.get(threadId) ?? { ...OFF, mode: "on" as const, automatic: true },
+        }));
+    }),
     tick,
   });
 });

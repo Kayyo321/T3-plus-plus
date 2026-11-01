@@ -1,5 +1,9 @@
 import {
   ConversationDocument,
+  ConversationDocumentIdInput,
+  ConversationDocumentRestoreVersionInput,
+  ConversationDocumentListVersionsResult,
+  ConversationDocumentExportResult,
   ConversationDocumentCreateInput,
   ConversationDocumentGetInput,
   ConversationDocumentListResult,
@@ -70,7 +74,54 @@ const DocumentUpdateTool = Tool.make("document_update", {
   .annotate(Tool.Destructive, false)
   .annotate(McpSchema.EnabledWhen, enabledWithDocuments);
 
+const DocumentDeleteTool = Tool.make("document_delete", {
+  ...documentTool,
+  description: "Hide a document of this conversation. Restore it with document_restore.",
+  parameters: ConversationDocumentIdInput,
+  success: ConversationDocument,
+})
+  .annotate(Tool.Destructive, true)
+  .annotate(McpSchema.EnabledWhen, enabledWithDocuments);
+const DocumentRestoreTool = Tool.make("document_restore", {
+  ...documentTool,
+  description: "Restore a deleted document of this conversation, keeping its history.",
+  parameters: ConversationDocumentIdInput,
+  success: ConversationDocument,
+})
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, enabledWithDocuments);
+const DocumentVersionsTool = Tool.make("document_versions", {
+  ...documentTool,
+  description: "List retained versions of a document of this conversation.",
+  parameters: ConversationDocumentIdInput,
+  success: ConversationDocumentListVersionsResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(McpSchema.EnabledWhen, enabledWithDocuments);
+const DocumentRestoreVersionTool = Tool.make("document_restore_version", {
+  ...documentTool,
+  description: "Copy a retained version into a new current version without deleting history.",
+  parameters: ConversationDocumentRestoreVersionInput,
+  success: ConversationDocument,
+})
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, enabledWithDocuments);
+const DocumentExportTool = Tool.make("document_export", {
+  ...documentTool,
+  description:
+    "Export a document of this conversation as Markdown text and a suggested filename; writes no project files.",
+  parameters: ConversationDocumentGetInput,
+  success: ConversationDocumentExportResult,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(McpSchema.EnabledWhen, enabledWithDocuments);
+
 export const DocumentsToolkit = Toolkit.make(
+  DocumentDeleteTool,
+  DocumentRestoreTool,
+  DocumentVersionsTool,
+  DocumentRestoreVersionTool,
+  DocumentExportTool,
   DocumentListTool,
   DocumentReadTool,
   DocumentCreateTool,

@@ -1,3 +1,4 @@
+import * as TeamworkService from "./teamwork/TeamworkService.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -1095,6 +1096,7 @@ export const layerWsRpc = (
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const auditTrail = yield* AuditTrail.AuditTrail;
+      const teamwork = yield* TeamworkService.TeamworkService;
       const orchestratorAgent = yield* OrchestratorAgent.OrchestratorAgent;
       const supervision = yield* SupervisionMonitor.SupervisionMonitor;
       const gitGraph = yield* GitGraphService.GitGraphService;
@@ -1894,6 +1896,9 @@ export const layerWsRpc = (
                     modelSelection: input.modelSelection,
                     runtimeMode: input.runtimeMode,
                     interactionMode: input.interactionMode,
+                    ...(input.capabilityMode === undefined
+                      ? {}
+                      : { capabilityMode: input.capabilityMode }),
                     workspaceStrategy: input.workspaceStrategy,
                     ...(input.initialMessage === undefined
                       ? {}
@@ -2005,6 +2010,11 @@ export const layerWsRpc = (
         [WS_METHODS.gitGraphPreview]: (input) => gitActions.preview(input),
         [WS_METHODS.gitGraphAct]: (input) => gitActions.act(input, { actor: "user" }),
         [WS_METHODS.gitGraphDraftMessage]: (input) => gitActions.draftMessage(input),
+        [WS_METHODS.teamworkStart]: (input) => teamwork.start(input, clientActor),
+        [WS_METHODS.teamworkAct]: (input) => teamwork.act(input, clientActor),
+        [WS_METHODS.teamworkStartMember]: (input) => teamwork.startMember(input, clientActor),
+        [WS_METHODS.teamworkList]: (input) => teamwork.list(input),
+        [WS_METHODS.teamworkSubscribe]: (_input) => teamwork.changes,
         [WS_METHODS.auditList]: (input) => auditTrail.list(input),
         [WS_METHODS.auditSubscribe]: (_input) => auditTrail.changes,
         [WS_METHODS.threadRewindPreview]: (input) => threadBranches.previewRewind(input),

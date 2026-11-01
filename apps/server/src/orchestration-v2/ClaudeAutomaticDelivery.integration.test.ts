@@ -1,3 +1,4 @@
+import * as ConversationFolderService from "../conversationFolders/ConversationFolderService.ts";
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -322,6 +323,11 @@ it.effect.each(deliveries)(
             }).pipe(
               Effect.provide(
                 ScheduledTaskService.layer.pipe(
+                  Layer.provide(
+                    Layer.mock(ConversationFolderService.ConversationFolderService)({
+                      fileScheduledRun: () => Effect.succeed("scheduled" as never),
+                    }),
+                  ),
                   Layer.provide(ThreadManagementService.layer),
                   Layer.provide(ServerSettings.layerTest()),
                   Layer.provide(

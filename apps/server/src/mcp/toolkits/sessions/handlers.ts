@@ -172,6 +172,14 @@ export const layer = McpToolAccess.toLayer(SessionsToolkit, {
       return yield* tasks.readLog(input).pipe(Effect.mapError(toFailure));
     }),
   ),
+  background_task_remove: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      yield* (yield* BackgroundTaskService.BackgroundTaskService)
+        .remove(input, yield* agentActor)
+        .pipe(Effect.mapError(toFailure));
+      return {};
+    }),
+  ),
   background_task_stop: McpToolAccess.actsAsCaller((input) =>
     Effect.gen(function* () {
       const tasks = yield* BackgroundTaskService.BackgroundTaskService;

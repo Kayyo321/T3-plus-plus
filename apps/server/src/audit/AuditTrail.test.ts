@@ -5,6 +5,8 @@ import * as Layer from "effect/Layer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 
 import * as Sqlite from "../persistence/Sqlite.ts";
+import { makeSecretMask } from "@t3tools/shared/secretRedaction";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
 import * as AuditTrail from "./AuditTrail.ts";
 
 const TestLayer = AuditTrail.layer.pipe(
@@ -49,6 +51,8 @@ it.layer(TestLayer)("AuditTrail", (it) => {
   it.effect("caps free text", () =>
     Effect.gen(function* () {
       const audit = yield* AuditTrail.AuditTrail;
+      const masks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
+      const release = masks.add(makeSecretMask([{ name: "TOKEN", value: "audit-secret-value" }]));
       yield* audit.record({
         actor: "remote-guest",
         actorLabel: "Pixel 8",
@@ -56,9 +60,14 @@ it.layer(TestLayer)("AuditTrail", (it) => {
         action: "message.send",
         outcome: "succeeded",
         request: "x".repeat(AUDIT_TEXT_MAX_CHARS + 50),
+        result: "audit-secret-value",
+        target: { kind: "device", id: "device", label: "audit-secret-value" },
       });
       const { entries } = yield* audit.list({ actor: "remote-guest", limit: 1 });
+      release();
       assert.strictEqual(entries[0]?.request?.length, AUDIT_TEXT_MAX_CHARS);
+      assert.equal(entries[0]?.result, "[secret:TOKEN]");
+      assert.notInclude(JSON.stringify(entries), "audit-secret-value");
     }),
   );
 });

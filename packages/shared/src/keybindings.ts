@@ -209,6 +209,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+o", command: "chat.new", when: "!terminalFocus" },
   { key: "mod+shift+n", command: "chat.newLocal", when: "!terminalFocus" },
   { key: "mod+alt+n", command: "chat.newWithoutProject", when: "!terminalFocus" },
+  { key: "mod+alt+c", command: "chat.toggleCapabilityMode", when: "!terminalFocus" },
   { key: "mod+f", command: "chat.find", when: "!terminalFocus && !previewFocus" },
   { key: "mod+shift+m", command: "modelPicker.toggle", when: "!terminalFocus" },
   { key: "mod+shift+h", command: "composer.host", when: "!terminalFocus" },
@@ -231,7 +232,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+alt+z", command: "thread.rewind", when: "!terminalFocus" },
   { key: "mod+alt+f", command: "thread.fork", when: "!terminalFocus" },
   { key: "mod+alt+j", command: "thread.newNestedSession", when: "!terminalFocus" },
-  { key: "mod+alt+g", command: "thread.runInBackground", when: "!terminalFocus" },
+  { key: "mod+alt+u", command: "thread.runInBackground", when: "!terminalFocus" },
+  { key: "mod+alt+shift+s", command: "computerUse.stop" },
   ...THREAD_JUMP_KEYBINDING_COMMANDS.map((command, index) => ({
     key: `mod+${index + 1}`,
     command,

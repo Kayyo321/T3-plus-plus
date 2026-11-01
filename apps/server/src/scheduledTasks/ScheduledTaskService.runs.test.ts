@@ -1,7 +1,9 @@
+import * as ConversationFolderService from "../conversationFolders/ConversationFolderService.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import {
   type MessageId,
+  OrchestratorAgentError,
   RunId,
   ScheduledTaskUpsertInput,
   type ScheduledTaskRunPolicy,
@@ -14,6 +16,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
@@ -39,8 +42,10 @@ const decodeInput = Schema.decodeUnknownEffect(ScheduledTaskUpsertInput);
 const makeHarness = () => {
   const runs = new Map<string, FakeRun>();
   const prompts: string[] = [];
+  const filed: ThreadId[] = [];
   const interrupted: string[] = [];
   let launches = 0;
+  let brainAvailable = false;
 
   const startRun = (messageId: MessageId, prompt: string, startedAtMs: number) => {
     launches += 1;
@@ -72,7 +77,35 @@ const makeHarness = () => {
 
   const layer = ScheduledTaskService.layer.pipe(
     Layer.provide(
+      Layer.mock(ConversationFolderService.ConversationFolderService)({
+        fileScheduledRun: (id) =>
+          Effect.sync(() => {
+            filed.push(id);
+            return "scheduled" as never;
+          }),
+      }),
+    ),
+    Layer.provide(
       Layer.mergeAll(
+        Layer.mock(OrchestratorAgent.OrchestratorAgent)({
+          snapshot: Effect.succeed({ threadId: ThreadId.make("brain") } as never),
+          send: (input, scheduled) =>
+            Effect.suspend(() =>
+              brainAvailable
+                ? Clock.currentTimeMillis.pipe(
+                    Effect.map((now) => {
+                      startRun(scheduled!.messageId, input.text, now);
+                      return { threadId: ThreadId.make("brain") };
+                    }),
+                  )
+                : Effect.fail(
+                    new OrchestratorAgentError({
+                      reason: "blocked",
+                      detail: "Claude is signed out.",
+                    }),
+                  ),
+            ),
+        }),
         NodeCrypto.layer,
         Scheduler.layer,
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({
@@ -136,9 +169,13 @@ const makeHarness = () => {
   return {
     layer,
     prompts,
+    filed,
     interrupted,
     activeRun: () => [...runs.values()].at(-1) as FakeRun,
     launches: () => launches,
+    fixBrain: () => {
+      brainAvailable = true;
+    },
   };
 };
 
@@ -353,6 +390,7 @@ it.effect("a repeater stops when a run reports its condition is met", () =>
       );
       const { threadId } = yield* service.runNow({ id: task.id });
       expect(harness.prompts[0]).toContain("Stop when: all tests pass");
+      expect(harness.filed).toEqual([threadId]);
       yield* service.reportRun(threadId as ThreadId, { verdict: "done", summary: "Green." });
       harness.activeRun().status = "completed";
       yield* service.runDueWork;
@@ -403,7 +441,7 @@ it.effect("a repeater stops on a failed pass instead of retrying it", () =>
       yield* service.runNow({ id: task.id });
       harness.activeRun().status = "failed";
       yield* service.runDueWork;
-      expect((yield* service.list()).tasks[0]?.enabled).toBe(false);
+      expect((yield* service.list()).tasks[0]).toMatchObject({ enabled: false, nextRunAt: null });
     }),
   ),
 );
@@ -521,4 +559,35 @@ it.effect("refuses a cron expression that never comes up", () =>
       expect(error.message).toBe("This cron expression never comes up.");
     }),
   ),
+);
+
+it.effect(
+  "parks a scheduled orchestrator request with the same blocked reason, without launching elsewhere",
+  () =>
+    withHarness((harness, service) =>
+      Effect.gen(function* () {
+        const input = yield* taskInput({ type: "interval", everyMs: 60_000 });
+        const { task } = yield* service.upsert({ ...input, threadId: ThreadId.make("brain") });
+        yield* service.runNow({ id: task.id });
+        const run = (yield* service.listRuns({ id: task.id })).runs[0];
+        expect(run).toMatchObject({
+          outcome: "needs_input",
+          error: "Claude is signed out.",
+          threadId: "brain",
+          finishedAt: null,
+        });
+        expect((yield* service.list()).tasks[0]).toMatchObject({ enabled: false, nextRunAt: null });
+        expect(harness.launches()).toBe(0);
+        yield* service.runDueWork;
+        expect((yield* service.listRuns({ id: task.id })).runs[0]?.outcome).toBe("needs_input");
+        harness.fixBrain();
+        yield* TestClock.adjust("1 second");
+        yield* service.runNow({ id: task.id });
+        expect((yield* service.listRuns({ id: task.id })).runs.map((run) => run.outcome)).toEqual([
+          "running",
+          "cancelled",
+        ]);
+        expect((yield* service.list()).tasks[0]).toMatchObject({ enabled: false, nextRunAt: null });
+      }),
+    ),
 );

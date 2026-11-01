@@ -199,12 +199,22 @@ const BackgroundTaskStopTool = Tool.make("background_task_stop", {
   .annotate(Tool.Title, "Stop a background task")
   .annotate(Tool.Destructive, true);
 
+const BackgroundTaskRemoveTool = Tool.make("background_task_remove", {
+  ...base,
+  description:
+    "Remove a finished background task and its retained log. Stop a live task first. This cannot be undone.",
+  parameters: Schema.Struct({ id: BackgroundTaskId }),
+  success: Schema.Struct({}),
+  dependencies: backgroundDependencies,
+}).annotate(Tool.Destructive, true);
+
 export const SessionsToolkit = Toolkit.make(
   StartNestedSessionTool,
   ReportToParentTool,
   ThreadCloseTool,
   ThreadRewindTool,
   ThreadForkPreviewTool,
+  BackgroundTaskRemoveTool,
   BackgroundTaskStartTool,
   BackgroundTaskListTool,
   BackgroundTaskLogTool,

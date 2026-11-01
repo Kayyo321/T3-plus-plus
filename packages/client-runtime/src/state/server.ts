@@ -1182,6 +1182,26 @@ export function createServerEnvironmentAtoms<R, E>(
   });
 
   return {
+    teamworkList: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:teamwork:list",
+      tag: WS_METHODS.teamworkList,
+    }),
+    teamworkChanges: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:teamwork:changes",
+      tag: WS_METHODS.teamworkSubscribe,
+    }),
+    startTeamwork: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:start",
+      tag: WS_METHODS.teamworkStart,
+    }),
+    actTeamwork: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:act",
+      tag: WS_METHODS.teamworkAct,
+    }),
+    startTeamMember: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:member-start",
+      tag: WS_METHODS.teamworkStartMember,
+    }),
     configValueAtom,
     runStorageCleanup: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:run-storage-cleanup",

@@ -284,6 +284,7 @@ const make = Effect.gen(function* () {
       !(yield* sharingEnabled) ||
       !share ||
       share.id !== claims.value.shareId ||
+      thread.lineage.orchestrator === true ||
       thread.archivedAt !== null ||
       thread.deletedAt !== null ||
       DateTime.toEpochMillis(now) >= Date.parse(share.expiresAt) ||
@@ -306,6 +307,9 @@ const make = Effect.gen(function* () {
     const current = yield* orchestrator
       .getThreadRecords(input.threadId, [])
       .pipe(Effect.mapError(() => new GuestShareCreateError({ reason: "thread_unavailable" })));
+    if (current.thread.lineage.orchestrator === true) {
+      return yield* new GuestShareCreateError({ reason: "thread_unavailable" });
+    }
     if (isRemoteControlShare(current.thread.guestShare)) {
       return yield* new GuestShareCreateError({ reason: "remote_control_active" });
     }

@@ -95,6 +95,20 @@ const browserDriver = Effect.fn("ComputerUseToolkit.browserDriver")(function* (
 });
 
 export const layerStandard = McpToolAccess.toLayer(ComputerUseStandardToolkit, {
+  computer_stop: McpToolAccess.actsAsCaller(() =>
+    Effect.gen(function* () {
+      const scope = yield* computerCaller;
+      return yield* (yield* ComputerUseService.ComputerUseService).stop(scope.thread.threadId);
+    }),
+  ),
+  computer_steps: McpToolAccess.readsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* computerCaller;
+      return yield* (yield* ComputerUseService.ComputerUseService)
+        .listSteps({ ...input, threadId: scope.thread.threadId })
+        .pipe(Effect.mapError(toFailure));
+    }),
+  ),
   computer_status: McpToolAccess.readsAsCaller(() =>
     Effect.gen(function* () {
       const scope = yield* computerCaller;

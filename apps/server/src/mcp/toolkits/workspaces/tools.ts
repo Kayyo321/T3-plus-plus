@@ -9,6 +9,9 @@ import {
   ProjectId,
   ThreadId,
   WorkspaceName,
+  WorkspaceId,
+  WorkspaceUpsertInput,
+  IsoDateTime,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
@@ -32,10 +35,15 @@ const WorkspaceListTool = Tool.make("t3_workspace_list", {
   ...shared,
   description:
     "List workspaces: folders, working root, secret names, and what each is attached to. Secret values are never available here or anywhere else; programs read them from their environment.",
-  parameters: Schema.Struct({ environmentId: OrchestratorMcpEnvironmentTarget }),
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    includeDeleted: Schema.optional(Schema.Boolean),
+  }),
   success: Schema.Struct({
     workspaces: Schema.Array(
       Schema.Struct({
+        id: WorkspaceId,
+        deletedAt: Schema.NullOr(IsoDateTime),
         name: WorkspaceName,
         folders: Schema.Array(Schema.String),
         workingRoot: Schema.String,
@@ -48,6 +56,31 @@ const WorkspaceListTool = Tool.make("t3_workspace_list", {
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false);
+
+const WorkspaceUpsertTool = Tool.make("t3_workspace_upsert", {
+  ...shared,
+  description:
+    "Create or edit a workspace's name, folders, and working root. Existing security settings and secrets stay owner-only. List with includeDeleted to find a deleted workspace, then restore it.",
+  parameters: Schema.Struct({
+    environmentId: OrchestratorMcpEnvironmentTarget,
+    ...WorkspaceUpsertInput.mapFields(({ settings: _settings, ...fields }) => fields).fields,
+  }),
+  success: Schema.Struct({ id: WorkspaceId }),
+}).annotate(Tool.Destructive, false);
+const WorkspaceDeleteTool = Tool.make("t3_workspace_delete", {
+  ...shared,
+  description:
+    "Soft-delete a workspace by id. Stops secret injection and can be reversed with t3_workspace_restore. Does not delete project files.",
+  parameters: Schema.Struct({ environmentId: OrchestratorMcpEnvironmentTarget, id: WorkspaceId }),
+  success: Schema.Struct({}),
+}).annotate(Tool.Destructive, true);
+const WorkspaceRestoreTool = Tool.make("t3_workspace_restore", {
+  ...shared,
+  description:
+    "Restore a soft-deleted workspace, including its previous attachments and credentials. Ask the owner before restoring access.",
+  parameters: Schema.Struct({ environmentId: OrchestratorMcpEnvironmentTarget, id: WorkspaceId }),
+  success: Schema.Struct({ id: WorkspaceId }),
+}).annotate(Tool.Destructive, false);
 
 const WorkspaceAttachTool = Tool.make("t3_workspace_attach", {
   ...shared,
@@ -98,6 +131,9 @@ const FolderUpdateTool = Tool.make("t3_folder_update", {
 }).annotate(Tool.Destructive, false);
 
 export const WorkspacesToolkit = Toolkit.make(
+  WorkspaceUpsertTool,
+  WorkspaceDeleteTool,
+  WorkspaceRestoreTool,
   WorkspaceListTool,
   WorkspaceAttachTool,
   FolderListTool,

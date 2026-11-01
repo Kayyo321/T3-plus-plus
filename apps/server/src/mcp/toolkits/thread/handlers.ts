@@ -196,6 +196,33 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
         }),
     ),
   ),
+  t3_thread_capability: McpToolAccess.either(
+    (input) => input.mode === undefined,
+    McpToolAccess.reads((input) =>
+      Effect.gen(function* () {
+        const {
+          projection: { thread },
+        } = yield* readThread(input.threadId);
+        return { mode: thread.capabilityMode ?? "code" };
+      }),
+    ),
+    writesThread((input) =>
+      Effect.gen(function* () {
+        const {
+          threads,
+          projection: { thread },
+        } = yield* readThread(input.threadId);
+        return yield* threads
+          .dispatch({
+            type: "thread.capability-mode.set",
+            commandId: yield* newCommandId(),
+            threadId: thread.id,
+            capabilityMode: yield* required(input.mode, "mode"),
+          })
+          .pipe(Effect.mapError(dispatchFailure));
+      }),
+    ),
+  ),
   t3_thread_configure: McpToolAccess.either(
     (input) => input.modelSelection === undefined,
     McpToolAccess.reads((input) =>

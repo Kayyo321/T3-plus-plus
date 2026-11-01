@@ -7,6 +7,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { ComputerUseAnswerApprovalInput } from "./computerUse.ts";
 import { GuestDisplayName, ThreadGuestMessage } from "./guestShare.ts";
 import { GuestThreadModel } from "./guestStream.ts";
 import { OrchestrationV2ThreadStreamItem } from "./orchestrationV2.ts";
@@ -395,3 +396,12 @@ export const RemoteControlStreamEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("ended"), reason: RemoteControlEndReason }),
 ]);
 export type RemoteControlStreamEvent = typeof RemoteControlStreamEvent.Type;
+
+export const REMOTE_CONTROL_COMPUTER_STREAM_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/computer/stream`;
+export const REMOTE_CONTROL_COMPUTER_SCREENSHOT_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/computer/screenshot`;
+export const REMOTE_CONTROL_COMPUTER_APPROVAL_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/computer/approval`;
+export const REMOTE_CONTROL_COMPUTER_STOP_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/computer/stop`;
+export const RemoteControlComputerApprovalRequest = ComputerUseAnswerApprovalInput.mapFields(
+  ({ threadId: _threadId, ...fields }) => fields,
+);
+export type RemoteControlComputerApprovalRequest = typeof RemoteControlComputerApprovalRequest.Type;

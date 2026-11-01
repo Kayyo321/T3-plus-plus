@@ -1,3 +1,5 @@
+import * as ConversationFolderService from "../conversationFolders/ConversationFolderService.ts";
+import * as TeamworkService from "../teamwork/TeamworkService.ts";
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as OrchestratorTurnContext from "../orchestratorAgent/OrchestratorTurnContext.ts";
@@ -293,7 +295,26 @@ const layerThreadLaunchProvided = ThreadLaunchService.layer.pipe(
 const layerSecretRequestsProvided = SecretRequests.layer.pipe(
   Layer.provide(layerThreadManagementProvided),
 );
+const layerOrchestratorAgentProvided = OrchestratorAgent.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      AuditTrail.layer,
+      OrchestratorTurnContext.layer,
+      layerOrchestratorProvided,
+      layerThreadManagementProvided,
+      layerManagedProjectFoldersProvided,
+    ),
+  ),
+);
+
 const layerScheduledTaskProvided = ScheduledTaskService.layer.pipe(
+  Layer.provide(layerOrchestratorAgentProvided),
+  Layer.provide(
+    ConversationFolderService.layer.pipe(
+      Layer.provide(ProjectionStore.layer),
+      Layer.provide(AuditTrail.layer),
+    ),
+  ),
   Layer.provide(
     Layer.mergeAll(
       AuditTrail.layer,
@@ -381,18 +402,6 @@ export const layer = Layer.mergeAll(
   layerLegacyV1ThreadImporterProvided,
 );
 
-const layerOrchestratorAgentProvided = OrchestratorAgent.layer.pipe(
-  Layer.provide(
-    Layer.mergeAll(
-      AuditTrail.layer,
-      OrchestratorTurnContext.layer,
-      layerOrchestratorProvided,
-      layerThreadManagementProvided,
-      layerManagedProjectFoldersProvided,
-    ),
-  ),
-);
-
 const layerGitGraphService = GitGraphService.layer.pipe(
   Layer.provide(ConversationAttribution.layer),
 );
@@ -407,7 +416,24 @@ const layerGitGraph = Layer.merge(
   ),
 );
 
+const layerNestedSessionsProvided = NestedSessionService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      layerThreadManagementProvided,
+      layerThreadLaunchProvided,
+      ProjectionStore.layer,
+      ProjectStore.layer,
+      AuditTrail.layer,
+    ),
+  ),
+);
+
 export const layerProduction = Layer.mergeAll(
+  TeamworkService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(layerNestedSessionsProvided, layerThreadManagementProvided, AuditTrail.layer),
+    ),
+  ),
   layer.pipe(Layer.provide(layerProjectService)),
   layerProjectService,
   AuditTrail.layer,
@@ -422,17 +448,7 @@ export const layerProduction = Layer.mergeAll(
     ),
   ),
   layerGitGraph,
-  NestedSessionService.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        layerThreadManagementProvided,
-        layerThreadLaunchProvided,
-        ProjectionStore.layer,
-        ProjectStore.layer,
-        AuditTrail.layer,
-      ),
-    ),
-  ),
+  layerNestedSessionsProvided,
   ThreadBranchService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(

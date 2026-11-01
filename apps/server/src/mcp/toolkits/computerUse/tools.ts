@@ -2,6 +2,8 @@ import {
   ComputerUseActInput,
   ComputerUseActResult,
   ComputerUseState,
+  ComputerUseListStepsInput,
+  ComputerUseListStepsResult,
   OrchestratorMcpFailure,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -66,5 +68,33 @@ const ComputerActTool = Tool.make("computer_act", {
   .annotate(Tool.OpenWorld, true)
   .annotate(McpSchema.EnabledWhen, enabledWithComputerUse);
 
-export const ComputerUseStandardToolkit = Toolkit.make(ComputerStatusTool, ComputerActTool);
+const ComputerStopTool = Tool.make("computer_stop", {
+  description:
+    "Stop computer use for this conversation immediately, including any pending approval. Only the user can turn it back on.",
+  parameters: Tool.EmptyParams,
+  success: ComputerUseState,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Destructive, false)
+  .annotate(McpSchema.EnabledWhen, enabledWithComputerUse);
+const ComputerStepsTool = Tool.make("computer_steps", {
+  description:
+    "Read this conversation's recorded computer steps, newest first; paginate with beforeSequence.",
+  parameters: ComputerUseListStepsInput.mapFields(({ threadId: _threadId, ...fields }) => fields),
+  success: ComputerUseListStepsResult,
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies,
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(McpSchema.EnabledWhen, enabledWithComputerUse);
+
+export const ComputerUseStandardToolkit = Toolkit.make(
+  ComputerStatusTool,
+  ComputerActTool,
+  ComputerStopTool,
+  ComputerStepsTool,
+);
 export const ComputerScreenshotToolkit = Toolkit.make(ComputerScreenshotTool);

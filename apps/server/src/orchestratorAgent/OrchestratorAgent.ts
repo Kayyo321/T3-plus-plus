@@ -19,6 +19,9 @@ import {
   type OrchestratorUiDirective,
   orchestratorBrainAvailability,
   type ServerProvider,
+  type ScheduledTaskId,
+  RunId,
+  OrchestratorNeedsAttention,
   SupervisionThresholds,
   ThreadId,
 } from "@t3tools/contracts";
@@ -53,11 +56,16 @@ const APPROVAL_WAIT = Duration.minutes(10);
 const REFRESH_WAIT = Duration.seconds(5);
 const AUDIT_PARAMS_MAX_CHARS = 400;
 
+const ReviewContext = Schema.Struct({ threadId: ThreadId, runId: RunId });
+type ReviewContext = typeof ReviewContext.Type;
+
 const StoredState = Schema.Struct({
   brain: Schema.NullOr(ModelSelection),
   threadId: Schema.NullOr(ThreadId),
   grants: OrchestratorGrants,
   thresholds: SupervisionThresholds,
+  needsAttention: Schema.optional(Schema.NullOr(OrchestratorNeedsAttention)),
+  reviewContexts: Schema.optional(Schema.Record(Schema.String, ReviewContext)),
 });
 type StoredState = typeof StoredState.Type;
 const StoredStateJson = Schema.fromJsonString(StoredState);
@@ -99,9 +107,14 @@ export class OrchestratorAgent extends Context.Service<
     ) => Effect.Effect<void, OrchestratorAgentError>;
     readonly send: (
       input: OrchestratorSendInput,
+      scheduled?: { readonly id: ScheduledTaskId; readonly messageId: MessageId },
     ) => Effect.Effect<OrchestratorSendResult, OrchestratorAgentError>;
     /** A supervision review queued behind any work in progress, on the same brain. */
-    readonly review: (text: string) => Effect.Effect<void, OrchestratorAgentError>;
+    readonly review: (
+      text: string,
+      context?: ReviewContext,
+    ) => Effect.Effect<void, OrchestratorAgentError>;
+    readonly supervisionReview: Effect.Effect<ReviewContext | null, OrchestratorMcpFailure>;
     readonly interrupt: Effect.Effect<void, OrchestratorAgentError>;
     readonly answerApproval: (
       input: OrchestratorAnswerApprovalInput,
@@ -200,6 +213,7 @@ const make = Effect.gen(function* () {
     const availability = yield* readAvailability;
     return {
       brain: current.brain,
+      needsAttention: current.needsAttention ?? null,
       availability,
       threadId: current.threadId,
       grants: current.grants,
@@ -335,16 +349,31 @@ const make = Effect.gen(function* () {
     return { threadId, projectId };
   });
 
+  const requireBrain = Effect.fn("OrchestratorAgent.requireBrain")(function* () {
+    const availability = yield* checkAvailability;
+    const current = yield* Ref.get(state);
+    if (availability.status !== "available" || current.brain === null) {
+      const reason =
+        availability.status === "blocked"
+          ? availability.message
+          : "Choose the orchestrator's model before sending work.";
+      yield* persist({ ...current, needsAttention: { status: "needs_attention", reason } });
+      yield* audit.record({
+        actor: "system",
+        domain: "orchestrator",
+        action: "request.needs-attention",
+        outcome: "denied",
+        result: reason,
+      });
+      return yield* new OrchestratorAgentError({ reason: "blocked", detail: reason });
+    }
+    if (current.needsAttention != null) yield* persist({ ...current, needsAttention: null });
+    return current.brain;
+  });
+
   const send: OrchestratorAgent["Service"]["send"] = Effect.fn("OrchestratorAgent.send")(
-    function* (input) {
-      const availability = yield* checkAvailability;
-      const { brain } = yield* Ref.get(state);
-      if (availability.status !== "available" || brain === null) {
-        return yield* new OrchestratorAgentError({
-          reason: "blocked",
-          ...(availability.status === "blocked" ? { detail: availability.message } : {}),
-        });
-      }
+    function* (input, scheduled) {
+      const brain = yield* requireBrain();
       const { threadId, projectId } = yield* ensureThread(brain);
       yield* turnContext.setFocus(threadId, input.focus);
       yield* threads
@@ -352,12 +381,13 @@ const make = Effect.gen(function* () {
           projectId,
           commandId: input.commandId,
           threadId,
-          messageId: MessageId.make(`orchestrator-${yield* uuid}`),
+          messageId: scheduled?.messageId ?? MessageId.make(`orchestrator-${yield* uuid}`),
+          ...(scheduled === undefined ? {} : { scheduledTaskId: scheduled.id }),
           text: input.text,
           attachments: [],
           modelSelection: brain,
-          mode: "auto",
-          createdBy: "user",
+          mode: scheduled === undefined ? "auto" : "queue",
+          createdBy: scheduled === undefined ? "user" : "system",
           creationSource: "server",
         })
         .pipe(
@@ -368,17 +398,26 @@ const make = Effect.gen(function* () {
   );
 
   const review: OrchestratorAgent["Service"]["review"] = Effect.fn("OrchestratorAgent.review")(
-    function* (text) {
-      const { brain } = yield* Ref.get(state);
-      if (brain === null) return yield* new OrchestratorAgentError({ reason: "blocked" });
+    function* (text, context) {
+      const brain = yield* requireBrain();
       const { threadId, projectId } = yield* ensureThread(brain);
       const id = yield* uuid;
+      const messageId = MessageId.make(`orchestrator-review-${id}`);
+      if (context !== undefined) {
+        const current = yield* Ref.get(state);
+        yield* persist({
+          ...current,
+          reviewContexts: Object.fromEntries(
+            [...Object.entries(current.reviewContexts ?? {}), [messageId, context]].slice(-100),
+          ),
+        });
+      }
       yield* threads
         .sendToThread({
           projectId,
           commandId: CommandId.make(`server:orchestrator:review:${id}`),
           threadId,
-          messageId: MessageId.make(`orchestrator-review-${id}`),
+          messageId,
           text,
           attachments: [],
           modelSelection: brain,
@@ -391,6 +430,26 @@ const make = Effect.gen(function* () {
         );
     },
   );
+
+  const supervisionReview = Effect.gen(function* () {
+    const current = yield* Ref.get(state);
+    if (current.threadId === null) return null;
+    const shell = yield* threads
+      .getThreadShell(current.threadId)
+      .pipe(Effect.orElseSucceed(() => null));
+    if (shell?.activeRunId == null) return null;
+    const { runs } = yield* threads
+      .getThreadRecords(current.threadId, ["runs"], { runIds: [shell.activeRunId] })
+      .pipe(Effect.mapError(() => refusal("Cannot identify the orchestrator's active request.")));
+    const messageId = runs[0]?.userMessageId;
+    if (messageId === undefined)
+      return yield* refusal("Cannot identify the orchestrator's active request.");
+    if (!messageId.startsWith("orchestrator-review-")) return null;
+    return (
+      current.reviewContexts?.[messageId] ??
+      (yield* refusal("This supervision review has no target context."))
+    );
+  }).pipe(Effect.withSpan("OrchestratorAgent.supervisionReview"));
 
   const interrupt = Effect.gen(function* () {
     const { threadId } = yield* Ref.get(state);
@@ -525,6 +584,7 @@ const make = Effect.gen(function* () {
     setThresholds,
     send,
     review,
+    supervisionReview,
     interrupt,
     answerApproval,
     governTool,

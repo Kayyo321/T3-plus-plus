@@ -5,7 +5,7 @@ import {
   OrchestratorMcpFailure,
   type ProviderInteractionMode,
   type RuntimeMode,
-  type ThreadId,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -20,6 +20,8 @@ import {
   DispatchModeLimit,
   type DispatchModeRefusal,
 } from "../orchestration-v2/DispatchModeLimit.ts";
+import * as SupervisionMonitor from "../orchestratorAgent/SupervisionMonitor.ts";
+import { ORCHESTRATOR_TOOL_POLICY } from "../orchestratorAgent/toolPolicy.ts";
 import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import { assertNotLinked, assertSameLink, callerLinkOrigin } from "./linkOrigin.ts";
@@ -397,6 +399,7 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
   // Optional so toolkits that never leave this environment build without it.
   const forwarding = yield* Effect.serviceOption(PeerForwarding.PeerForwarding);
   const orchestrator = yield* Effect.serviceOption(OrchestratorAgent.OrchestratorAgent);
+  const supervision = yield* Effect.serviceOption(SupervisionMonitor.SupervisionMonitor);
   const handlers: Record<string, unknown> = { ...checked };
   for (const [name, declaration] of Object.entries<Declaration<unknown>>(declarations)) {
     const tool = toolkit.tools[name];
@@ -423,10 +426,39 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
   for (const [name, handler] of Object.entries(handlers)) {
     handlers[name] = (params: unknown) =>
       Effect.flatMap(McpInvocationContext.McpInvocationContext, (scope) => {
-        const run = (handler as (input: unknown) => Effect.Effect<unknown, OrchestratorMcpFailure>)(
+        let run = (handler as (input: unknown) => Effect.Effect<unknown, OrchestratorMcpFailure>)(
           params,
         );
         if (!scope.capabilities.has("editor")) return run;
+        const action = Predicate.hasProperty(params, "action") ? params.action : undefined;
+        const intervention =
+          (ORCHESTRATOR_TOOL_POLICY[name]?.action !== undefined &&
+            !["list", "read", "preview"].includes(String(action))) ||
+          (name === "t3_queue" &&
+            ["edit", "cancel", "reorder", "promote_to_steer"].includes(String(action)));
+        if (intervention && Option.isSome(orchestrator)) {
+          const agent = orchestrator.value;
+          const actionRun = run;
+          run = Effect.gen(function* () {
+            const review = yield* agent.supervisionReview;
+            if (review === null) return yield* actionRun;
+            if (Option.isNone(supervision)) return yield* orchestratorGateMissing;
+            const target =
+              name === "background_task_stop" &&
+              Predicate.hasProperty(params, "id") &&
+              typeof params.id === "string"
+                ? { backgroundTaskId: params.id }
+                : Predicate.hasProperty(params, "threadId") && typeof params.threadId === "string"
+                  ? ThreadId.make(params.threadId)
+                  : scope.thread?.threadId;
+            if (target === undefined || (typeof target === "string" && target !== review.threadId))
+              return yield* new OrchestratorMcpFailure({
+                code: "capability_denied",
+                message: "This review can intervene only in its reviewed conversation.",
+              });
+            return yield* supervision.value.governIntervention(target, actionRun, review.runId);
+          });
+        }
         return Option.isSome(orchestrator)
           ? orchestrator.value.governTool(name, params, run)
           : Effect.fail(orchestratorGateMissing);

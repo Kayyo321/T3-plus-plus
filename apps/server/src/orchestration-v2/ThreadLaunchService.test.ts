@@ -1,3 +1,4 @@
+import * as ConversationFolderService from "../conversationFolders/ConversationFolderService.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
@@ -322,6 +323,11 @@ it.effect.each(
     const harness = makeHarness();
     const layerScheduledTasks = ScheduledTasks.layer.pipe(
       Layer.provide(
+        Layer.mock(ConversationFolderService.ConversationFolderService)({
+          fileScheduledRun: () => Effect.succeed("scheduled" as never),
+        }),
+      ),
+      Layer.provide(
         Layer.mergeAll(
           harness.layer,
           NodeCrypto.layer,
@@ -388,6 +394,11 @@ it.effect(
     const harness = makeHarness();
     const layerScheduledTasks = ScheduledTasks.layer.pipe(
       Layer.provide(
+        Layer.mock(ConversationFolderService.ConversationFolderService)({
+          fileScheduledRun: () => Effect.succeed("scheduled" as never),
+        }),
+      ),
+      Layer.provide(
         Layer.mergeAll(
           harness.layer,
           NodeCrypto.layer,
@@ -424,6 +435,11 @@ it.effect(
 it.effect("runs a thread-bound automation on the provider the thread uses now", () => {
   const harness = makeHarness({ adapters: [adapter, claudeAdapter] });
   const layerScheduledTasks = ScheduledTasks.layer.pipe(
+    Layer.provide(
+      Layer.mock(ConversationFolderService.ConversationFolderService)({
+        fileScheduledRun: () => Effect.succeed("scheduled" as never),
+      }),
+    ),
     Layer.provide(
       Layer.mergeAll(
         harness.layer,
@@ -887,6 +903,11 @@ function scratchHarness() {
           } as never),
   });
   const layerScheduledTasks = ScheduledTasks.layer.pipe(
+    Layer.provide(
+      Layer.mock(ConversationFolderService.ConversationFolderService)({
+        fileScheduledRun: () => Effect.succeed("scheduled" as never),
+      }),
+    ),
     Layer.provide(
       Layer.mergeAll(
         harness.layer,
@@ -1450,6 +1471,27 @@ it.effect.each(["failed", "interrupted"] as const)(
       assert.isTrue(after.runs.find((run) => run.id === held.id)?.queueHeld);
     }).pipe(Effect.provide(harness.layer));
   },
+);
+
+it.effect("creates the thread in the capability mode the launch asks for", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness();
+    yield* Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const chat = yield* launches.launch({
+        ...launchInput({ command: "command:launch:chat", thread: "thread:launch:chat" }),
+        capabilityMode: "chat",
+      });
+      const code = yield* launches.launch(
+        launchInput({ command: "command:launch:code", thread: "thread:launch:code" }),
+      );
+      const chatProjection = yield* threads.getThreadProjection(chat.threadId);
+      const codeProjection = yield* threads.getThreadProjection(code.threadId);
+      assert.equal(chatProjection.thread.capabilityMode, "chat");
+      assert.isUndefined(codeProjection.thread.capabilityMode);
+    }).pipe(Effect.provide(harness.layer));
+  }),
 );
 
 it.effect("replays a server-allocated launch", () =>

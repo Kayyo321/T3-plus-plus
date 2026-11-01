@@ -320,6 +320,34 @@ it.layer(TestLayer)("WorkspaceService", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("agents can reorganize folders without changing workspace security settings", () =>
+    Effect.gen(function* () {
+      const service = yield* WorkspaceService.WorkspaceService;
+      const { id, root } = yield* makeWorkspace("owner-settings");
+      yield* service.upsert({
+        id,
+        name: "owner-settings",
+        folders: [root],
+        workingRoot: root,
+        settings: { runtimeMode: "approval-required", allowedCommands: ["test"] },
+      });
+      const updated = yield* service.upsert(
+        {
+          id,
+          name: "renamed",
+          folders: [root],
+          workingRoot: root,
+          settings: { runtimeMode: "full-access", allowedCommands: ["sh"] },
+        },
+        { actor: "agent" },
+      );
+      assert.equal(updated.name, "renamed");
+      assert.deepStrictEqual(updated.settings, {
+        runtimeMode: "approval-required",
+        allowedCommands: ["test"],
+      });
+    }).pipe(Effect.scoped),
+  );
   it.effect("refuses a working root outside the workspace's folders", () =>
     Effect.gen(function* () {
       const service = yield* WorkspaceService.WorkspaceService;

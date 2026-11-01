@@ -1,3 +1,4 @@
+import * as ConversationFolderService from "../conversationFolders/ConversationFolderService.ts";
 import {
   CommandId,
   type AuditOutcome,
@@ -12,6 +13,7 @@ import {
   type ScheduledRunVerdict,
   ScheduledTask,
   ScheduledTaskError,
+  type ScheduledTaskHost,
   ScheduledTaskId,
   type ScheduledTaskListRunsInput,
   type ScheduledTaskListRunsResult,
@@ -57,6 +59,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
@@ -154,6 +157,12 @@ export class ScheduledRunCostEstimator extends Context.Reference<
 >("t3pp/scheduledTasks/ScheduledRunCostEstimator", {
   defaultValue: () => () => Effect.succeed(null),
 }) {}
+
+/** What keeps this server running, so clients can say when tasks will not fire. */
+export class ScheduledTaskRunHost extends Context.Reference<ScheduledTaskHost>(
+  "t3pp/scheduledTasks/ScheduledTaskRunHost",
+  { defaultValue: () => "terminal" },
+) {}
 
 class WebhookDeliverySkipped extends Data.TaggedError("WebhookDeliverySkipped")<{
   readonly reason: string;
@@ -536,14 +545,17 @@ export const layer = Layer.effect(
   ScheduledTaskService,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const conversationFolders = yield* ConversationFolderService.ConversationFolderService;
     const crypto = yield* Crypto.Crypto;
     const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+    const orchestratorAgent = yield* Effect.serviceOption(OrchestratorAgent.OrchestratorAgent);
     const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
     const secretRequests = yield* SecretRequests.SecretRequests;
     const scheduler = yield* Scheduler.Scheduler;
     const readWebhookOrigin = yield* ScheduledTaskWebhookOrigin;
     const estimateCost = yield* ScheduledRunCostEstimator;
+    const host = yield* ScheduledTaskRunHost;
     const auditTrail = yield* Effect.serviceOption(AuditTrail.AuditTrail);
     const audit = (
       task: Pick<ScheduledTask, "id" | "title" | "threadId">,
@@ -1099,8 +1111,30 @@ export const layer = Layer.effect(
             );
 
         // Capture defects and interrupts too so dispatch failures still reach markCompleted.
-        const result =
-          active.threadId === null
+        let brainBlocked: string | null = null;
+        const boundOrchestrator =
+          active.threadId !== null &&
+          Option.isSome(orchestratorAgent) &&
+          (yield* orchestratorAgent.value.snapshot.pipe(Effect.orDie)).threadId === active.threadId;
+        const sendOrchestrator = Effect.gen(function* () {
+          const agent = orchestratorAgent;
+          if (Option.isNone(agent)) {
+            brainBlocked = "The orchestrator is unavailable in this environment.";
+            return yield* taskError(brainBlocked);
+          }
+          return yield* agent.value
+            .send({ commandId, text: prompt }, { id: active.id, messageId })
+            .pipe(
+              Effect.map((result) => result.threadId),
+              Effect.mapError((error) => {
+                if (error.reason === "blocked") brainBlocked = error.message;
+                return taskError(error.message);
+              }),
+            );
+        });
+        const result = boundOrchestrator
+          ? yield* Effect.exit(sendOrchestrator)
+          : active.threadId === null
             ? yield* Effect.exit(
                 threadLaunch
                   .launch({
@@ -1134,8 +1168,17 @@ export const layer = Layer.effect(
         if (webhook !== undefined && runSucceeded) yield* Ref.set(webhook.dispatched, true);
         const completedAt = yield* localNow;
         const lastRunStatus = runSucceeded ? ("succeeded" as const) : ("failed" as const);
-        const lastRunError = runSucceeded ? null : errorMessage(result.cause);
-        const threadId = runSucceeded ? result.value : null;
+        const lastRunError = runSucceeded ? null : (brainBlocked ?? errorMessage(result.cause));
+        const threadId = runSucceeded
+          ? result.value
+          : brainBlocked === null
+            ? null
+            : active.threadId;
+        if (threadId !== null && active.threadId === null) {
+          yield* conversationFolders
+            .fileScheduledRun(threadId)
+            .pipe(Effect.catch(() => Effect.logWarning("A scheduled run could not be filed.")));
+        }
         // One transaction, so an edit cannot land between reading the schedule and
         // writing the next run computed from it. The origin is read first: it reads
         // files, and the transaction holds SQLite's writer lock.
@@ -1147,15 +1190,18 @@ export const layer = Layer.effect(
           const completed: ScheduledTask = {
             ...scheduleSource,
             updatedAt: iso(completedAt),
+            ...(brainBlocked === null ? {} : { enabled: false }),
             lastRunAt: startedAtIso,
             // A manual run that starts before a one-time run must not use it up.
             nextRunAt:
-              catchUp === undefined
-                ? nextRunAt(
-                    scheduleSource,
-                    scheduleSource.schedule.type === "once" ? startedAt : completedAt,
-                  )
-                : catchUpRunAt(scheduleSource, catchUp.dueAt, completedAt),
+              brainBlocked !== null
+                ? null
+                : catchUp === undefined
+                  ? nextRunAt(
+                      scheduleSource,
+                      scheduleSource.schedule.type === "once" ? startedAt : completedAt,
+                    )
+                  : catchUpRunAt(scheduleSource, catchUp.dueAt, completedAt),
             lastRunStatus,
             lastRunError,
             runCount: scheduleSource.runCount + 1,
@@ -1186,20 +1232,27 @@ export const layer = Layer.effect(
             }
           }
           if (written) {
+            if (runSucceeded) {
+              yield* sql`UPDATE scheduled_task_runs SET outcome = 'cancelled', finished_at = ${completed.updatedAt}
+                WHERE task_id = ${active.id} AND outcome = 'needs_input' AND error IS NOT NULL AND finished_at IS NULL`;
+            }
             yield* insertRun({
               id: `scheduled-run:${fireKey}`,
               taskId: active.id,
               trigger,
               scheduledFor: trigger === "scheduled" ? (active.nextRunAt ?? null) : null,
               startedAt: startedAtIso,
-              finishedAt: runSucceeded ? null : completed.updatedAt,
-              outcome: runSucceeded ? "running" : "failed",
+              finishedAt: runSucceeded || brainBlocked !== null ? null : completed.updatedAt,
+              outcome: runSucceeded ? "running" : brainBlocked !== null ? "needs_input" : "failed",
               projectId: active.projectId,
               threadId,
               messageId,
               iteration,
               error: lastRunError,
             });
+            if (brainBlocked !== null) {
+              yield* sql`UPDATE scheduled_tasks SET enabled = 0, next_run_at = NULL WHERE task_id = ${active.id}`;
+            }
             if (iteration > 0) {
               yield* sql`
                 UPDATE scheduled_tasks SET repeater_iterations = ${iteration}
@@ -1671,7 +1724,7 @@ export const layer = Layer.effect(
 
     const list: ScheduledTaskService["Service"]["list"] = () =>
       listRows().pipe(
-        Effect.map((tasks) => ({ tasks })),
+        Effect.map((tasks) => ({ tasks, host })),
         Effect.mapError((cause) => taskError("Could not list schedule tasks.", { cause })),
       );
 

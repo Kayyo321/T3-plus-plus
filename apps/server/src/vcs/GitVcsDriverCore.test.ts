@@ -3713,7 +3713,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const renamed = yield* driver.renameBranch({
           cwd,
           oldBranch: "t3-abcd1234",
-          newBranch: "t3pp/fix-login",
+          newBranch: "t3/fix-login",
         });
 
         assert.equal(renamed.branch, "t3-fix-login-1");
@@ -3733,7 +3733,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const renamed = yield* driver.renameBranch({
           cwd,
           oldBranch: "t3-abcd1234",
-          newBranch: "t3pp/fix-login",
+          newBranch: "t3/fix-login",
         });
 
         assert.equal(renamed.branch, "t3-fix-login-1");

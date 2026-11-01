@@ -5,11 +5,15 @@ import {
   type OrchestrationV2ServerCommand,
   ProjectId,
   ThreadId,
+  WorkspaceId,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
+import { makeSecretMask } from "@t3tools/shared/secretRedaction";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
 import * as Stream from "effect/Stream";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
@@ -34,13 +38,23 @@ const shell = (overrides: object = {}) =>
 
 type Card = Extract<OrchestrationV2ServerCommand, { readonly type: "thread.handoff-card.post" }>;
 
-const harness = (input: { readonly cards: Deferred.Deferred<Card>; readonly overrides?: object }) =>
+const harness = (input: {
+  readonly cards: Deferred.Deferred<Card>;
+  readonly overrides?: object;
+  readonly workspace?: WorkspaceProcessEnvironment.WorkspaceLaunch;
+}) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const stateDir = yield* fileSystem.makeTempDirectoryScoped();
     return BackgroundTaskService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          Layer.succeed(WorkspaceProcessEnvironment.WorkspaceProcessEnvironment, {
+            forThread: () =>
+              input.workspace === undefined
+                ? Effect.succeedNone
+                : Effect.succeedSome(input.workspace),
+          }),
           SqlitePersistence.layerMemory,
           AuditTrail.layer.pipe(Layer.provide(SqlitePersistence.layerMemory)),
           Layer.mock(Orchestrator.OrchestratorV2)({
@@ -63,12 +77,17 @@ const harness = (input: { readonly cards: Deferred.Deferred<Card>; readonly over
 
 const runTask = (
   command: string,
-  options: { readonly resumeAgent?: boolean; readonly overrides?: object } = {},
+  options: {
+    readonly resumeAgent?: boolean;
+    readonly overrides?: object;
+    readonly workspace?: WorkspaceProcessEnvironment.WorkspaceLaunch;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const cards = yield* Deferred.make<Card>();
     const layer = yield* harness({
       cards,
+      ...(options.workspace === undefined ? {} : { workspace: options.workspace }),
       ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
     });
     return yield* Effect.gen(function* () {
@@ -97,6 +116,30 @@ describe("BackgroundTaskService", () => {
     }),
   );
 
+  it.live(
+    "injects workspace credentials only into the child and redacts logs and handoff cards",
+    () =>
+      Effect.gen(function* () {
+        const secret = "background-secret-value";
+        const { task, log, card } = yield* runTask('printf "%s\\n" "$T3PP_TEST_WORKSPACE_TOKEN"', {
+          overrides: { worktreePath: null },
+          workspace: {
+            workspaceId: WorkspaceId.make("workspace"),
+            workspaceName: "test",
+            workingRoot: process.cwd(),
+            environment: Redacted.make({ T3PP_TEST_WORKSPACE_TOKEN: secret }),
+            secretNames: ["T3PP_TEST_WORKSPACE_TOKEN"],
+            mask: makeSecretMask([{ name: "TOKEN", value: secret }]),
+            settings: {},
+            fingerprint: "test",
+          },
+        });
+        assert.equal(task.state, "succeeded");
+        assert.equal(log.text, "[secret:TOKEN]\n");
+        assert.notInclude(JSON.stringify({ task, log, card }), secret);
+        assert.isUndefined(process.env.T3PP_TEST_WORKSPACE_TOKEN);
+      }),
+  );
   it.live("a failing command is failed, and resumeAgent wakes the thread", () =>
     Effect.gen(function* () {
       const { card, task } = yield* runTask("exit 3", { resumeAgent: true });

@@ -115,6 +115,8 @@ it.effect("lists a workspace by name with its secret names and nothing else abou
       expect(yield* call("t3_workspace_list")).toStrictEqual({
         workspaces: [
           {
+            id: workspaceId,
+            deletedAt: null,
             name: "staging",
             folders: ["/srv/staging"],
             workingRoot: "/srv/staging",

@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+import { TeamworkToolkit } from "../../apps/server/src/mcp/toolkits/teamwork/tools.ts";
+import { SessionsToolkit } from "../../apps/server/src/mcp/toolkits/sessions/tools.ts";
+import { DocumentsToolkit } from "../../apps/server/src/mcp/toolkits/documents/tools.ts";
+import {
+  ComputerUseStandardToolkit,
+  ComputerScreenshotToolkit,
+} from "../../apps/server/src/mcp/toolkits/computerUse/tools.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * Replays small fake threads on a Claude or Codex model to check T3's MCP tool use. A trimmed
@@ -48,12 +55,10 @@ import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/Cont
 import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
 import { DeviceToolkit } from "../../apps/server/src/mcp/toolkits/device/tools.ts";
-import { EnvironmentToolkit } from "../../apps/server/src/mcp/toolkits/environment/tools.ts";
 import { HtmlToolkit } from "../../apps/server/src/mcp/toolkits/html/tools.ts";
 import { OrchestratorToolkit } from "../../apps/server/src/mcp/toolkits/orchestrator/tools.ts";
 import { PreviewToolkit } from "../../apps/server/src/mcp/toolkits/preview/tools.ts";
 import { PreviewControlsToolkit } from "../../apps/server/src/mcp/toolkits/previewControls/tools.ts";
-import { ProjectToolkit } from "../../apps/server/src/mcp/toolkits/project/tools.ts";
 import {
   CHILD_PULL_REQUEST_REPORT_NEXT,
   PullRequestsToolkit,
@@ -376,10 +381,13 @@ export const normalizeToolInput = (name: string, input: unknown) => {
 // description, and schema through unchanged.
 const t3SourceTools: ReadonlyArray<Tool.Any> = [
   OrchestratorToolkit,
+  TeamworkToolkit,
+  SessionsToolkit,
+  DocumentsToolkit,
+  ComputerUseStandardToolkit,
+  ComputerScreenshotToolkit,
   ThreadToolkit,
   AttachmentToolkit,
-  ProjectToolkit,
-  EnvironmentToolkit,
   PreviewControlsToolkit,
   WorktreeToolkit,
   PullRequestsToolkit,
@@ -589,7 +597,7 @@ export const buildBase = (
     nativeTools: template.tools.filter((tool) => !isT3Name(tool.name)),
     /** Tools ToolSearch loads: T3 tools from source, and native tools the template only names. */
     t3,
-    deferred: [...t3pp, ...nativeDeferred.map((name) => ({ name, ...nativeSchema(name) }))],
+    deferred: [...t3, ...nativeDeferred.map((name) => ({ name, ...nativeSchema(name) }))],
   };
 };
 
@@ -673,7 +681,7 @@ const buildCodexBase = (
     },
     nativeTools,
     t3,
-    deferred: [...t3pp],
+    deferred: [...t3],
     codex: { ...template, input, reasoning: { ...template.reasoning, effort } },
   };
 };

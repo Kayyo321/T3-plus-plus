@@ -6,6 +6,9 @@ import {
   type ModelSelection,
   type OrchestratorApproval,
   ProjectId,
+  ThreadId,
+  RunId,
+  type MessageId,
   ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -41,46 +44,55 @@ const provider = (overrides: Partial<ServerProvider> = {}) =>
     ...overrides,
   }) as ServerProvider;
 
-const harness = Effect.gen(function* () {
-  const providers = yield* Ref.make<ReadonlyArray<ServerProvider>>([provider()]);
-  const sends = yield* Ref.make<ReadonlyArray<ThreadManagementService.ThreadManagementSendInput>>(
-    [],
-  );
-  const created = yield* Ref.make(0);
-  const dependencies = Layer.mergeAll(
-    Layer.mock(ProviderRegistry.ProviderRegistry)({
-      getProviders: Ref.get(providers),
-      streamChanges: Stream.never,
-      refreshInstance: () => Ref.get(providers),
-    }),
-    Layer.mock(ThreadManagementService.ThreadManagementService)({
-      getThreadShell: () => Effect.succeed(null),
-      sendToThread: (input) =>
-        Ref.update(sends, (current) => [...current, input]).pipe(Effect.andThen(Effect.never)),
-    }),
-    Layer.mock(Orchestrator.OrchestratorV2)({
-      dispatch: () => Ref.update(created, (count) => count + 1).pipe(Effect.as({} as never)),
-    }),
-    Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
-      namedProjectsRoot: "/projects",
-      ensureScratchProject: Effect.succeed({ projectId }),
-    }),
-    OrchestratorTurnContext.layer,
-  );
-  const layer = OrchestratorAgent.layer.pipe(
-    Layer.provideMerge(AuditTrail.layer),
-    Layer.provide(dependencies),
-    Layer.provideMerge(Sqlite.layerMemory),
-    Layer.provideMerge(NodeServices.layer),
-  );
-  return { providers, sends, created, layer };
-});
+const harness = (completeSends = false) =>
+  Effect.gen(function* () {
+    const providers = yield* Ref.make<ReadonlyArray<ServerProvider>>([provider()]);
+    const sends = yield* Ref.make<ReadonlyArray<ThreadManagementService.ThreadManagementSendInput>>(
+      [],
+    );
+    const created = yield* Ref.make(0);
+    const active = yield* Ref.make<{ id: ThreadId; activeRunId: RunId } | null>(null);
+    const activeMessage = yield* Ref.make<MessageId | null>(null);
+    const dependencies = Layer.mergeAll(
+      Layer.mock(ProviderRegistry.ProviderRegistry)({
+        getProviders: Ref.get(providers),
+        streamChanges: Stream.never,
+        refreshInstance: () => Ref.get(providers),
+      }),
+      Layer.mock(ThreadManagementService.ThreadManagementService)({
+        getThreadShell: () => Ref.get(active).pipe(Effect.map((shell) => shell as never)),
+        getThreadRecords: () =>
+          Ref.get(activeMessage).pipe(
+            Effect.map((id) => ({ runs: id === null ? [] : [{ userMessageId: id }] }) as never),
+          ),
+        sendToThread: (input) =>
+          Ref.update(sends, (current) => [...current, input]).pipe(
+            Effect.andThen(completeSends ? Effect.succeed({} as never) : Effect.never),
+          ),
+      }),
+      Layer.mock(Orchestrator.OrchestratorV2)({
+        dispatch: () => Ref.update(created, (count) => count + 1).pipe(Effect.as({} as never)),
+      }),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        ensureScratchProject: Effect.succeed({ projectId }),
+      }),
+      OrchestratorTurnContext.layer,
+    );
+    const layer = OrchestratorAgent.layer.pipe(
+      Layer.provideMerge(AuditTrail.layer),
+      Layer.provide(dependencies),
+      Layer.provideMerge(Sqlite.layerMemory),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    return { providers, sends, created, active, activeMessage, layer };
+  });
 
 const sendInput = { commandId: CommandId.make("command-1"), text: "hello" };
 
 it.effect("refuses to send while blocked, and starts nothing elsewhere", () =>
   Effect.gen(function* () {
-    const { providers, sends, created, layer } = yield* harness;
+    const { providers, sends, created, layer } = yield* harness();
     yield* Effect.gen(function* () {
       const agent = yield* OrchestratorAgent.OrchestratorAgent;
       yield* agent.setBrain({ brain });
@@ -89,19 +101,26 @@ it.effect("refuses to send while blocked, and starts nothing elsewhere", () =>
       ]);
       const failure = yield* agent.send(sendInput).pipe(Effect.flip);
       assert.equal(failure.reason, "blocked");
+      const reviewFailure = yield* agent.review("Check stalled work").pipe(Effect.flip);
+      assert.equal(reviewFailure.reason, "blocked");
+      assert.equal(reviewFailure.detail, failure.detail);
       assert.include(failure.message, "signed out");
       assert.deepStrictEqual(yield* Ref.get(sends), []);
       assert.equal(yield* Ref.get(created), 0);
       const snapshot = yield* agent.snapshot;
       assert.equal(snapshot.availability.status, "blocked");
       assert.equal(snapshot.supervision.status, "paused");
+      assert.deepStrictEqual(snapshot.needsAttention, {
+        status: "needs_attention",
+        reason: failure.message,
+      });
     }).pipe(Effect.provide(layer));
   }),
 );
 
 it.effect("refuses a model that is not available rather than remembering it", () =>
   Effect.gen(function* () {
-    const { providers, layer } = yield* harness;
+    const { providers, layer } = yield* harness();
     yield* Effect.gen(function* () {
       const agent = yield* OrchestratorAgent.OrchestratorAgent;
       yield* Ref.set(providers, [provider({ enabled: false })]);
@@ -134,7 +153,7 @@ const governed = <A, E>(
 
 it.effect("asks before an external change, and a no leaves it undone and audited", () =>
   Effect.gen(function* () {
-    const { layer } = yield* harness;
+    const { layer } = yield* harness();
     yield* Effect.gen(function* () {
       const ran = yield* Ref.make(false);
       const { approval, exit } = yield* governed("t3_thread_transfer", Ref.set(ran, true));
@@ -151,7 +170,7 @@ it.effect("asks before an external change, and a no leaves it undone and audited
 
 it.effect("refuses a tool nobody classified, and the secret tool", () =>
   Effect.gen(function* () {
-    const { layer } = yield* harness;
+    const { layer } = yield* harness();
     yield* Effect.gen(function* () {
       for (const tool of ["request_secret", "a_tool_added_tomorrow"]) {
         const { exit } = yield* governed(tool, Effect.void);
@@ -163,7 +182,7 @@ it.effect("refuses a tool nobody classified, and the secret tool", () =>
 
 it.effect("honours an off domain and records what ran", () =>
   Effect.gen(function* () {
-    const { layer } = yield* harness;
+    const { layer } = yield* harness();
     yield* Effect.gen(function* () {
       const agent = yield* OrchestratorAgent.OrchestratorAgent;
       const allowed = yield* governed("t3_thread_read", Effect.succeed("ok"));
@@ -178,6 +197,29 @@ it.effect("honours an off domain and records what ran", () =>
       assert.deepStrictEqual(
         entries.slice(0, 2).map((entry) => entry.outcome),
         ["denied", "succeeded"],
+      );
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("attributes only active supervision turns to their persisted review context", () =>
+  Effect.gen(function* () {
+    const { layer, sends, active, activeMessage } = yield* harness(true);
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* agent.setBrain({ brain });
+      const context = { threadId: ThreadId.make("reviewed"), runId: RunId.make("reviewed-run") };
+      yield* agent.review("Check progress", context);
+      const message = (yield* Ref.get(sends))[0]!;
+      yield* Ref.set(active, { id: message.threadId, activeRunId: RunId.make("brain-run") });
+      yield* Ref.set(activeMessage, message.messageId);
+      assert.deepStrictEqual(yield* agent.supervisionReview, context);
+      yield* Ref.set(activeMessage, "owner-message" as MessageId);
+      assert.equal(yield* agent.supervisionReview, null);
+      yield* Ref.set(activeMessage, "orchestrator-review-unknown" as MessageId);
+      assert.include(
+        (yield* agent.supervisionReview.pipe(Effect.flip)).message,
+        "no target context",
       );
     }).pipe(Effect.provide(layer));
   }),

@@ -149,7 +149,7 @@ const layerTest = GuestShareService.layer.pipe(
 
 const threadId = ThreadId.make("thread:guest-share-service");
 
-const shareThreadFor = Effect.fn(function* (threadId: ThreadId) {
+const shareThreadFor = Effect.fn(function* (threadId: ThreadId, orchestratorAgent = false) {
   yield* Ref.set(hostname, "env.t3.test");
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   yield* orchestrator.dispatch({
@@ -158,6 +158,7 @@ const shareThreadFor = Effect.fn(function* (threadId: ThreadId) {
     threadId,
     projectId: ProjectId.make("project:guest-share-service"),
     title: "Review me",
+    ...(orchestratorAgent ? { orchestratorAgent: true } : {}),
     modelSelection: { instanceId, model: "gpt-5.1-codex" },
     runtimeMode: "full-access",
     interactionMode: "default",
@@ -1244,4 +1245,13 @@ it.effect("keeps a connected guest's images while other shares come and go", () 
     yield* Stream.runDrain(Stream.take(yield* guestShares.stream(next.token), 2));
     assert.equal((yield* guestShares.media(next.token, shot)).mimeType, "image/png");
   }).pipe(Effect.scoped, Effect.provide(layerTest)),
+);
+
+it.effect("never exposes the owner orchestrator through a legacy guest link", () =>
+  Effect.gen(function* () {
+    const error = yield* shareThreadFor(ThreadId.make("private-orchestrator"), true).pipe(
+      Effect.flip,
+    );
+    assert.deepInclude(error, { _tag: "GuestShareCreateError", reason: "thread_unavailable" });
+  }).pipe(Effect.provide(layerTest)),
 );

@@ -47,6 +47,46 @@ const ownDocument = Effect.fn("DocumentsToolkit.ownDocument")(function* (input: 
 });
 
 export const layer = McpToolAccess.toLayer(DocumentsToolkit, {
+  document_delete: McpToolAccess.writesOwnConversation((input) =>
+    Effect.gen(function* () {
+      yield* ownDocument(input);
+      return yield* (yield* ConversationDocumentService.ConversationDocumentService)
+        .remove(input)
+        .pipe(Effect.mapError(toFailure));
+    }),
+  ),
+  document_restore: McpToolAccess.writesOwnConversation((input) =>
+    Effect.gen(function* () {
+      yield* ownDocument(input);
+      return yield* (yield* ConversationDocumentService.ConversationDocumentService)
+        .restore(input)
+        .pipe(Effect.mapError(toFailure));
+    }),
+  ),
+  document_versions: McpToolAccess.readsAsCaller((input) =>
+    Effect.gen(function* () {
+      yield* ownDocument(input);
+      return yield* (yield* ConversationDocumentService.ConversationDocumentService)
+        .listVersions(input)
+        .pipe(Effect.mapError(toFailure));
+    }),
+  ),
+  document_restore_version: McpToolAccess.writesOwnConversation((input) =>
+    Effect.gen(function* () {
+      yield* ownDocument(input);
+      return yield* (yield* ConversationDocumentService.ConversationDocumentService)
+        .restoreVersion(input)
+        .pipe(Effect.mapError(toFailure));
+    }),
+  ),
+  document_export: McpToolAccess.readsAsCaller((input) =>
+    Effect.gen(function* () {
+      yield* ownDocument(input);
+      return yield* (yield* ConversationDocumentService.ConversationDocumentService)
+        .exportMarkdown(input)
+        .pipe(Effect.mapError(toFailure));
+    }),
+  ),
   document_list: McpToolAccess.readsAsCaller(() =>
     Effect.gen(function* () {
       const threadId = yield* documentCaller;

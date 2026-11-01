@@ -1,6 +1,7 @@
+// @effect-diagnostics globalDate:off
 import { parseCronExpression } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import { nextCronOccurrence } from "./cronSchedule.ts";
 

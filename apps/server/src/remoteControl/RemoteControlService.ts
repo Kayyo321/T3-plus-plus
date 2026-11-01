@@ -1,4 +1,8 @@
 import {
+  type ComputerUseSnapshot,
+  type ComputerUseScreenshot,
+  type ComputerUseState,
+  type RemoteControlComputerApprovalRequest,
   type AuditActorKind,
   type AuditOutcome,
   CommandId,
@@ -275,6 +279,20 @@ export class RemoteControlService extends Context.Service<
     readonly stop: (
       credential: RemoteDeviceCredential,
     ) => Effect.Effect<void, RemoteControlAccessError>;
+    readonly computerStream: (
+      credential: RemoteDeviceCredential,
+    ) => Effect.Effect<Stream.Stream<ComputerUseSnapshot>, RemoteControlAccessError>;
+    readonly computerScreenshot: (
+      credential: RemoteDeviceCredential,
+      stepId: string,
+    ) => Effect.Effect<ComputerUseScreenshot, RemoteControlAccessError>;
+    readonly answerComputerApproval: (
+      credential: RemoteDeviceCredential,
+      request: RemoteControlComputerApprovalRequest,
+    ) => Effect.Effect<ComputerUseState, RemoteControlAccessError>;
+    readonly stopComputer: (
+      credential: RemoteDeviceCredential,
+    ) => Effect.Effect<ComputerUseState, RemoteControlAccessError>;
     readonly setMode: (
       credential: RemoteDeviceCredential,
       request: RemoteControlModeRequest,
@@ -282,10 +300,13 @@ export class RemoteControlService extends Context.Service<
   }
 >()("t3pp/remoteControl/RemoteControlService") {}
 
+import * as ComputerUseService from "../computerUse/ComputerUseService.ts";
+
 type SharedThreadAccess = Effect.Success<typeof makeSharedThreadAccess>;
 
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
+  const computerUse = yield* Effect.serviceOption(ComputerUseService.ComputerUseService);
   const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
   const managedEndpoint = yield* CloudManagedEndpointRuntime;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -629,6 +650,7 @@ const make = Effect.gen(function* () {
           thread === null ||
           thread.archivedAt !== null ||
           thread.deletedAt !== null ||
+          thread.lineage.orchestrator === true ||
           isProviderNativeSubagentThread(thread)
         ) {
           return yield* refused("thread_unavailable");
@@ -1087,7 +1109,12 @@ const make = Effect.gen(function* () {
       return yield* access("ended");
     }
     const thread = yield* threadRecord(row.threadId);
-    if (thread === null || thread.archivedAt !== null || thread.deletedAt !== null) {
+    if (
+      thread === null ||
+      thread.lineage.orchestrator === true ||
+      thread.archivedAt !== null ||
+      thread.deletedAt !== null
+    ) {
       yield* serialized(endSwitch(row, "archived", { kind: "user" }));
       return yield* access("ended");
     }
@@ -1302,6 +1329,59 @@ const make = Effect.gen(function* () {
     );
   });
 
+  const computerService = Effect.fromOption(computerUse).pipe(
+    Effect.mapError(() => access("unavailable")),
+  );
+  const computerStream: RemoteControlService["Service"]["computerStream"] = Effect.fn(
+    "RemoteControlService.computerStream",
+  )(function* (credential) {
+    const { thread, device } = yield* authorize(credential, "view");
+    const computer = yield* computerService;
+    return Stream.unwrap(
+      Effect.gen(function* () {
+        const end = yield* sessionEnd(device);
+        yield* authorize(credential, "view");
+        yield* holdConnected(device);
+        return computer.subscribe(thread.id).pipe(
+          Stream.interruptWhen(end),
+          Stream.catchCause(() => Stream.empty),
+        );
+      }),
+    ).pipe(Stream.catchCause(() => Stream.empty));
+  });
+  const computerScreenshot: RemoteControlService["Service"]["computerScreenshot"] = Effect.fn(
+    "RemoteControlService.computerScreenshot",
+  )(function* (credential, stepId) {
+    const { thread } = yield* authorize(credential, "view");
+    return yield* (yield* computerService)
+      .getScreenshot({ threadId: thread.id, stepId })
+      .pipe(Effect.mapError(() => access("unavailable")));
+  });
+  const answerComputerApproval: RemoteControlService["Service"]["answerComputerApproval"] =
+    Effect.fn("RemoteControlService.answerComputerApproval")(function* (credential, request) {
+      const { thread, device } = yield* authorize(credential, "approve");
+      const result = yield* (yield* computerService)
+        .answerApproval({ ...request, threadId: thread.id })
+        .pipe(Effect.mapError(() => access("rejected")));
+      yield* noteAction(device, thread.id, {
+        action: "computer.approval",
+        label: "Answered a computer approval",
+        result: request.approved ? "approved" : "denied",
+      });
+      return result;
+    });
+  const stopComputer: RemoteControlService["Service"]["stopComputer"] = Effect.fn(
+    "RemoteControlService.stopComputer",
+  )(function* (credential) {
+    const { thread, device } = yield* authorize(credential, "full");
+    const result = yield* (yield* computerService).stop(thread.id);
+    yield* noteAction(device, thread.id, {
+      action: "computer.stop",
+      label: "Stopped computer use",
+    });
+    return result;
+  });
+
   const item: RemoteControlService["Service"]["item"] = Effect.fn("RemoteControlService.item")(
     function* (credential, itemId) {
       const { thread } = yield* authorize(credential, "view");
@@ -1506,7 +1586,12 @@ const make = Effect.gen(function* () {
     ]);
     for (const row of rows) {
       const thread = yield* threadRecord(row.threadId);
-      if (thread === null || thread.archivedAt !== null || thread.deletedAt !== null) {
+      if (
+        thread === null ||
+        thread.lineage.orchestrator === true ||
+        thread.archivedAt !== null ||
+        thread.deletedAt !== null
+      ) {
         yield* serialized(endSwitch(row, "archived", { kind: "user" }));
         continue;
       }
@@ -1583,6 +1668,10 @@ const make = Effect.gen(function* () {
     respond,
     stop,
     setMode,
+    computerStream,
+    computerScreenshot,
+    answerComputerApproval,
+    stopComputer,
   });
 });
 

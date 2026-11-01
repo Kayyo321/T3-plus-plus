@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+// @effect-diagnostics globalDate:off
+import { describe, expect, it } from "vite-plus/test";
 
 import { parseScheduleText } from "./scheduleText.ts";
 

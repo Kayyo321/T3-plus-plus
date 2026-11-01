@@ -7,7 +7,20 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import { computeSignals, ownerIsPresent, trailingRepeats } from "./supervisionSignals.ts";
+import {
+  computeSignals,
+  ownerIsPresent,
+  trailingRepeats,
+  supervisionEnabled,
+} from "./supervisionSignals.ts";
+
+it("supervises unattended work by default and honors explicit let-it-run choices", () => {
+  assert.equal(supervisionEnabled(undefined, true), true);
+  assert.equal(supervisionEnabled(undefined, false), false);
+  assert.equal(supervisionEnabled({ mode: "off" }, true), false);
+  assert.equal(supervisionEnabled({ mode: "on" }, false), true);
+  assert.equal(supervisionEnabled({ mode: "on", automatic: true }, false), false);
+});
 
 const runId = RunId.make("run-1");
 const now = DateTime.makeUnsafe("2026-11-01T12:00:00.000Z");

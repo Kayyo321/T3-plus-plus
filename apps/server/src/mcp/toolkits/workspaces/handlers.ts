@@ -22,18 +22,48 @@ const notAttachable = () =>
   });
 
 export const layer = McpToolAccess.toLayer(WorkspacesToolkit, {
-  t3_workspace_list: McpToolAccess.reads(() =>
+  t3_workspace_upsert: McpToolAccess.writesEnvironment((params, check) =>
+    Effect.gen(function* () {
+      yield* check;
+      const workspaces = yield* Workspaces.WorkspaceService;
+      const workspace = yield* workspaces
+        .upsert({ ...params, settings: {} }, AGENT_ACTOR)
+        .pipe(Effect.mapError(invalidRequest));
+      return { id: workspace.id };
+    }),
+  ),
+  t3_workspace_delete: McpToolAccess.writesEnvironment((params, check) =>
+    Effect.gen(function* () {
+      yield* check;
+      yield* (yield* Workspaces.WorkspaceService)
+        .remove(params, AGENT_ACTOR)
+        .pipe(Effect.mapError(invalidRequest));
+      return {};
+    }),
+  ),
+  t3_workspace_restore: McpToolAccess.writesEnvironment((params, check) =>
+    Effect.gen(function* () {
+      yield* check;
+      const workspace = yield* (yield* Workspaces.WorkspaceService)
+        .restore(params, AGENT_ACTOR)
+        .pipe(Effect.mapError(invalidRequest));
+      return { id: workspace.id };
+    }),
+  ),
+  t3_workspace_list: McpToolAccess.reads((params) =>
     Effect.gen(function* () {
       const workspaces = yield* Workspaces.WorkspaceService;
       const catalog = yield* workspaces.catalog.pipe(Effect.mapError(invalidRequest));
       return {
         workspaces: catalog.workspaces
-          .filter((workspace) => workspace.deletedAt === null)
+          .filter((workspace) => params.includeDeleted || workspace.deletedAt === null)
           .map((workspace) => {
             const attached = catalog.attachments.filter(
               (attachment) => attachment.workspaceId === workspace.id,
             );
             return {
+              id: workspace.id,
+              deletedAt: workspace.deletedAt,
               name: workspace.name,
               folders: workspace.folders,
               workingRoot: workspace.workingRoot,

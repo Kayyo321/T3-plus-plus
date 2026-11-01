@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { cliArchiveTarCommand, newestCliReleaseVersion, parseChecksums } from "./cliRelease.ts";
+import {
+  cliArchiveFileName,
+  cliArchiveTarCommand,
+  newestCliReleaseVersion,
+  parseChecksums,
+} from "./cliRelease.ts";
 
 describe("cliRelease", () => {
   it("parses sha256sum output including binary-mode markers", () => {
@@ -18,6 +23,7 @@ describe("cliRelease", () => {
   });
 
   it("extracts with the System32 bsdtar on Windows and plain tar elsewhere", () => {
+    expect(cliArchiveFileName("1.2.3", "linux-x64")).toBe("t3pp-1.2.3-linux-x64.tar.gz");
     expect(cliArchiveTarCommand("linux", {})).toBe("tar");
     expect(cliArchiveTarCommand("win32", { SystemRoot: "D:\\Win" })).toBe(
       "D:\\Win\\System32\\tar.exe",

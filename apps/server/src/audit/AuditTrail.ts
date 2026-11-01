@@ -19,6 +19,8 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
+
 const RETAINED_ENTRIES = 50_000;
 const PRUNE_EVERY_INSERTS = 500;
 
@@ -66,7 +68,7 @@ const make = Effect.gen(function* () {
 
   const insert = Effect.fn("AuditTrail.insert")(function* (input: AuditEntryInput) {
     const entry: AuditEntry = {
-      ...boundedEntry(input),
+      ...boundedEntry((yield* WorkspaceProcessEnvironment.ActiveSecretMasks).redactDeep(input)),
       id: AuditEntryId.make(yield* crypto.randomUUIDv4()),
       at: DateTime.formatIso(yield* DateTime.now),
     };

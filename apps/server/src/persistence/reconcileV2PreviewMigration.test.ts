@@ -57,8 +57,14 @@ describe("V2 preview upgrade", () => {
         [75, "SubagentDeliveryState"],
         [76, "ProjectionProjectsPinArchive"],
         [77, "AuditTrail"],
+        [78, "RemoteControl"],
+        [79, "WorkspacesAndConversationFolders"],
         [80, "BackgroundTasks"],
+        [82, "ConversationDocuments"],
+        [83, "ScheduledRunsAndComputerUse"],
+        [84, "OrchestratorAgent"],
         [85, "CheckpointRefIndex"],
+        [86, "Teamwork"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -159,8 +165,14 @@ describe("V2 preview upgrade", () => {
         [75, "SubagentDeliveryState"],
         [76, "ProjectionProjectsPinArchive"],
         [77, "AuditTrail"],
+        [78, "RemoteControl"],
+        [79, "WorkspacesAndConversationFolders"],
         [80, "BackgroundTasks"],
+        [82, "ConversationDocuments"],
+        [83, "ScheduledRunsAndComputerUse"],
+        [84, "OrchestratorAgent"],
         [85, "CheckpointRefIndex"],
+        [86, "Teamwork"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

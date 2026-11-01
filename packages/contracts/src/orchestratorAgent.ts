@@ -208,7 +208,10 @@ export type SupervisionThreadMode = typeof SupervisionThreadMode.Type;
 
 export const SupervisionThreadState = Schema.Struct({
   mode: SupervisionThreadMode,
+  automatic: Schema.optional(Schema.Boolean),
   reviews: NonNegativeInt,
+  nudges: Schema.optional(NonNegativeInt),
+  lastNudgeAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   lastReviewAt: Schema.NullOr(IsoDateTime),
   snoozedUntil: Schema.NullOr(IsoDateTime),
   /** The run these counts belong to; a new run starts them over. */
@@ -233,8 +236,14 @@ export const SupervisionState = Schema.Union([
 ]);
 export type SupervisionState = typeof SupervisionState.Type;
 
+export const OrchestratorNeedsAttention = Schema.Struct({
+  status: Schema.Literal("needs_attention"),
+  reason: TrimmedNonEmptyString,
+});
+
 export const OrchestratorSnapshot = Schema.Struct({
   brain: Schema.NullOr(ModelSelection),
+  needsAttention: Schema.optional(Schema.NullOr(OrchestratorNeedsAttention)),
   availability: OrchestratorBrainAvailability,
   threadId: Schema.NullOr(ThreadId),
   grants: OrchestratorGrants,

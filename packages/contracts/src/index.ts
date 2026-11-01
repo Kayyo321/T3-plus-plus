@@ -46,6 +46,7 @@ export * from "./conversationFolders.ts";
 export * from "./workspaces.ts";
 export * from "./computerUse.ts";
 export * from "./conversationDocument.ts";
+export * from "./teamwork.ts";
 export * from "./guestShare.ts";
 export * from "./guestStream.ts";
 export * from "./remoteControl.ts";

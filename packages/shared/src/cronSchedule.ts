@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import { type CronFields } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 

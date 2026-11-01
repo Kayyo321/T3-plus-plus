@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import {
   MIN_SCHEDULED_TASK_INTERVAL_MS,
   parseCronExpression,
