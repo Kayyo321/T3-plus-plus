@@ -34,7 +34,7 @@ const EditorUiTool = Tool.make("editor_ui", {
 const SupervisionStatusTool = Tool.make("supervision_status", {
   ...shared,
   description: "List the conversations under supervision, with their review counts.",
-  parameters: Schema.Struct({}),
+  parameters: Tool.EmptyParams,
   success: Schema.Struct({
     threads: Schema.Array(Schema.Struct({ threadId: ThreadId, state: SupervisionThreadState })),
   }),

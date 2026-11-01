@@ -227,6 +227,10 @@
       "types": "./src/state/deviceHubAccess.ts",
       "default": "./src/state/deviceHubAccess.ts"
     },
+    "./state/orchestratorAgent": {
+      "types": "./src/state/orchestratorAgent.ts",
+      "default": "./src/state/orchestratorAgent.ts"
+    },
     "./state/peerLinks": {
       "types": "./src/state/peerLinks.ts",
       "default": "./src/state/peerLinks.ts"

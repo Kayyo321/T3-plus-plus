@@ -25,6 +25,7 @@ import {
   type GuestMessageId,
   isCompactionCommandMessage,
   isOrchestrationV2WorkActive,
+  isOrchestratorAgentThread,
   isProviderNativeSubagentThread,
   MessageId,
   type NodeId,
@@ -5295,6 +5296,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
   ) {
     let projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+    // The orchestrator's service checks its brain first; nothing may reach the thread around it.
+    if (isOrchestratorAgentThread(projection.thread) && command.creationSource !== "server") {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: "Send to the orchestrator from its panel.",
+      });
+    }
     if (command.manualContinuationOfRunId !== undefined) {
       const source = projection.runs.find((run) => run.id === command.manualContinuationOfRunId);
       const limited = latestRootProviderFailure(source ?? null, projection.turnItems);

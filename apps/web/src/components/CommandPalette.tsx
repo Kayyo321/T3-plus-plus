@@ -53,6 +53,7 @@ import {
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
+  BotIcon,
   BugIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
@@ -147,6 +148,7 @@ import {
   useCommandPaletteMount,
   useCommandPaletteStore,
 } from "../commandPaletteStore";
+import { useOrchestratorDock } from "../state/orchestratorAgent";
 import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
@@ -1240,6 +1242,19 @@ function OpenCommandPaletteDialog(props: {
         },
       });
     }
+
+    actionItems.push({
+      kind: "action",
+      value: "action:orchestrator",
+      searchTerms: ["orchestrator", "assistant", "side panel", "agent", "operate"],
+      title: "Orchestrator",
+      searchTitle: "Orchestrator",
+      icon: <BotIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "orchestrator.toggle",
+      run: async () => {
+        useOrchestratorDock.getState().toggle();
+      },
+    });
 
     actionItems.push({
       kind: "submenu",

@@ -127,7 +127,11 @@ export const orchestratorBrainAvailability = (
   if (provider.availability === "unavailable") {
     return blocked("unavailable", provider.unavailableReason ?? `${name} is unavailable.`);
   }
-  if (chatModeEnforcementForDriver(provider.driver) !== "enforced") {
+  // The dev Replay provider plays recorded turns, so it has no tools to withhold.
+  if (
+    chatModeEnforcementForDriver(provider.driver) !== "enforced" &&
+    provider.instanceId !== "devReplay"
+  ) {
     return blocked(
       "cannot_enforce_tools",
       `${name} cannot run without file and shell tools, so its grants could not hold.`,

@@ -1171,7 +1171,7 @@ export const layerTools = Layer.mergeAll(
  * The orchestrator's own endpoint, so every other agent's tool list and context stay as they were.
  * Its session has no preview or device tools; its other tools are governed by grants.
  */
-const layerOrchestratorTools = Layer.mergeAll(
+export const layerOrchestratorTools = Layer.mergeAll(
   layerOrchestratorToolkit,
   layerThreadToolkit,
   layerAttachmentToolkit,

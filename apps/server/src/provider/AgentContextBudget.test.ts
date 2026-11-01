@@ -12,6 +12,8 @@ import { DeviceService } from "../device/DeviceService.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { GitWorkflowService } from "../git/GitWorkflowService.ts";
 import * as McpHttpServer from "../mcp/McpHttpServer.ts";
+import { OrchestratorAgent } from "../orchestratorAgent/OrchestratorAgent.ts";
+import { SupervisionMonitor } from "../orchestratorAgent/SupervisionMonitor.ts";
 import { PreviewAutomationBroker } from "../mcp/PreviewAutomationBroker.ts";
 import {
   CLAUDE_PROVIDER,
@@ -52,7 +54,9 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(GitWorkflowService)({}),
   Layer.mock(ManagedProjectFolders)({ namedProjectsRoot: "" }),
   Layer.mock(McpProviderSessions)({}),
+  Layer.mock(OrchestratorAgent)({}),
   Layer.mock(OrchestratorV2)({}),
+  Layer.mock(SupervisionMonitor)({}),
   Layer.mock(PeerForwarding)({}),
   Layer.mock(PeerLinkRequests)({}),
   Layer.mock(PeerLinks)({}),
@@ -132,6 +136,23 @@ it.effect("agent context matches the committed budget", () =>
   }).pipe(
     Effect.provide(
       McpHttpServer.layerTools.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(toolHandlerServices),
+      ),
+    ),
+  ),
+);
+
+// Registration validates each tool's schema, so a bad one stops the server at startup.
+it.effect("the orchestrator's endpoint adds its tools to no other agent's list", () =>
+  Effect.gen(function* () {
+    const names = (yield* McpServer.McpServer).tools.map(({ tool }) => tool.name);
+    expect(names).toContain("editor_ui");
+    expect(names).toContain("t3_thread_read");
+    expect(names).not.toContain("device_open");
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerOrchestratorTools.pipe(
         Layer.provideMerge(McpServer.McpServer.layer),
         Layer.provide(toolHandlerServices),
       ),

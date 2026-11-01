@@ -304,7 +304,11 @@ const make = Effect.gen(function* () {
       }
     }
     const { projectId } = yield* folders.ensureScratchProject.pipe(
-      Effect.mapError((cause) => new OrchestratorAgentError({ reason: "start_failed", cause })),
+      // Scratch errors carry fixed messages, written for people.
+      Effect.mapError(
+        (cause) =>
+          new OrchestratorAgentError({ reason: "start_failed", detail: cause.message, cause }),
+      ),
     );
     const threadId = ThreadId.make(`orchestrator-${yield* uuid}`);
     yield* orchestrator
