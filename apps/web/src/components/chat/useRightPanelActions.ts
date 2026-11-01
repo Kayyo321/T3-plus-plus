@@ -110,6 +110,10 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     }
   };
   const onToggleDiffStable = useStableCallback(onToggleDiff);
+  const addGitGraphSurface = () => {
+    if (activeThreadRef) useRightPanelStore.getState().open(activeThreadRef, "git-graph");
+  };
+  const addGitGraphSurfaceStable = useStableCallback(addGitGraphSurface);
   const createBrowserSurface = (profileId?: string) => {
     if (!activeThreadRef || !canOperatePreview) return;
     void addBrowserSurface({
@@ -338,6 +342,11 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
+    "gitGraph.toggle": () => {
+      if (isServerThread && activeThreadRef) {
+        useRightPanelStore.getState().toggle(activeThreadRef, "git-graph");
+      }
+    },
   } satisfies ChatShortcutCommands;
 
   return {
@@ -345,6 +354,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     activateRightPanelSurfaceStable,
     addDeviceSurfaceStable,
     addDiffSurfaceStable,
+    addGitGraphSurfaceStable,
     addFilesSurfaceStable,
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,

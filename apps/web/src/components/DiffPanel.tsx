@@ -65,6 +65,7 @@ import { formatRelativeTimeLabel, formatShortTimestamp } from "../timestampForma
 import { DiffFilePathCopyButton } from "./DiffFilePathCopyButton";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
+import { GitBlameLine } from "./gitGraph/GitBlameLine";
 import { AnnotatableCodeView } from "./diffs/AnnotatableCodeView";
 import { DiffFileTree } from "./diffs/DiffFileTree";
 import { FileExplorerPane } from "./files/FileExplorerPane";
@@ -1397,6 +1398,19 @@ export default function DiffPanel({
                     sectionId={reviewSectionId}
                     sectionTitle={reviewSectionTitle}
                     composerDraftTarget={composerDraftTarget}
+                    {...(activeThread && activeCwd
+                      ? {
+                          renderDraftLineAction: (filePath: string, line: number) => (
+                            <GitBlameLine
+                              key={`${filePath}:${line}`}
+                              environmentId={activeThread.environmentId}
+                              cwd={activeCwd}
+                              path={filePath}
+                              line={line}
+                            />
+                          ),
+                        }
+                      : {})}
                     renderHeaderFilenameSuffix={(fileDiff) => {
                       const path = resolveFileDiffPath(fileDiff);
                       const state = fileStates.get(path);

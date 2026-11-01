@@ -152,6 +152,51 @@ For a local Git repository without a remote, **Publish Repository** creates a ho
 adds it as `origin`, and pushes your commits. If there are no commits yet, it creates the remote;
 make your first commit before pushing.
 
+## See and change your repository
+
+On web and desktop, press `Mod+Alt+G` or choose **Show Git graph** in the command palette to open
+the **Git graph** panel for the thread's repository, including its worktree. It shows every branch,
+tag, and remote as lanes. A square marks a merge, a filled diamond a commit an agent made, and a ring
+what you have checked out. Search messages by typing, or narrow with `author:` and `path:`. The
+filter menu keeps only agent-made commits or this conversation's. A commit made during a turn opens
+that conversation from its details.
+
+The diamond button adds the conversation's checkpoints to the graph, so you can return your files to
+how a turn left them without changing the conversation.
+
+**Changes** stages by file or by hunk and commits with a message you write. **Draft a message** asks
+the source control writer model for a suggestion from what is staged.
+
+Select a commit to branch from it, check out, merge, rebase, copy it onto your branch, or go back to
+it. Before anything rewrites history or discards work, T3++ shows what will change: the commits
+leaving your branch, the files affected, and any conflicts a merge will hit. Going back comes in three
+forms, such as **Undo last commit, keep my changes**.
+
+Every rollback, merge, rebase, copy, branch deletion, and dropped stash leaves a recovery point. It
+keeps your commit, your branch, and every file, including ones you never committed or that Git does
+not track. Find the last 50 under the lifebuoy button, or choose **Go back** on the message that
+follows the action. Going back saves the current state first, so it can be undone too. T3++ keeps
+the 100 most recent recovery points in each repository. They stay on that machine and are never
+pushed.
+
+When a merge, rebase, or copy stops on conflicts, the panel lists the files. Resolve and stage them,
+then choose **Continue**, or choose **Abort** to put everything back. **Ask an agent** opens a new
+thread in the same checkout with the conflicted files in its prompt. Read it, then send.
+
+A shield marks an unpushed commit that touches a sensitive path, such as `.env` or a key file, or
+that is unusually large. In the Diff panel, start a comment on a changed line and choose **Who wrote
+this line?** to find its commit and the turn behind it.
+
+On mobile, **History** in the Git overview shows the graph, commit details, and the conversation
+behind each commit. Commit and pull request status are there too. Rebases, rollbacks, and merges stay
+on web and desktop.
+
+In a repository set up with [jj](https://jj-vcs.github.io/jj/) alongside Git, the graph is read-only:
+use jj to change history. A project set to jj alone has no Git graph yet.
+
+Agents can use all of this too, with the same previews and recovery points. Their pushes and force
+operations follow your permission settings.
+
 ## Create a pull request
 
 Use a thread's Git actions to commit, push, and create a pull request. T3++ can generate commit

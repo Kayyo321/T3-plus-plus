@@ -41,6 +41,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDiff,
+  GitGraph as GitGraphIcon,
   Files,
   Globe2,
   MessagesSquare,
@@ -140,6 +141,7 @@ export interface RightPanelTabsProps {
   onAddFiles: () => void;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
+  onAddGitGraph: () => void;
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
@@ -176,6 +178,7 @@ const SURFACE_DISABLED_REASONS = {
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
+  gitGraph: "The Git graph is only available for server threads in Git repositories.",
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   device: "Devices are only available from a thread.",
@@ -201,6 +204,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   terminal: "Available when a project is open.",
   files: "Available when a project is open.",
   diff: "Available for Git repositories.",
+  gitGraph: "Available for Git repositories.",
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   device: "Available from a thread.",
@@ -321,6 +325,7 @@ function RightPanelEmptyState(props: {
   onAddFiles: () => void;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
+  onAddGitGraph: () => void;
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
@@ -368,6 +373,14 @@ function RightPanelEmptyState(props: {
       available: props.diffAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.diff,
       onClick: props.onAddDiff,
+    },
+    {
+      label: "Git graph",
+      icon: GitGraphIcon,
+      shortcut: "G",
+      available: props.diffAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.gitGraph,
+      onClick: props.onAddGitGraph,
     },
     {
       label: "Pull request",
@@ -590,6 +603,8 @@ function surfaceTitle(
       return `#${surface.number}`;
     case "pull-requests":
       return "Pull requests";
+    case "git-graph":
+      return "Git graph";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "side-chat":
@@ -682,6 +697,8 @@ function SurfaceIcon({
       );
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
+    case "git-graph":
+      return <GitGraphIcon className="size-3 shrink-0" />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
     case "device":
@@ -1124,6 +1141,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: props.onAddDiff,
     },
     {
+      label: "Git graph",
+      icon: GitGraphIcon,
+      shortcut: "G",
+      available: props.diffAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.gitGraph,
+      onClick: props.onAddGitGraph,
+    },
+    {
       label: "Pull request",
       icon: PullRequestGlyph.pullRequest,
       shortcut: "P",
@@ -1532,6 +1557,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddFiles={props.onAddFiles}
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
+            onAddGitGraph={props.onAddGitGraph}
             onAddDevice={props.onAddDevice}
             onAddSideChat={props.onAddSideChat}
             browserAvailable={props.browserAvailable}

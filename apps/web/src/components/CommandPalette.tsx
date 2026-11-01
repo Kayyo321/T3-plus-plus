@@ -60,6 +60,7 @@ import {
   CornerLeftUpIcon,
   FileSearchIcon,
   FolderGit2Icon,
+  GitGraphIcon,
   FolderIcon,
   FolderPlusIcon,
   MessageSquareDashedIcon,
@@ -1369,6 +1370,17 @@ function OpenCommandPaletteDialog(props: {
       icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
       run: async () => {
         openLinkPullRequestDialog(threadRef);
+      },
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:open-git-graph",
+      searchTerms: ["git", "graph", "history", "log", "commits", "branches", "rollback", "stash"],
+      title: "Show Git graph",
+      icon: <GitGraphIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "gitGraph.toggle",
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "git-graph");
       },
     });
     actionItems.push({

@@ -4,10 +4,16 @@ import {
   createVcsStatusRevalidationAtomFamily,
 } from "@t3tools/client-runtime/state/vcs";
 
+import { createGitGraphEnvironmentAtoms } from "@t3tools/client-runtime/state/git-graph";
+
 import { connectionAtomRuntime } from "../connection/runtime";
 import { subscribeDocumentReturn } from "../lib/documentActivity";
 
 export const vcsEnvironment = createVcsEnvironmentAtoms(connectionAtomRuntime);
+export const gitGraphEnvironment = createGitGraphEnvironmentAtoms(
+  connectionAtomRuntime,
+  vcsEnvironment.status,
+);
 export const vcsActionManager = createVcsActionManager(connectionAtomRuntime);
 
 /**

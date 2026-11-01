@@ -4,6 +4,7 @@ import type {
   PreviewAnnotationPayload,
   ProjectId,
   ResolvedKeybindingsConfig,
+  ScopedProjectRef,
   ScopedThreadRef,
   ThreadLinkedPullRequest,
   ThreadPullRequestLink,
@@ -33,6 +34,7 @@ const DevicePanel = lazy(() =>
   import("../device/DevicePanel").then((module) => ({ default: module.DevicePanel })),
 );
 const FilePreviewPanel = lazy(() => import("../files/FilePreviewPanel"));
+const GitGraphPanel = lazy(() => import("../gitGraph/GitGraphPanel"));
 
 type RightPanelTerminalProps = Omit<
   PersistentThreadTerminalPanelProps,
@@ -47,6 +49,12 @@ interface RightPanelPullRequestProps {
   readonly linkedPullRequest: ThreadLinkedPullRequest | null;
   readonly branchPullRequest: ThreadLinkedPullRequest | null | undefined;
   readonly onBack: (() => void) | undefined;
+}
+
+interface RightPanelGitGraphProps {
+  readonly cwd: string | null;
+  readonly projectRef: ScopedProjectRef | null;
+  readonly threadWorktreePath: string | null;
 }
 
 interface RightPanelFileProps {
@@ -76,6 +84,7 @@ export function RightPanelSurfaceContent(props: {
   readonly onCloseSurface: (surface: RightPanelSurface) => void;
   readonly terminal: RightPanelTerminalProps;
   readonly pullRequest: RightPanelPullRequestProps;
+  readonly gitGraph: RightPanelGitGraphProps;
   readonly files: RightPanelFileProps;
   readonly sideChatParentPanel: SideChatParentPanel;
 }) {
@@ -168,6 +177,21 @@ export function RightPanelSurfaceContent(props: {
     }
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
+    case "git-graph":
+      if (props.gitGraph.cwd === null) return null;
+      return (
+        <Suspense fallback={null}>
+          <GitGraphPanel
+            key={`${props.environmentId}:${props.gitGraph.cwd}`}
+            environmentId={props.environmentId}
+            cwd={props.gitGraph.cwd}
+            threadRef={threadRef}
+            projectRef={props.gitGraph.projectRef}
+            threadWorktreePath={props.gitGraph.threadWorktreePath}
+            visible={visible}
+          />
+        </Suspense>
+      );
     case "side-chat":
       // Not lazy: revealing a suspended tiptap editor tears down its view and crashes the composer.
       return (

@@ -63,6 +63,7 @@ import { BrowserPreviewRouteScreen } from "./features/browser/BrowserPreviewRout
 import { GitBranchesSheet } from "./features/threads/git/GitBranchesSheet";
 import { GitCommitSheet } from "./features/threads/git/GitCommitSheet";
 import { GitConfirmSheet } from "./features/threads/git/GitConfirmSheet";
+import { GitGraphSheet } from "./features/threads/git/GitGraphSheet";
 import { GitOverviewSheet } from "./features/threads/git/GitOverviewSheet";
 import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSheet";
 import { ThreadAgentsSheet } from "./features/threads/ThreadAgentsSheet";
@@ -938,6 +939,16 @@ const RootStackConfig = createWorkspaceStackNavigator({
         ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
         ...HORIZONTAL_FORM_SHEET_OPTIONS,
         sheetAllowedDetents: formSheetDetents(0.8),
+        sheetGrabberVisible: true,
+      },
+    }),
+    GitGraph: createNativeStackScreen({
+      screen: GitGraphSheet,
+      linking: `${THREAD_LINKING_PREFIX}/git/graph`,
+      options: {
+        ...(Platform.OS === "ios" ? SHEET_GLASS_HEADER_OPTIONS : undefined),
+        ...HORIZONTAL_FORM_SHEET_OPTIONS,
+        sheetAllowedDetents: formSheetDetents(0.9),
         sheetGrabberVisible: true,
       },
     }),

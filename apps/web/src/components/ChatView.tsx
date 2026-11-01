@@ -2343,6 +2343,7 @@ export default function ChatView(props: ChatViewProps) {
     addDeviceSurfaceStable,
     addDiffSurfaceStable,
     addFilesSurfaceStable,
+    addGitGraphSurfaceStable,
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,
     closePreviewPanelStable,
@@ -3229,6 +3230,11 @@ export default function ChatView(props: ChatViewProps) {
             ? addPullRequestsSurfaceStable
             : undefined,
       }}
+      gitGraph={{
+        cwd: gitStatusCwd ?? null,
+        projectRef: activeProjectRef,
+        threadWorktreePath: activeThread?.worktreePath ?? null,
+      }}
       files={{
         projectName: activeProject?.title ?? null,
         workspaceRoot: activeWorkspaceRoot,
@@ -3968,6 +3974,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddBrowserInProfile={createBrowserSurfaceStable}
           onAddTerminal={addTerminalSurfaceStable}
           onAddDiff={addDiffSurfaceStable}
+          onAddGitGraph={addGitGraphSurfaceStable}
           onAddFiles={addFilesSurfaceStable}
           onAddPullRequest={addPullRequestSurfaceStable}
           onAddPullRequests={addPullRequestsSurfaceStable}

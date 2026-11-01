@@ -681,6 +681,39 @@ describe("GitActions", () => {
     ),
   );
 
+  it.live("stops a rebase on conflicts, continues once resolved, and still goes back", () =>
+    provide(
+      Effect.gen(function* () {
+        const cwd = yield* makeRepo();
+        yield* commit(cwd, "base", ["shared.txt", "base\n"]);
+        yield* runGit(cwd, ["switch", "-c", "feature"]);
+        yield* commit(cwd, "feature", ["shared.txt", "feature\n"]);
+        yield* commit(cwd, "feature two", ["two.txt", "two\n"]);
+        yield* runGit(cwd, ["switch", "main"]);
+        yield* commit(cwd, "main", ["shared.txt", "main\n"]);
+        yield* runGit(cwd, ["switch", "feature"]);
+        const tip = yield* runGit(cwd, ["rev-parse", "HEAD"]);
+
+        const previewed = yield* preview(cwd, { type: "rebase", onto: "main" });
+        assert.deepEqual(previewed.conflicts, ["shared.txt"]);
+        const stopped = yield* act(cwd, { type: "rebase", onto: "main" });
+        assert.strictEqual(stopped.outcome, "conflicts");
+        assert.strictEqual((yield* list({ cwd })).summary?.operation?.kind, "rebase");
+
+        yield* write(cwd, "shared.txt", "both\n");
+        yield* act(cwd, { type: "stage", paths: ["shared.txt"] });
+        const finished = yield* act(cwd, { type: "operationContinue" });
+        assert.strictEqual(finished.outcome, "done");
+        assert.isTrue(yield* exists(cwd, "two.txt"));
+        assert.notStrictEqual(finished.headSha, tip);
+
+        const undone = yield* act(cwd, { type: "recoveryRestore", id: stopped.recovery!.id });
+        assert.strictEqual(undone.headSha, tip);
+        assert.strictEqual(yield* read(cwd, "shared.txt"), "feature\n");
+      }),
+    ),
+  );
+
   it.live("forgets a recovery point when Git refused before changing anything", () =>
     provide(
       Effect.gen(function* () {
