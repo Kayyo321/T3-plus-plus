@@ -6,16 +6,16 @@ diff reviewable.
 
 ## Renamed
 
-| Was | Now |
-| --- | --- |
-| Display name `T3 Code`, `T3 Code (Beta)` | `T3++` |
-| CLI package and binary `t3`, `npx t3`, `t3 up` | `t3pp`, `npx t3pp`, `t3pp up` |
-| CLI archives `t3-<version>-<platform>`, `t3.exe`, `t3.cmd`, `t3.tgz` | `t3pp-...` |
-| Launcher `scripts/npm-launcher/t3.mjs` | `t3pp.mjs` |
-| Data directory `~/.t3`, per-worktree `.t3` | `~/.t3pp`, `.t3pp` |
-| Environment variables `T3CODE_*` | `T3PP_*` |
-| Desktop app IDs `com.t3tools.t3code`, `com.t3tools.T3Code` | `com.t3pp.t3pp`, `com.t3pp.T3PP` |
-| Desktop installer artifacts `T3-Code-<version>-<arch>` | `T3PP-<version>-<arch>` |
+| Was                                                                  | Now                              |
+| -------------------------------------------------------------------- | -------------------------------- |
+| Display name `T3 Code`, `T3 Code (Beta)`                             | `T3++`                           |
+| CLI package and binary `t3`, `npx t3`, `t3 up`                       | `t3pp`, `npx t3pp`, `t3pp up`    |
+| CLI archives `t3-<version>-<platform>`, `t3.exe`, `t3.cmd`, `t3.tgz` | `t3pp-...`                       |
+| Launcher `scripts/npm-launcher/t3.mjs`                               | `t3pp.mjs`                       |
+| Data directory `~/.t3`, per-worktree `.t3`                           | `~/.t3pp`, `.t3pp`               |
+| Environment variables `T3CODE_*`                                     | `T3PP_*`                         |
+| Desktop app IDs `com.t3tools.t3code`, `com.t3tools.T3Code`           | `com.t3pp.t3pp`, `com.t3pp.T3PP` |
+| Desktop installer artifacts `T3-Code-<version>-<arch>`               | `T3PP-<version>-<arch>`          |
 
 ## Deliberately unchanged
 

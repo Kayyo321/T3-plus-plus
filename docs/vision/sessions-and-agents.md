@@ -7,14 +7,14 @@ common theme: **be explicit about who owns the work and where its context lives.
 
 Both let one conversation hand work to another. They differ in who the user talks to.
 
-| | Sub-agent | Nested session |
-| --- | --- | --- |
-| Who starts it | The parent agent, mid-run | The user, or the parent agent on the user's behalf |
-| Who you talk to | Only the parent | You can open it and talk to it directly |
-| Context | Receives only a task prompt (and optional role). Returns a result | Has its own full, durable conversation; may inherit a chosen slice of parent context |
-| Lifetime | Ends when its task ends | Persists until you close it; can be resumed |
-| UI | A line or card in the parent's transcript | A child conversation visible in the sidebar tree under the parent, and in split view |
-| Typical use | "Search the codebase for X and report" | "Work on the migration while I keep chatting here" |
+|                 | Sub-agent                                                         | Nested session                                                                       |
+| --------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Who starts it   | The parent agent, mid-run                                         | The user, or the parent agent on the user's behalf                                   |
+| Who you talk to | Only the parent                                                   | You can open it and talk to it directly                                              |
+| Context         | Receives only a task prompt (and optional role). Returns a result | Has its own full, durable conversation; may inherit a chosen slice of parent context |
+| Lifetime        | Ends when its task ends                                           | Persists until you close it; can be resumed                                          |
+| UI              | A line or card in the parent's transcript                         | A child conversation visible in the sidebar tree under the parent, and in split view |
+| Typical use     | "Search the codebase for X and report"                            | "Work on the migration while I keep chatting here"                                   |
 
 Today's app-owned sub-agents already follow the sub-agent column
 ([orchestrator MCP](../orchestration-v2/orchestrator-mcp-server.md)). Nested sessions are the new
@@ -57,10 +57,10 @@ Fork and rewind are two halves of exploring safely.
 - **Fork** from any stable point creates a new conversation with lineage back to the source. This
   exists today; the work is polish: fork from any message, preview what context carries over, and
   show the lineage as a small tree.
-- **Rewind** returns the *same* conversation to an earlier point. Options, shown before confirming:
-  - *Conversation only:* drop messages after the point; files stay.
-  - *Files only:* restore the files from that point's checkpoint; keep the conversation.
-  - *Both.*
+- **Rewind** returns the _same_ conversation to an earlier point. Options, shown before confirming:
+  - _Conversation only:_ drop messages after the point; files stay.
+  - _Files only:_ restore the files from that point's checkpoint; keep the conversation.
+  - _Both._
 - Rewind is non-destructive by default: the discarded tail is kept as an archived branch that can be
   reopened or forked from. A one-way door is a bug.
 - Checkpoints already exist per turn as hidden git refs, which makes file rewind cheap. Rewind must

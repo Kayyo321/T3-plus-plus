@@ -32,18 +32,18 @@ failing output attached. A phase ends when its exit criteria are met, not when t
 
 Roles are configurable; the defaults should be few and clear.
 
-| Role | Responsibility |
-| --- | --- |
-| **Lead** | Owns the plan, decomposes work, resolves disputes, writes the final report. Does not build. |
-| **Builders** | One or more, each assigned a slice and its own worktree or branch. |
-| **Reviewer** | Reads the actual diff for correctness, design, and taste. Has no stake in the code. |
-| **Tester** | Runs tests, reproduces bugs, and writes missing ones. Reports evidence. |
-| **Skeptic / QA** | Checks the result against the request and hunts for what everyone assumed. |
-| **Scribe** (optional) | Maintains the shared notes and decision log. |
+| Role                  | Responsibility                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| **Lead**              | Owns the plan, decomposes work, resolves disputes, writes the final report. Does not build. |
+| **Builders**          | One or more, each assigned a slice and its own worktree or branch.                          |
+| **Reviewer**          | Reads the actual diff for correctness, design, and taste. Has no stake in the code.         |
+| **Tester**            | Runs tests, reproduces bugs, and writes missing ones. Reports evidence.                     |
+| **Skeptic / QA**      | Checks the result against the request and hunts for what everyone assumed.                  |
+| **Scribe** (optional) | Maintains the shared notes and decision log.                                                |
 
-A *team* is a named group with a role mix, instructions, and a provider and model per role. Examples:
-*Fix a bug* (one builder, tester, reviewer), *Build a feature* (lead, two builders, reviewer, tester,
-skeptic), *Audit* (reviewers and a skeptic only, no builders).
+A _team_ is a named group with a role mix, instructions, and a provider and model per role. Examples:
+_Fix a bug_ (one builder, tester, reviewer), _Build a feature_ (lead, two builders, reviewer, tester,
+skeptic), _Audit_ (reviewers and a skeptic only, no builders).
 
 Different roles can use **different providers and models**. A reviewer on a different model than the
 builder is a feature: it avoids correlated blind spots.
@@ -60,7 +60,7 @@ builder is a feature: it avoids correlated blind spots.
   known gaps). Reviewers receive the diff and the cards.
 - **Stand-ups.** Optional periodic summaries so a human can drop in, correct course, and leave.
 - **Human in the loop.** You can approve the plan, answer questions, reassign, or stop the run.
-  Dials: *autonomous*, *approve the plan*, *approve each phase*.
+  Dials: _autonomous_, _approve the plan_, _approve each phase_.
 
 Mechanically this is nested sessions ([sessions](./sessions-and-agents.md)) plus the
 [orchestrator](./orchestrator.md)'s tooling, so it should require little new infrastructure beyond

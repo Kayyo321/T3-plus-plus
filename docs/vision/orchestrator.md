@@ -10,9 +10,9 @@ its own history, talking to an agent that can see and change the app around it.
 Ask it things like:
 
 - "Start three threads in `api`, one per failing test, and tell me when they finish."
-- "Rename these threads, move them into the *Migration* folder, and archive the done ones."
+- "Rename these threads, move them into the _Migration_ folder, and archive the done ones."
 - "Open the diff for the last turn in the other conversation and summarize it."
-- "Switch to my *Review* layout and put the remote link for this conversation on my phone."
+- "Switch to my _Review_ layout and put the remote link for this conversation on my phone."
 - "Every morning at 9, run the dependency check in `web` and post the result here."
 
 It is not a replacement for the conversation you are working in. It is the person at the next desk
@@ -48,17 +48,17 @@ and new services, not a separate subsystem.
 
 Group tools by domain so permissions can be granted per group.
 
-| Domain         | Examples                                                                              |
-| -------------- | ------------------------------------------------------------------------------------- |
-| Conversations  | create, list, read, send, steer, interrupt, rename, fork, rewind, archive, move to folder |
-| Sessions       | start nested sessions and sub-agents, wait for results, cancel                        |
-| Projects       | add, open, switch environment                                                         |
-| Workspace UI   | open or close panels, apply a saved layout, split view, focus                      |
-| Git            | read the graph, stage, commit, branch, merge, rollback, open and update PRs           |
-| Tasks          | create, edit, pause, and run scheduled tasks and background tasks                     |
-| Supervision    | review stuck or looping work, message the agent, interrupt, restart, stop, rewind      |
-| Settings       | read and change non-security settings                                                 |
-| Remote control | turn the switch on or off for a conversation, rotate links, revoke guests            |
+| Domain         | Examples                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| Conversations  | create, list, read, send, steer, interrupt, rename, fork, rewind, archive, move to folder       |
+| Sessions       | start nested sessions and sub-agents, wait for results, cancel                                  |
+| Projects       | add, open, switch environment                                                                   |
+| Workspace UI   | open or close panels, apply a saved layout, split view, focus                                   |
+| Git            | read the graph, stage, commit, branch, merge, rollback, open and update PRs                     |
+| Tasks          | create, edit, pause, and run scheduled tasks and background tasks                               |
+| Supervision    | review stuck or looping work, message the agent, interrupt, restart, stop, rewind               |
+| Settings       | read and change non-security settings                                                           |
+| Remote control | turn the switch on or off for a conversation, rotate links, revoke guests                       |
 | Computer use   | only when explicitly enabled (see [modes and computer use](./modes-scheduling-computer-use.md)) |
 
 ## Choosing its brain
@@ -76,8 +76,8 @@ The orchestrator runs on a provider and model the user chooses. There is no sile
   finished or interrupted first, and the picker says which.
 - **Blocked when unavailable:** if the chosen provider or model cannot be reached for any reason
   (not installed, signed out, expired credentials, quota, model retired, network or server down), the
-  composer is **disabled**. The panel shows the specific reason and two actions: *fix it* (open that
-  provider's sign-in or settings) and *choose another*. The user cannot message the orchestrator
+  composer is **disabled**. The panel shows the specific reason and two actions: _fix it_ (open that
+  provider's sign-in or settings) and _choose another_. The user cannot message the orchestrator
   until it is fixed or changed. It must never silently fall back to a different provider, since
   that could spend money or send context somewhere the user did not choose.
 - **Checked continuously:** availability is verified on open, before each send, and when a run
@@ -96,7 +96,7 @@ has stopped making progress, reviews it, and decides what to do.
 **What it watches for**
 
 - A background task or run that exceeds its expected time, or goes quiet (no output, no tool activity).
-- A *loop*: the same command, error, or edit repeated, or two steps undoing each other.
+- A _loop_: the same command, error, or edit repeated, or two steps undoing each other.
 - A run waiting on input or approval for a long time.
 - A scheduled or [teamwork](./teamwork.md) run that exceeds its budget or keeps failing the same
   review phase.

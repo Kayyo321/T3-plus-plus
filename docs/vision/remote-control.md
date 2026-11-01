@@ -29,17 +29,17 @@ on T3 Connect.
 
 The goal: a leaked link must not be enough, and a forgotten link must not stay valid.
 
-- **Link plus proof.** The URL carries a high-entropy, single-use *pairing token*. Opening it in a
+- **Link plus proof.** The URL carries a high-entropy, single-use _pairing token_. Opening it in a
   new browser starts a pairing flow rather than granting access directly.
 - **Owner approval or a code.** Two pairing modes, chosen per switch:
-  - *Approve on desktop* (default): the desktop shows "Pixel 8 wants to join. Allow?" with a short
+  - _Approve on desktop_ (default): the desktop shows "Pixel 8 wants to join. Allow?" with a short
     confirmation word shown on both screens so the owner can tell it is the right device.
-  - *One-time code*: the owner reads a 6 to 8 digit code from the desktop and types it on the phone.
+  - _One-time code_: the owner reads a 6 to 8 digit code from the desktop and types it on the phone.
     Useful when nobody is at the desktop to click.
 - **Device-bound sessions.** After pairing, the browser gets a session credential in a secure,
   HTTP-only cookie (or stored key on mobile) bound to that device. The token in the URL is spent.
-- **Access levels.** *View*, *Chat* (send messages), *Approve* (also answer permission prompts), and
-  *Full* (also interrupt, change mode). Default: Chat. Raising it needs desktop confirmation.
+- **Access levels.** _View_, _Chat_ (send messages), _Approve_ (also answer permission prompts), and
+  _Full_ (also interrupt, change mode). Default: Chat. Raising it needs desktop confirmation.
 - **Expiry.** Sessions expire after inactivity and after an absolute lifetime. Defaults should be
   short (hours, not weeks) and shown plainly.
 - **Rate limiting and lockout.** Failed pairing attempts are rate limited; repeated failures disable

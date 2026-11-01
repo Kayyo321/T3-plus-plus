@@ -10,8 +10,8 @@ Modern, minimal, and a little playful. The reference is the **Claude Code Deskto
 space, quiet chrome, content first, a sense that the tool is getting out of your way. Underneath the
 calm there is craft, and ASCII art is where the personality lives.
 
-Words to aim for: *calm, precise, warm, fast, a bit nerdy*.
-Words to avoid: *busy, glossy, dashboard-y, gamer, skeuomorphic*.
+Words to aim for: _calm, precise, warm, fast, a bit nerdy_.
+Words to avoid: _busy, glossy, dashboard-y, gamer, skeuomorphic_.
 
 ## ASCII identity
 

@@ -4,7 +4,7 @@
 
 A first-class **git view**: the full commit graph of the repository, rendered beautifully, with the
 common git actions available as direct manipulation. You should rarely need to leave the app to
-understand or change the state of your repository, and the agents' work should be visible *in* that
+understand or change the state of your repository, and the agents' work should be visible _in_ that
 history.
 
 The foundation exists: diff pane, per-turn and per-commit review, branch comparison, worktrees, and
@@ -28,16 +28,16 @@ the **whole-repository picture** and the action surface.
 
 ## Actions
 
-| Action | Notes |
-| --- | --- |
-| **Commit unstaged work** | Stage by file or hunk, write or generate a message, commit. Agent-drafted messages are suggestions, always editable. |
-| **Branch** | Create from any node, check out, rename, delete (with unmerged warning). |
-| **Merge** | Preview the result and conflicts before doing it; conflict resolution flow with an optional agent assist. |
-| **Rebase / cherry-pick** | Behind a clear "rewrites history" notice. |
-| **Rollback** | Return to a previous commit or checkpoint. Soft (keep changes), mixed, or hard, named in plain words. Always creates a recovery point first. |
-| **Create PR** | From a branch, with title and body drafted from the diff, linked to the conversation. Update and track existing ones. |
-| **Push / pull / fetch** | With ahead/behind shown on the lane. |
-| **Stash** | List, apply, drop. |
+| Action                   | Notes                                                                                                                                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Commit unstaged work** | Stage by file or hunk, write or generate a message, commit. Agent-drafted messages are suggestions, always editable.                         |
+| **Branch**               | Create from any node, check out, rename, delete (with unmerged warning).                                                                     |
+| **Merge**                | Preview the result and conflicts before doing it; conflict resolution flow with an optional agent assist.                                    |
+| **Rebase / cherry-pick** | Behind a clear "rewrites history" notice.                                                                                                    |
+| **Rollback**             | Return to a previous commit or checkpoint. Soft (keep changes), mixed, or hard, named in plain words. Always creates a recovery point first. |
+| **Create PR**            | From a branch, with title and body drafted from the diff, linked to the conversation. Update and track existing ones.                        |
+| **Push / pull / fetch**  | With ahead/behind shown on the lane.                                                                                                         |
+| **Stash**                | List, apply, drop.                                                                                                                           |
 
 Design rules:
 

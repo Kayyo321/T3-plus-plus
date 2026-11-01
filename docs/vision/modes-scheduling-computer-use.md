@@ -1,15 +1,15 @@
 # Chat mode, scheduled tasks, and computer use
 
-Three capabilities that change *what an agent is allowed to do and when*.
+Three capabilities that change _what an agent is allowed to do and when_.
 
 ## Chat mode (Chat + Code)
 
 A conversation has a **mode**, chosen at creation and changeable later.
 
-| Mode | The agent can | The agent cannot |
-| --- | --- | --- |
+| Mode     | The agent can                                                                      | The agent cannot                                                      |
+| -------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | **Chat** | Talk, reason, research, and produce **documents** (notes, drafts, plans, diagrams) | Read or write your project files, run commands, or touch your machine |
-| **Code** | Everything permission modes already allow: read and edit files, run commands | n/a (bound by permission mode) |
+| **Code** | Everything permission modes already allow: read and edit files, run commands       | n/a (bound by permission mode)                                        |
 
 Chat mode is for thinking: brainstorming, writing, planning, asking questions, drafting a spec before
 touching code. Its outputs live **inside the app**, as documents attached to the conversation, not as
@@ -23,8 +23,8 @@ files in your working tree.
   differ, so each adapter decides how it enforces this (and says so where it cannot).
 - **Upgrade path.** "Continue in Code mode" forks or converts the conversation, carrying the document
   as context. The reverse (drop to Chat) is equally easy.
-- Distinct from [permission modes](../user/permission-modes.md), which control *approvals*. Chat mode
-  controls *which capabilities exist at all*.
+- Distinct from [permission modes](../user/permission-modes.md), which control _approvals_. Chat mode
+  controls _which capabilities exist at all_.
 - Lightweight by design: no project required, which makes quick questions and notes fast.
 
 ## Scheduled tasks and repeaters
@@ -37,12 +37,12 @@ no one watching.
 - **Triggers** (stretch): on a new commit or branch, on a file change, when another task finishes.
 - **Repeaters / loops:** re-run until a condition is met, with a maximum number of iterations
   and a way to define "done" ("until tests pass", "until the PR has no unresolved comments").
-- **Each run is a conversation** in a *Scheduled* folder with its own history, so you can open a run,
+- **Each run is a conversation** in a _Scheduled_ folder with its own history, so you can open a run,
   read what happened, and take over.
 - **Results:** a short summary and status per run, notifications on completion or failure, and a
   "nothing changed" quiet path so repeaters do not spam.
 - **Safety:** runs inherit a permission mode and a budget (time, cost, tool use). Unattended tasks
-  should default to *least privilege* and ask nothing interactively; anything that would normally
+  should default to _least privilege_ and ask nothing interactively; anything that would normally
   prompt either fails safe or parks the run as "needs input".
 - **Where they run:** the environment that owns the task. For tasks to fire with no client open,
   the [background service](../user/background-service.md) must be running; the UI says so when it
