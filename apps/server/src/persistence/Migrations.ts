@@ -81,6 +81,7 @@ import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
 import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 import Migration0077 from "./Migrations/077_AuditTrail.ts";
 import Migration0084 from "./Migrations/084_OrchestratorAgent.ts";
+import Migration0085 from "./Migrations/085_CheckpointRefIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -162,6 +163,7 @@ const migrationEntries = [
   [76, "ProjectionProjectsPinArchive", Migration0076],
   [77, "AuditTrail", Migration0077],
   [84, "OrchestratorAgent", Migration0084],
+  [85, "CheckpointRefIndex", Migration0085],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

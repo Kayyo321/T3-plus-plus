@@ -84,6 +84,8 @@ import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as AuditTrail from "./audit/AuditTrail.ts";
 import * as OrchestratorAgent from "./orchestratorAgent/OrchestratorAgent.ts";
 import * as SupervisionMonitor from "./orchestratorAgent/SupervisionMonitor.ts";
+import * as GitActions from "./git/graph/GitActions.ts";
+import * as GitGraphService from "./git/graph/GitGraphService.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -580,6 +582,8 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(AuditTrail.AuditTrail)({}),
   Layer.mock(OrchestratorAgent.OrchestratorAgent)({}),
   Layer.mock(SupervisionMonitor.SupervisionMonitor)({}),
+  Layer.mock(GitGraphService.GitGraphService)({}),
+  Layer.mock(GitActions.GitActions)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
   Layer.mock(SecretResolver.SecretResolver)({}),

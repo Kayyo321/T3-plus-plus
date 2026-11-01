@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
+import { GitGraphActInput } from "./gitGraph.ts";
 import {
   AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
@@ -51,6 +52,9 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.vcsCreateRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsSwitchRef]: AuthSourceControlWriteScope,
   [WS_METHODS.vcsInit]: AuthSourceControlWriteScope,
+  [WS_METHODS.gitGraphAct]: AuthSourceControlWriteScope,
+  // Drafting a message runs a model on this environment's providers.
+  [WS_METHODS.gitGraphDraftMessage]: AuthOrchestrationOperateScope,
 
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,
@@ -82,6 +86,7 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
 
 const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
 const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
+const decodeGraphAction = Schema.decodeUnknownSync(GitGraphActInput);
 
 export function clientRpcRequiredScopes(
   method: string,
@@ -98,6 +103,11 @@ export function clientRpcRequiredScopes(
       payload.threadId !== undefined &&
       (payload.action === "create_pr" || payload.action === "commit_push_pr")
     )
+      return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
+  }
+  if (method === WS_METHODS.gitGraphAct && input !== undefined) {
+    const payload = decodeGraphAction(input);
+    if (payload.threadId !== undefined && payload.action.type === "createPullRequest")
       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
   }
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)

@@ -2378,6 +2378,7 @@ export default function ChatView(props: ChatViewProps) {
     addDeviceSurfaceStable,
     addDiffSurfaceStable,
     addFilesSurfaceStable,
+    addGitGraphSurfaceStable,
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,
     closePreviewPanelStable,
@@ -3251,6 +3252,11 @@ export default function ChatView(props: ChatViewProps) {
 
   const surfaceContentProps = {
     environmentId: activeThread.environmentId,
+    gitGraph: {
+      cwd: gitStatusCwd ?? null,
+      projectRef: activeProjectRef,
+      threadWorktreePath: activeThread?.worktreePath ?? null,
+    },
     composerDraftTarget,
     keybindings,
     configuredPreviewUrls,
@@ -3369,6 +3375,7 @@ export default function ChatView(props: ChatViewProps) {
     onAddBrowserInProfile: createBrowserSurfaceStable,
     onAddTerminal: addTerminalSurfaceStable,
     onAddDiff: addDiffSurfaceStable,
+    onAddGitGraph: addGitGraphSurfaceStable,
     onAddFiles: addFilesSurfaceStable,
     onAddPullRequest: addPullRequestSurfaceStable,
     onAddPullRequests: addPullRequestsSurfaceStable,

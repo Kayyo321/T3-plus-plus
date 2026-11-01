@@ -97,6 +97,8 @@ interface AnnotatableCodeViewProps {
     collapsed: boolean,
   ) => ReactNode;
   onRevealSearchMatch: (fileKey: string) => void;
+  /** Extra control beside a draft comment on a line of the current file. */
+  renderDraftLineAction?: (filePath: string, lineNumber: number) => ReactNode;
 }
 
 interface DiffSelectionContext {
@@ -119,6 +121,7 @@ export function AnnotatableCodeView({
   renderHeaderFilenameSuffix,
   renderHeaderPrefix,
   onRevealSearchMatch,
+  renderDraftLineAction,
 }: AnnotatableCodeViewProps) {
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
@@ -301,6 +304,9 @@ export function AnnotatableCodeView({
                 onDelete={() => removeEntry(entry.id)}
               />
             ))}
+            {hasDraft && draft !== null && draft.annotation.side === "additions"
+              ? renderDraftLineAction?.(draft.filePath, annotation.lineNumber)
+              : null}
           </div>
         );
       }}

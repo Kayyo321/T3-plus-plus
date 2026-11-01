@@ -55,6 +55,10 @@
       "types": "./src/projectFaviconCache.ts",
       "default": "./src/projectFaviconCache.ts"
     },
+    "./git-graph": {
+      "types": "./src/gitGraph.ts",
+      "default": "./src/gitGraph.ts"
+    },
     "./user-message": {
       "types": "./src/userMessage.ts",
       "default": "./src/userMessage.ts"
@@ -382,6 +386,10 @@
     "./state/turn-item-presentation": {
       "types": "./src/state/turnItemPresentation.ts",
       "default": "./src/state/turnItemPresentation.ts"
+    },
+    "./state/git-graph": {
+      "types": "./src/state/gitGraph.ts",
+      "default": "./src/state/gitGraph.ts"
     },
     "./state/vcs": {
       "types": "./src/state/vcs.ts",

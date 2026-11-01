@@ -291,6 +291,18 @@ function GitOverviewSheetContent(props: GitOverviewSheetProps) {
           }}
         />
         <ListRow
+          icon="clock"
+          label="History"
+          description="Browse commits and the conversations behind them"
+          disabled={busy || !isRepo}
+          onPress={() =>
+            navigation.navigate("GitGraph", {
+              environmentId: String(environmentId),
+              threadId: String(threadId),
+            })
+          }
+        />
+        <ListRow
           icon="point.topleft.down.curvedto.point.bottomright.up"
           label="Branches & worktrees"
           description={

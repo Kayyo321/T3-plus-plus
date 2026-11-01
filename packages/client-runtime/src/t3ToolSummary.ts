@@ -327,6 +327,12 @@ export function summarizeT3ToolCalls(
     case "worktree-status":
       label = phrase("Checked", "check", `worktree status ${times}`);
       break;
+    case "git-read":
+      label = phrase("Read", "read", `the repository ${times}`);
+      break;
+    case "git-change":
+      label = phrase("Changed", "change", `the repository ${times}`);
+      break;
     case "project-list":
       label = phrase("Listed", "list", `projects ${times}`);
       break;

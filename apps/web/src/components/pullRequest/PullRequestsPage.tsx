@@ -1493,6 +1493,7 @@ export function PullRequestsPage() {
             onAddDiff={() => undefined}
             onAddFiles={() => undefined}
             onAddPullRequest={() => undefined}
+            onAddGitGraph={() => undefined}
             onAddPullRequests={() => undefined}
             onAddDevice={() => undefined}
             browserAvailable={false}

@@ -2,6 +2,9 @@ import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as OrchestratorTurnContext from "../orchestratorAgent/OrchestratorTurnContext.ts";
 import * as SupervisionMonitor from "../orchestratorAgent/SupervisionMonitor.ts";
+import * as ConversationAttribution from "../git/graph/ConversationAttribution.ts";
+import * as GitActions from "../git/graph/GitActions.ts";
+import * as GitGraphService from "../git/graph/GitGraphService.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -384,6 +387,20 @@ const layerOrchestratorAgentProvided = OrchestratorAgent.layer.pipe(
   ),
 );
 
+const layerGitGraphService = GitGraphService.layer.pipe(
+  Layer.provide(ConversationAttribution.layer),
+);
+
+const layerGitGraph = Layer.merge(
+  layerGitGraphService,
+  GitActions.layer.pipe(
+    Layer.provide(layerGitGraphService),
+    Layer.provide(AuditTrail.layer),
+    Layer.provide(layerOrchestratorProvided),
+    Layer.provide(layerProjectService),
+  ),
+);
+
 export const layerProduction = Layer.mergeAll(
   layer.pipe(Layer.provide(layerProjectService)),
   layerProjectService,
@@ -398,6 +415,7 @@ export const layerProduction = Layer.mergeAll(
       ),
     ),
   ),
+  layerGitGraph,
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,
