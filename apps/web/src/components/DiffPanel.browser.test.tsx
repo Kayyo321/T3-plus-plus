@@ -46,6 +46,7 @@ vi.mock("~/state/review", () => ({
   },
 }));
 vi.mock("~/state/vcs", () => ({
+  gitGraphEnvironment: {},
   vcsEnvironment: {
     status: () => state.status,
     listRefs: ({ input }: { input: { refKind: "local" | "remote" } }) =>
@@ -69,6 +70,7 @@ vi.mock("~/hooks/useSettings", () => ({
 }));
 vi.mock("~/hooks/useTheme", () => ({ useRenderedAppearance: () => "dark" }));
 vi.mock("~/state/queries", () => ({
+  useDebouncedValue: <T,>(value: T) => value,
   useCheckpointDiff: () => ({ data: null, error: null, isPending: false }),
   useTurnItemDetail: () => ({ data: null, error: null, isPending: false }),
 }));

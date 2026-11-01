@@ -72,7 +72,7 @@ export function useComputerUseControls(threadRef: ScopedThreadRef | null) {
       ? serverEnvironment.computerUseSupport({ environmentId, input: {} })
       : null,
   );
-  const instanceId = thread?.runtime?.providerInstanceId ?? thread?.modelSelection.instanceId;
+  const instanceId = thread?.runtime?.providerInstanceId ?? thread?.modelSelection?.instanceId;
   const provider = providers.find((entry) => entry.instanceId === instanceId) ?? null;
   const capabilityMode = thread?.capabilityMode;
   const status = snapshot?.state.status ?? "off";

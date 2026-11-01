@@ -403,6 +403,7 @@ function WorkbenchHandle(props: {
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
+        event.currentTarget.focus();
         event.currentTarget.setPointerCapture(event.pointerId);
         setDragStart(pointerPosition(event));
       }}

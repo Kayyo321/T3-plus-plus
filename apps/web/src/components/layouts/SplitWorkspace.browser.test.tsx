@@ -31,6 +31,12 @@ const target = (id: string): ThreadRouteTarget => ({
   threadRef: scopeThreadRef(EnvironmentId.make("env"), ThreadId.make(id)),
 });
 
+function wideContainer() {
+  const container = document.createElement("div");
+  container.style.width = "1400px";
+  return container;
+}
+
 function setup(panes: ReadonlyArray<SplitPane>, focusedPaneId: string | null) {
   mounted.count = 0;
   useSplitViewStore.setState(
@@ -55,6 +61,7 @@ describe("SplitWorkspace", () => {
     using _state = setup(twoPanes, "a");
     await using screen = await render(
       <SplitWorkspace routeTarget={target("one")} background={false} />,
+      { container: wideContainer() },
     );
     const one = screen.getByLabelText("Composer one");
     const two = screen.getByLabelText("Composer two");
@@ -95,6 +102,7 @@ describe("SplitWorkspace", () => {
     using _state = setup([], null);
     await using screen = await render(
       <SplitWorkspace routeTarget={target("one")} background={false} />,
+      { container: wideContainer() },
     );
     await expect.element(screen.getByLabelText("Composer one")).toBeInTheDocument();
     expect(mounted.count).toBe(1);
