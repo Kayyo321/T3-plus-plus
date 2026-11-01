@@ -104,6 +104,8 @@ export function attachTimelineViewport(scrollNode: HTMLElement): TimelineViewpor
       event.shiftKey ||
       eventPathContainsSelector(event, TYPE_TO_FOCUS_EDITABLE_SELECTOR) ||
       document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR) ||
+      // Keys move the focused split pane; another pane's timeline keeps following its stream.
+      scrollNode.closest('[data-split-pane-focused="false"]') !== null ||
       (scrollNode.contains(event.target) &&
         !isTimelineScrollTarget(event.target, scrollNode, direction === "up" ? -1 : 1))
     ) {

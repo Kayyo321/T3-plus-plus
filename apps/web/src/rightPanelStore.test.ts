@@ -3,6 +3,8 @@ import { type EnvironmentId, RunId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { useClosedViewStore } from "./closedViewStore";
+import { BUILT_IN_LAYOUTS } from "./layouts/layoutDocument";
+import { arrangementFromDocument } from "./layouts/threadArrangement";
 import { reopenClosedView } from "./reopenClosedView";
 import {
   hostRightPanel,
@@ -38,6 +40,81 @@ async function reloadRightPanelStore() {
   await useRightPanelStore.persist.rehydrate();
   expect(useRightPanelStore.persist.hasHydrated()).toBe(true);
 }
+
+describe("arrangements", () => {
+  const layout = (id: string) => BUILT_IN_LAYOUTS.find((entry) => entry.id === id)!;
+  const panel = () => selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+  const arrange = (id: string, opens: readonly string[] = []) =>
+    useRightPanelStore
+      .getState()
+      .applyArrangement(refA, arrangementFromDocument(layout(id), 1), opens);
+
+  it("keeps the docked explorer when a file opens", () => {
+    arrange("ide", ["files"]);
+    useRightPanelStore.getState().openFile(refA, "src/app.ts");
+    expect(panel().surfaces.map((surface) => surface.kind)).toEqual(["files", "file"]);
+  });
+
+  it("still replaces the explorer in the plain panel", () => {
+    useRightPanelStore.getState().open(refA, "files");
+    useRightPanelStore.getState().openFile(refA, "src/app.ts");
+    expect(panel().surfaces.map((surface) => surface.kind)).toEqual(["file"]);
+  });
+
+  it("stays open with empty groups when its last tab closes", () => {
+    arrange("review", ["diff"]);
+    useRightPanelStore.getState().closeSurface(refA, "diff");
+    expect(panel().isOpen).toBe(true);
+    expect(panel().arrangement?.layoutId).toBe("review");
+  });
+
+  it("closes only the toggled tab, since other groups stay on screen", () => {
+    arrange("ide", ["files", "diff"]);
+    useRightPanelStore.getState().activateSurface(refA, "diff");
+    useRightPanelStore.getState().toggle(refA, "diff");
+    expect(panel().isOpen).toBe(true);
+    expect(panel().surfaces.map((surface) => surface.kind)).toEqual(["files"]);
+  });
+
+  it("tracks each group's active tab through the store's own actions", () => {
+    arrange("ide", ["files", "diff"]);
+    useRightPanelStore.getState().activateSurface(refA, "files");
+    useRightPanelStore.getState().activateSurface(refA, "diff");
+    expect(panel().arrangement?.activeByGroup).toEqual({ explorer: "files", tools: "diff" });
+  });
+
+  it("drops an arrangement when an update returns none", () => {
+    arrange("review");
+    useRightPanelStore.getState().updateArrangement(refA, () => null);
+    expect(panel().arrangement).toBeUndefined();
+  });
+
+  it("survives a reload and a storage migration", async () => {
+    arrange("ide", ["files"]);
+    await reloadRightPanelStore();
+    expect(panel().arrangement?.layoutId).toBe("ide");
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: { "env-1:thread-A": { ...panel(), arrangement: panel().arrangement } },
+    });
+    expect(migrated.byThreadKey["env-1:thread-A"]?.arrangement?.root).toEqual(layout("ide").root);
+  });
+
+  it("drops a damaged arrangement on migration and keeps the tabs", () => {
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "diff",
+          surfaces: [{ id: "diff", kind: "diff" }],
+          arrangement: { root: { type: "mystery" } },
+        },
+      },
+    });
+    const thread = migrated.byThreadKey["env-1:thread-A"];
+    expect(thread?.arrangement).toBeUndefined();
+    expect(thread?.surfaces).toHaveLength(1);
+  });
+});
 
 describe("rightPanelStore", () => {
   it("opens a hosted side chat's panel actions in its parent's panel until unhosted", () => {

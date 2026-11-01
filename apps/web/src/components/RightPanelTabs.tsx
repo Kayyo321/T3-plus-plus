@@ -51,6 +51,7 @@ import { Volume2, VolumeOff } from "lucide";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactElement,
   type ReactNode,
   useEffect,
@@ -154,6 +155,11 @@ export interface RightPanelTabsProps {
   /** Overrides the default reason while side chats are available but cannot start. */
   sideChatDisabledReason?: string | null;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
+  /** Leaves room for the window's fixed panel controls when this tab bar sits under them. */
+  reserveTitlebarControls?: boolean;
+  /** False for a tab group that should not answer the new surface shortcut. */
+  shortcutsEnabled?: boolean;
+  onTabPointerDown?: (event: ReactPointerEvent, surface: RightPanelSurface) => void;
   children: ReactNode;
 }
 
@@ -857,6 +863,7 @@ interface RightPanelTabHandlers {
   onContextMenu: (event: ReactMouseEvent, surface: RightPanelSurface) => void;
   onStartRename: (surfaceId: string) => void;
   onFinishRename: (surfaceId: string, title: string) => void;
+  onPointerDown: ((event: ReactPointerEvent, surface: RightPanelSurface) => void) | undefined;
 }
 
 // Chromium on Linux only suppresses primary-selection paste when mouseup is cancelled.
@@ -1005,6 +1012,9 @@ function RightPanelTab(
       onMouseUp={preventTabMiddleButtonDefault}
       onAuxClick={(event) => onAuxClick(event, surface)}
       onContextMenu={(event) => onContextMenu(event, surface)}
+      onPointerDownCapture={
+        props.onPointerDown ? (event) => props.onPointerDown?.(event, surface) : undefined
+      }
       {...listeners}
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
@@ -1057,10 +1067,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a document keydown listener for the new surface shortcut while the panel is open
   useEffect(() => {
-    if (props.open === false) return;
+    if (props.open === false || props.shortcutsEnabled === false) return;
     document.addEventListener("keydown", onNewSurfaceKeyDown, true);
     return () => document.removeEventListener("keydown", onNewSurfaceKeyDown, true);
-  }, [props.open]);
+  }, [props.open, props.shortcutsEnabled]);
 
   const updateTabScrollState = (viewport: HTMLDivElement) => {
     const hasOverflow = viewport.scrollWidth - viewport.clientWidth > TAB_SCROLL_EDGE_TOLERANCE;
@@ -1272,6 +1282,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     props.onRenameDevice?.(surfaceId, title);
     setRenamingDevice(null);
   });
+  const handleTabPointerDown = useStableCallback(
+    (event: ReactPointerEvent, surface: RightPanelSurface) => {
+      props.onTabPointerDown?.(event, surface);
+    },
+  );
+  const onTabPointerDown = props.onTabPointerDown ? handleTabPointerDown : undefined;
 
   // A newly active tab, or tabs that start overflowing, can sit outside the scrolled strip.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the active tab DOM node into view after it changes or the tab strip starts overflowing
@@ -1334,7 +1350,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       <div
         className={cn(
           "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
-          props.mode === "inline" && !props.layoutControls ? "pr-28" : "pr-3",
+          props.reserveTitlebarControls || (props.mode === "inline" && !props.layoutControls)
+            ? "pr-36"
+            : "pr-3",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
@@ -1386,6 +1404,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     onContextMenu={onTabContextMenu}
                     onStartRename={onStartRenameTab}
                     onFinishRename={onFinishRenameTab}
+                    onPointerDown={onTabPointerDown}
                   />
                 );
               })}

@@ -22,6 +22,7 @@ import {
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
+import { openThreadInSplit } from "../layouts/layoutActions";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { threadEnvironment } from "../state/threads";
@@ -191,6 +192,9 @@ export function useThreadActionMenu(input: {
       switch (action) {
         case "find":
           onFind?.(threadRef);
+          return;
+        case "open-in-split":
+          openThreadInSplit(threadRef);
           return;
         case "project-settings": {
           const project = projects.find(

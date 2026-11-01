@@ -15,6 +15,7 @@ import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore"
 import type { ShortcutMatchContext } from "../../keybindings";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
 import { type RightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
+import type { FileEditorMode } from "../files/FilePreviewPanel";
 import {
   PersistentThreadTerminalPanel,
   type PersistentThreadTerminalPanelProps,
@@ -56,6 +57,8 @@ interface RightPanelFileProps {
   readonly pendingSurfaceIds: ReadonlySet<string>;
   readonly onOpenFile: (relativePath: string) => void;
   readonly onPendingChange: (relativePath: string, pending: boolean) => void;
+  /** Set where a layout docks the editor: agent edits get reviewed and selections go to chat. */
+  readonly editorMode: FileEditorMode | null;
 }
 
 export function RightPanelSurfaceContent(props: {
@@ -228,6 +231,7 @@ export function RightPanelSurfaceContent(props: {
             onPendingChange={files.onPendingChange}
             selectedFilePending={surface.kind === "file" && files.pendingSurfaceIds.has(surface.id)}
             workspaceMutationId={props.workspaceMutationId}
+            editorMode={files.editorMode}
           />
         </Suspense>
       );

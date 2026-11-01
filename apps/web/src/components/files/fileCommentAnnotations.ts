@@ -1,5 +1,7 @@
 import type { LineAnnotation, SelectedLineRange } from "@pierre/diffs";
 
+import type { ReviewHunk } from "./agentEditReview";
+
 export interface FileCommentAnnotationEntry {
   id: string;
   kind: "draft" | "comment";
@@ -10,6 +12,8 @@ export interface FileCommentAnnotationEntry {
 
 export interface FileCommentAnnotationGroup {
   entries: FileCommentAnnotationEntry[];
+  /** A review row under an unreviewed change. Derived from the file, so edits never remap it. */
+  reviewHunk?: ReviewHunk;
 }
 
 export type FileCommentLineAnnotation = LineAnnotation<FileCommentAnnotationGroup>;
@@ -38,7 +42,8 @@ export function formatFileCommentRange(startLine: number, endLine: number): stri
 export function remapFileCommentAnnotations(
   annotations: ReadonlyArray<FileCommentLineAnnotation>,
 ): FileCommentLineAnnotation[] {
-  return annotations.map((annotation) => ({
+  const comments = annotations.filter((annotation) => annotation.metadata.reviewHunk === undefined);
+  return comments.map((annotation) => ({
     ...annotation,
     metadata: {
       entries: annotation.metadata.entries.map((entry) => {

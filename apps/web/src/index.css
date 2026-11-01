@@ -2580,3 +2580,12 @@ code {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
+
+/* A pointer over a frame stops reporting to this document, which would strand a panel drag. */
+[data-layout-dragging],
+[data-layout-dragging] * {
+  cursor: grabbing;
+}
+[data-layout-dragging] iframe {
+  pointer-events: none;
+}

@@ -24,6 +24,7 @@ export type SettingsPath =
   | "/settings/diffs"
   | "/settings/keybindings"
   | "/settings/snap-shot"
+  | "/settings/layouts"
   | "/settings/providers"
   | "/settings/threads"
   | "/settings/browser"
@@ -94,6 +95,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/diffs": "Diffs & pull requests",
   "/settings/keybindings": "Keybindings",
   "/settings/snap-shot": "SnapShots",
+  "/settings/layouts": "Layouts",
   "/settings/providers": "Providers",
   "/settings/threads": "Threads",
   "/settings/browser": "Browser",
@@ -124,6 +126,7 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
       "/settings/diffs",
       "/settings/keybindings",
       "/settings/snap-shot",
+      "/settings/layouts",
     ],
   },
   {
@@ -1201,6 +1204,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/chat": null,
   "/settings/diffs": null,
   "/settings/snap-shot": null,
+  "/settings/layouts": null,
   "/settings/keybindings": null,
   "/settings/providers": null,
   "/settings/threads": null,
