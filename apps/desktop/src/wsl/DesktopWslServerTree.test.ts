@@ -35,8 +35,8 @@ const layerEnvironment = (input: {
       Layer.mergeAll(
         NodeServices.layer,
         DesktopConfig.layerTest({
-          T3CODE_HOME: input.baseDir,
-          T3CODE_MODE: "desktop",
+          T3PP_HOME: input.baseDir,
+          T3PP_MODE: "desktop",
         }),
       ),
     ),

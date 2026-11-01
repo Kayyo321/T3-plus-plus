@@ -589,7 +589,7 @@ export const buildBase = (
     nativeTools: template.tools.filter((tool) => !isT3Name(tool.name)),
     /** Tools ToolSearch loads: T3 tools from source, and native tools the template only names. */
     t3,
-    deferred: [...t3, ...nativeDeferred.map((name) => ({ name, ...nativeSchema(name) }))],
+    deferred: [...t3pp, ...nativeDeferred.map((name) => ({ name, ...nativeSchema(name) }))],
   };
 };
 
@@ -673,7 +673,7 @@ const buildCodexBase = (
     },
     nativeTools,
     t3,
-    deferred: [...t3],
+    deferred: [...t3pp],
     codex: { ...template, input, reasoning: { ...template.reasoning, effort } },
   };
 };
@@ -1069,7 +1069,7 @@ const t3Default = (sample: Sample, name: string, input: Readonly<Record<string, 
       const home =
         /^\/(?:home|Users)\/[^/]+/.exec(sample.base.environment.cwd)?.[0] ?? "/home/user";
       return input.delivery === "file"
-        ? { status: "saved", file: `${home}/.t3/userdata/secrets/files/${id}` }
+        ? { status: "saved", file: `${home}/.t3pp/userdata/secrets/files/${id}` }
         : { status: "saved", secretRef: `secret-ref:${id}` };
     }
     case "unlink_pull_request":

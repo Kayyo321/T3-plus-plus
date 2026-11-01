@@ -135,7 +135,7 @@ host that reconnects mid-sweep wins.
 
 T3 Chat uses WorkOS, not Clerk, so the two accounts are linked by consent
 rather than by a shared identity. The relay and T3 Chat share one secret
-(`T3CHAT_LINK_SECRET` here, `T3CODE_LINK_SECRET` there). The relay signs a
+(`T3CHAT_LINK_SECRET` here, `T3PP_LINK_SECRET` there). The relay signs a
 short-lived token naming the Clerk user and email; the user confirms it while
 signed in to T3 Chat, and T3 Chat stores the link. T3 Chat owns the link and the
 plan, so the relay keeps no copy. It asks T3 Chat only when an account reaches
@@ -156,7 +156,7 @@ release, installs the pinned one in the background, then starts a second
 connector on it for the same tunnel. The old connector stops only after the new
 one registers, so the swap never takes the host off the relay. If the new one
 fails to spawn, the old one keeps serving and the install retries later. A host
-with no relay client installs one first. A `cloudflared` on `PATH` or an explicit `T3CODE_CLOUDFLARED_PATH` is the
+with no relay client installs one first. A `cloudflared` on `PATH` or an explicit `T3PP_CLOUDFLARED_PATH` is the
 user's choice and is never replaced, since linking asks before downloading.
 
 Once the pinned release registers a connection, managed releases older than the

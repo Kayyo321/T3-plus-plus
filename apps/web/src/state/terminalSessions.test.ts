@@ -108,7 +108,7 @@ describe("attachedTerminalSessionAtom", () => {
       terminalId: "terminal-1",
       cwd: "/repo",
       worktreePath: null,
-      env: { T3CODE_PROJECT_ROOT: "/repo" },
+      env: { T3PP_PROJECT_ROOT: "/repo" },
     };
     const atom = attachedTerminalSessionAtom(environmentA, input);
     expect(attachedTerminalSessionAtom(environmentA, { ...input })).toBe(atom);

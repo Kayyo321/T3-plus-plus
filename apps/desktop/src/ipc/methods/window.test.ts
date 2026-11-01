@@ -183,7 +183,7 @@ describe("getRelayTelemetryEnabled", () => {
       assert.isFalse(
         yield* getRelayTelemetryEnabled.handler().pipe(
           Effect.provideService(HostProcess.Environment, {
-            T3CODE_TELEMETRY_ENABLED: "false",
+            T3PP_TELEMETRY_ENABLED: "false",
           }),
         ),
       );

@@ -29,7 +29,7 @@ export class NativeAppIconResolver extends Context.Service<
   {
     readonly resolve: (app: ToolActivityNativeAppReference) => Effect.Effect<string | null>;
   }
->()("t3/assets/NativeAppIconResolver") {}
+>()("t3pp/assets/NativeAppIconResolver") {}
 
 function appCacheKey(app: ToolActivityNativeAppReference): string {
   return JSON.stringify(app);

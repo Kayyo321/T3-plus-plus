@@ -145,7 +145,7 @@ export class UsageService extends Context.Service<
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
   }
->()("t3/usage/UsageService") {}
+>()("t3pp/usage/UsageService") {}
 
 export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -178,7 +178,7 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
   const hostIdPath = path.join(config.baseDir, "usage-host-id");
-  const explicitHostId = hostEnvironment["T3CODE_HOST_ID"]?.trim();
+  const explicitHostId = hostEnvironment["T3PP_HOST_ID"]?.trim();
   const hostId =
     explicitHostId ||
     (yield* fileSystem.readFileString(hostIdPath).pipe(

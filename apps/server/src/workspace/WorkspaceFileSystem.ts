@@ -131,7 +131,7 @@ export class WorkspaceFileSystem extends Context.Service<
       | KnownWorkspaces.UnknownWorkspaceError
     >;
   }
->()("t3/workspace/WorkspaceFileSystem") {}
+>()("t3pp/workspace/WorkspaceFileSystem") {}
 
 /** @public */
 export const make = Effect.gen(function* () {

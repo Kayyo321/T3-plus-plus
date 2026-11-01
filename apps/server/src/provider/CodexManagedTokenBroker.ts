@@ -38,7 +38,7 @@ export class CodexManagedTokenBroker extends Context.Service<
     readonly endpoint: Effect.Effect<string, BrokerStartError>;
     readonly awaitIdle: Effect.Effect<void>;
   }
->()("t3/provider/CodexManagedTokenBroker") {}
+>()("t3pp/provider/CodexManagedTokenBroker") {}
 
 const io = <A>(f: () => Promise<A>) =>
   Effect.tryPromise({ try: f, catch: (cause) => new BrokerStartError({ cause }) });

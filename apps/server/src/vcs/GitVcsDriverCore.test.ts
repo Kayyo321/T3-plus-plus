@@ -1369,7 +1369,12 @@ it.effect("lets a worktree checkout that is still working run past five minutes"
     const worktreePath = path.join(cwd, "worktree");
 
     const creation = yield* driver
-      .createWorktree({ cwd, refName: "main", newRefName: "t3/slow-checkout", path: worktreePath })
+      .createWorktree({
+        cwd,
+        refName: "main",
+        newRefName: "t3pp/slow-checkout",
+        path: worktreePath,
+      })
       .pipe(Effect.forkChild);
     yield* Deferred.await(checkoutStarted);
     yield* TestClock.adjust("6 minutes");
@@ -1377,7 +1382,7 @@ it.effect("lets a worktree checkout that is still working run past five minutes"
 
     const result = yield* Fiber.join(creation);
     assert.equal(result.worktree.path, worktreePath);
-    assert.equal(result.worktree.refName, "t3/slow-checkout");
+    assert.equal(result.worktree.refName, "t3pp/slow-checkout");
   }).pipe(Effect.provide(layerServerConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
 );
 
@@ -1628,7 +1633,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
                   .createWorktree({
                     cwd,
                     refName,
-                    ...(action === "worktree add -b" ? { newRefName: "t3/new-thread" } : {}),
+                    ...(action === "worktree add -b" ? { newRefName: "t3pp/new-thread" } : {}),
                     path: path.join(cwd, "worktree"),
                   })
                   .pipe(Effect.flip);
@@ -3708,7 +3713,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const renamed = yield* driver.renameBranch({
           cwd,
           oldBranch: "t3-abcd1234",
-          newBranch: "t3/fix-login",
+          newBranch: "t3pp/fix-login",
         });
 
         assert.equal(renamed.branch, "t3-fix-login-1");
@@ -3728,7 +3733,7 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const renamed = yield* driver.renameBranch({
           cwd,
           oldBranch: "t3-abcd1234",
-          newBranch: "t3/fix-login",
+          newBranch: "t3pp/fix-login",
         });
 
         assert.equal(renamed.branch, "t3-fix-login-1");

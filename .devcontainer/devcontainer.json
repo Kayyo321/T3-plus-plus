@@ -1,8 +1,8 @@
-// Dev container for T3 Code. Mirrors CI (ubuntu-24.04, Node 26, Rust stable)
+// Dev container for T3++. Mirrors CI (ubuntu-24.04, Node 26, Rust stable)
 // and the canonical setup in docs/operations/development.md: global `vp`, `vp i`.
 // Contributor doc: docs/internals/devcontainer.md
 {
-  "name": "T3 Code",
+  "name": "T3++",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
     // nodeGypDependencies (default true) brings python3/make/g++, which Linux
@@ -21,9 +21,9 @@
     "storage": "32gb"
   },
   "containerEnv": {
-    // Keep all runtime state inside the (gitignored) workspace .t3, matching
+    // Keep all runtime state inside the (gitignored) workspace .t3pp, matching
     // the worktree default. An explicit --home-dir still wins.
-    "T3CODE_HOME": "${containerWorkspaceFolder}/.t3"
+    "T3PP_HOME": "${containerWorkspaceFolder}/.t3pp"
   },
   "mounts": [
     // vp keeps the pnpm content-addressable store and metadata cache under
@@ -61,7 +61,7 @@
         // burns CPU and file handles.
         "files.watcherExclude": {
           "**/.repos/**": true,
-          "**/.t3/**": true
+          "**/.t3pp/**": true
         },
         "search.exclude": {
           "**/.repos": true

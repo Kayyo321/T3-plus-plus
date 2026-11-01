@@ -16,7 +16,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { buildTriageAppPrompt, type TriageSourceClone } from "./triagePrompt.ts";
 import { triageSourceCacheDir, writeTriageSession } from "./triageSession.ts";
 
-const T3CODE_REPOSITORY_URL = "https://github.com/pingdotgg/t3code";
+const T3PP_REPOSITORY_URL = "https://github.com/pingdotgg/t3code";
 
 // No tty: a credential prompt would hang until the timeout, so git must fail
 // instead. An empty GIT_ASKPASS also skips core.askPass and SSH_ASKPASS helpers.
@@ -26,7 +26,7 @@ const GIT_ENV = {
   LC_ALL: "C",
 } satisfies NodeJS.ProcessEnv;
 
-/** Starts in-app triage sessions: the same files `t3 triage` writes, plus a source clone. */
+/** Starts in-app triage sessions: the same files `t3pp triage` writes, plus a source clone. */
 export class TriageService extends Context.Service<
   TriageService,
   {
@@ -34,7 +34,7 @@ export class TriageService extends Context.Service<
       input: ServerPrepareTriageInput,
     ) => Effect.Effect<ServerPrepareTriageResult, ServerPrepareTriageError>;
   }
->()("t3/triage/TriageService") {}
+>()("t3pp/triage/TriageService") {}
 
 const describeClient = (client: AuthClientPresentationMetadata) =>
   [
@@ -96,7 +96,7 @@ const make = Effect.gen(function* () {
       yield* runGit(
         "addSourceRemote",
         staging,
-        ["remote", "add", "origin", T3CODE_REPOSITORY_URL],
+        ["remote", "add", "origin", T3PP_REPOSITORY_URL],
         10_000,
       );
       yield* runGit(
@@ -129,7 +129,7 @@ const make = Effect.gen(function* () {
     const listed = yield* runGit(
       "resolveSourceRef",
       sourceDir,
-      ["ls-remote", T3CODE_REPOSITORY_URL, tag, `${tag}^{}`, "refs/heads/main"],
+      ["ls-remote", T3PP_REPOSITORY_URL, tag, `${tag}^{}`, "refs/heads/main"],
       // Triage still starts without source; a dead network should not stall it.
       5_000,
     );

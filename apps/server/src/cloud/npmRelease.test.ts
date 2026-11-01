@@ -81,7 +81,7 @@ it.effect.each([
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       command: expect.stringMatching(/[/\\]npm(?:\.cmd)?$/i),
-      args: ["view", "--global", "--json", `t3@${fixture.spec}`, "version", "t3code"],
+      args: ["view", "--global", "--json", `t3pp@${fixture.spec}`, "version", "t3code"],
       maxOutputBytes: 256 * 1024,
     });
     yield* TestClock.adjust("1 minute");

@@ -248,7 +248,7 @@ export class ServerBrowser extends Context.Service<
 
     readonly profileReporter: Effect.Effect<ProfileReporter, never, Scope.Scope>;
   }
->()("t3/preview/ServerBrowser") {}
+>()("t3pp/preview/ServerBrowser") {}
 
 interface ViewerState {
   readonly id: string;

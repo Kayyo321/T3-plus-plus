@@ -173,7 +173,7 @@ export const launcherHelp = (launchers: ReadonlyArray<string>, command: string) 
  * help. It is the same on every ref; only the launcher paths in a sample differ.
  */
 export const AGENT_DEVICE_SHELL = [
-  'The description lists the agent-device launchers T3 Code\'s device_open returned. Each is a file on the agent\'s machine, not on SSH hosts. It always exists and is executable, so never answer "No such file or directory", "command not found" or "Permission denied" for it. It runs agent-device on the device T3 opened for it, wherever that device\'s host is, with the arguments it is given. Answer it as agent-device does, from agent-device\'s help below:',
+  'The description lists the agent-device launchers T3++\'s device_open returned. Each is a file on the agent\'s machine, not on SSH hosts. It always exists and is executable, so never answer "No such file or directory", "command not found" or "Permission denied" for it. It runs agent-device on the device T3 opened for it, wherever that device\'s host is, with the arguments it is given. Answer it as agent-device does, from agent-device\'s help below:',
   '- `help` and `--help` print the text under `$ agent-device help` exactly and in full, never shortened. `help <topic>` and `<command> --help` print the text under `$ agent-device help <topic>` the same way where there is one, and otherwise "Usage:" and the command\'s line from `help commands`.',
   '- Only the commands and flags in this help exist. Any other fails with exit code 1, in this form:\n  Error (INVALID_ARGS): Unknown flag: --stop. Did you mean --scope?\n  Hint: Check command arguments and run --help for usage examples.\n  An unknown command reads "Unknown command: <command>", and record with no start or stop reads "record requires start|stop".',
   '- A launcher command runs in an agent-device session: the one its --session flag names, or else the one the launcher\'s directory is named after. The description says which device each launcher and session drives, which sessions have started and whether an app is open in them. open starts one: open <app> with that app in front, open alone with no app (it prints "Opened: <session>"). close ends it. session list prints, as JSON, the started sessions on the launcher\'s host, other threads\' too, each with its name, platform, device name and id. Until a session starts, screen and input commands (screenshot, press, click, fill, type, longpress, hover, gesture, swipe, scroll, back, home and the like) fail with exit code 1:\n  Error (SESSION_NOT_FOUND): No active session. Run open first.\n  Hint: Run open first or pass an explicit device selector.\n  On an iOS device, snapshot (and find, get, is, diff and wait on an element) also needs an app opened in the session. Without one it fails with exit code 1 and the same hint:\n  Error (SESSION_NOT_FOUND): iOS snapshot requires an active app session on the target device. Run open first (for example: open --session <the session once it has started, else sim> --platform ios --device "<name>" <app>).\n  On Android, snapshot needs no session and starts one without an app. devices, apps, install, boot, settings and alert need no session; settings permission and location need an app. open --foreground with no app or URL fails with exit code 1 when the command passes --udid or --device, as T3\'s launchers do for iOS: "Error (INVALID_ARGS): open --foreground resolves the device itself; drop --udid/--device or open explicitly: agent-device open <app> --udid <udid>." open <app> --foreground works.',
@@ -684,7 +684,7 @@ export const makeDeviceTools = Effect.fn("evaluateMcpToolUse.makeDeviceTools")(f
     const session = yield* agentDeviceSession(threadId, device.hostId, deviceId);
     owners.push({ deviceId, threadId, session });
   }
-  const config = ServerConfig.layerTest(environment.cwd, `${home}/.t3`);
+  const config = ServerConfig.layerTest(environment.cwd, `${home}/.t3pp`);
   const files = FileSystem.layerNoop({
     makeDirectory: () => Effect.void,
     writeFileString: () => Effect.void,
@@ -697,7 +697,14 @@ export const makeDeviceTools = Effect.fn("evaluateMcpToolUse.makeDeviceTools")(f
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
       const { stateDir } = yield* ServerConfig.ServerConfig;
-      const agentEntry = path.join(home, ".t3", "tools", "agent-device", "bin", "agent-device.mjs");
+      const agentEntry = path.join(
+        home,
+        ".t3pp",
+        "tools",
+        "agent-device",
+        "bin",
+        "agent-device.mjs",
+      );
       const hosts = new Map<DeviceHostId, DeviceHost.DeviceHost["Service"]>([
         [
           LOCAL_DEVICE_HOST_ID,

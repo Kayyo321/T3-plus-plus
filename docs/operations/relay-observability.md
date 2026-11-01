@@ -1,6 +1,6 @@
 # Relay observability
 
-> For maintainers. Using T3 Code? See [docs/user](../user/).
+> For maintainers. Using T3++? See [docs/user](../user/).
 
 The relay Alchemy stack owns a shared Axiom trace setup:
 
@@ -170,7 +170,7 @@ usual cause.
 
 The mobile app reports through [`expo-observe`](https://docs.expo.dev/eas/observe/). Its
 `endpointUrl` points at the relay (`/v1/mobile/observe`, set in `apps/mobile/app.config.ts` from
-`T3CODE_RELAY_URL`), because Observe cannot send auth headers and prefixes every path with the EAS
+`T3PP_RELAY_URL`), because Observe cannot send auth headers and prefixes every path with the EAS
 project id. The relay forwards each request to Axiom with its own token: logs (JavaScript errors,
 native crashes, log events) to `t3-code-mobile-logs-*`, metrics to `t3-code-mobile-metrics-*`, and
 spans to the shared traces dataset. Expo's Observe dashboard receives nothing. The endpoint URL is

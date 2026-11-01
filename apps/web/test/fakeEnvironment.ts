@@ -70,7 +70,7 @@ const serverConfig: ServerConfig = {
     environment: descriptor,
     auth,
     cwd: "/workspace/render",
-    keybindingsConfigPath: "/workspace/.t3/keybindings.json",
+    keybindingsConfigPath: "/workspace/.t3pp/keybindings.json",
     keybindings: [],
     issues: [],
     providers: [
@@ -88,7 +88,7 @@ const serverConfig: ServerConfig = {
     ],
     availableEditors: [],
     observability: {
-      logsDirectoryPath: "/workspace/.t3/logs",
+      logsDirectoryPath: "/workspace/.t3pp/logs",
       localTracingEnabled: false,
       otlpTracesEnabled: false,
       otlpMetricsEnabled: false,
