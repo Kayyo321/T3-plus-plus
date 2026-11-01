@@ -13,7 +13,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUpIcon, SquareIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, XIcon } from "lucide-react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -229,7 +229,6 @@ export default function OrchestratorPanel(props: {
   const canAnswer = useEnvironmentScope(environmentId, AuthAccessWriteScope);
   const setBrain = useAtomCommand(orchestratorEnvironment.setBrain);
   const send = useAtomCommand(orchestratorEnvironment.send);
-  const interrupt = useAtomCommand(orchestratorEnvironment.interrupt);
   const answerApproval = useAtomCommand(orchestratorEnvironment.answerApproval);
   const checkAvailability = useAtomCommand(orchestratorEnvironment.checkAvailability, {
     reportFailure: false,
@@ -314,14 +313,6 @@ export default function OrchestratorPanel(props: {
             {target === "activity" ? "Activity" : "Grants"}
           </Button>
         ))}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Stop the orchestrator"
-          onClick={() => void interrupt({ environmentId, input: {} })}
-        >
-          <SquareIcon />
-        </Button>
         <Button
           variant="ghost"
           size="icon-xs"
