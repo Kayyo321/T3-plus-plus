@@ -1,6 +1,5 @@
 import {
   type ChatAttachment,
-  ChatAttachmentId,
   CommandId,
   GUEST_SHARE_TTL_MS,
   GuestMessageId,
@@ -16,18 +15,14 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2GetTurnItemResult,
   type OrchestrationV2ThreadHistoryPage,
-  type OrchestrationV2TurnItem,
+  isRemoteControlShare,
   ThreadId,
-  TurnItemId,
 } from "@t3tools/contracts";
-import { chatMarkdownImageSources } from "@t3tools/shared/markdownPipeline";
-import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
@@ -41,45 +36,24 @@ import {
   timingSafeEqualBase64Url,
 } from "../auth/utils.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
-import {
-  attachmentFileExtension,
-  createAttachmentId,
-  resolveAttachmentPath,
-  resolveAttachmentPathById,
-  threadHtmlRenderAttachmentIds,
-} from "../attachmentStore.ts";
-import * as ServerConfig from "../config.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
-import * as CommandOutputHub from "../orchestration-v2/CommandOutputHub.ts";
 import { GUEST_FAILURE } from "../orchestration-v2/GuestShareDecider.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { coalesceThreadLiveStream } from "../orchestration-v2/ThreadLiveEventCoalescer.ts";
 import { buildBoundedThreadStreamSnapshot } from "../orchestration-v2/ThreadStream.ts";
-import {
-  projectDomainEventForWire,
-  projectTurnItemForDetail,
-  projectTurnItemForWire,
-} from "../orchestration-v2/WireProjection.ts";
+import { projectDomainEventForWire } from "../orchestration-v2/WireProjection.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as AnalyticsService from "../telemetry/AnalyticsService.ts";
 import { guestShareView, guestThreadModel } from "./guestView.ts";
-import {
-  classifyGuestUploads,
-  GUEST_UPLOAD_HEADER_BYTES,
-  guestHostImageType,
-  type GuestUpload,
-  matchesImageSignature,
-  repliesShowImage,
-} from "./guestAttachments.ts";
+import type { GuestUpload } from "./guestAttachments.ts";
+import { makeSharedThreadAccess, SharedThreadError, threadOfEvent } from "./sharedThreadAccess.ts";
 
 const SIGNING_SECRET_NAME = "guest-share-signing-key";
 const SHARE_ID_BYTES = 16;
 const INVITE_SIGNATURE_BYTES = 16;
 const SNAPSHOT_ROW_LIMIT = 600;
 const SNAPSHOT_USER_TURN_LIMIT = 20;
-// Shares with no open guest stream whose sent image replies are still kept.
-const SHARED_THREAD_REPLIES_LIMIT = 64;
 // How soon an open read notices that its link stopped working, such as Connect no longer serving
 // the host. Closing or replacing the link ends the main stream at once.
 const ACCESS_RECHECK_INTERVAL = Duration.seconds(30);
@@ -212,33 +186,12 @@ export class GuestShareService extends Context.Service<
   }
 >()("t3pp/guest/GuestShareService") {}
 
-/** A reply a guest's stream sent, with its image sources once a media request parsed them. */
-interface SentReply {
-  readonly text: string;
-  sources?: ReadonlyArray<string>;
-}
-
-/** The thread record an event carries, for the share and the view. */
-const threadOf = (event: OrchestrationV2DomainEvent): OrchestrationV2AppThread | null => {
-  switch (event.type) {
-    case "thread.guest-share-updated":
-    case "thread.metadata-updated":
-    case "thread.model-selection-updated":
-    case "thread.provider-switched":
-      return event.payload;
-    default:
-      return null;
-  }
-};
-
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
-  const commandOutputs = yield* CommandOutputHub.CommandOutputHub;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const managedEndpoint = yield* CloudManagedEndpointRuntime;
-  const { attachmentsDir } = yield* ServerConfig.ServerConfig;
-  const fileSystem = yield* FileSystem.FileSystem;
+  const shared = yield* makeSharedThreadAccess;
   const crypto = yield* Crypto.Crypto;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
   const analytics = yield* AnalyticsService.AnalyticsService;
@@ -350,6 +303,12 @@ const make = Effect.gen(function* () {
     if (host === null) {
       return yield* new GuestShareCreateError({ reason: "connect_unavailable" });
     }
+    const current = yield* orchestrator
+      .getThreadRecords(input.threadId, [])
+      .pipe(Effect.mapError(() => new GuestShareCreateError({ reason: "thread_unavailable" })));
+    if (isRemoteControlShare(current.thread.guestShare)) {
+      return yield* new GuestShareCreateError({ reason: "remote_control_active" });
+    }
     const shareId = GuestShareId.make(
       base64UrlEncode(yield* crypto.randomBytes(SHARE_ID_BYTES).pipe(Effect.orDie)),
     );
@@ -394,65 +353,8 @@ const make = Effect.gen(function* () {
     yield* authorize(session, "session");
   });
 
-  const uploadFailed = new GuestShareAccessError({ reason: "rejected" });
-  const removeStored = (attachments: ReadonlyArray<ChatAttachment>) =>
-    Effect.forEach(
-      attachments,
-      (attachment) => {
-        const path = resolveAttachmentPath({ attachmentsDir, attachment });
-        return path === null
-          ? Effect.void
-          : fileSystem.remove(path, { force: true }).pipe(Effect.ignore);
-      },
-      { discard: true },
-    );
-
-  /**
-   * Checks the files and stores them as the thread's attachments, so a message can wait longer
-   * than the day the pending-upload sweep allows. Send uses them as they are; dismissing the
-   * message or ending the share deletes them.
-   */
-  const storeUploads = Effect.fn("GuestShareService.storeUploads")(function* (
-    threadId: ThreadId,
-    uploads: ReadonlyArray<GuestUpload>,
-  ) {
-    const inspected = yield* Effect.forEach(uploads, (upload) =>
-      Effect.gen(function* () {
-        const info = yield* fileSystem.stat(upload.path);
-        const file = yield* fileSystem.open(upload.path, { flag: "r" });
-        const header = Option.getOrElse(
-          yield* file.readAlloc(GUEST_UPLOAD_HEADER_BYTES),
-          () => new Uint8Array(),
-        );
-        return { ...upload, sizeBytes: Number(info.size), header };
-      }).pipe(
-        Effect.scoped,
-        Effect.mapError(() => uploadFailed),
-      ),
-    );
-    const classified = classifyGuestUploads(inspected);
-    if (!classified.ok) return yield* new GuestShareAccessError({ reason: classified.reason });
-    const stored: Array<ChatAttachment> = [];
-    yield* Effect.forEach(
-      classified.attachments,
-      (draft, index) =>
-        Effect.gen(function* () {
-          const id = createAttachmentId(
-            threadId,
-            draft.type === "file" ? attachmentFileExtension(draft.name) : undefined,
-          );
-          if (id === null) return yield* uploadFailed;
-          const attachment: ChatAttachment = { ...draft, id: ChatAttachmentId.make(id) };
-          const path = resolveAttachmentPath({ attachmentsDir, attachment });
-          if (path === null) return yield* uploadFailed;
-          yield* fileSystem.makeDirectory(attachmentsDir, { recursive: true });
-          yield* fileSystem.copyFile(uploads[index]!.path, path);
-          stored.push(attachment);
-        }).pipe(Effect.mapError(() => uploadFailed)),
-      { discard: true },
-    ).pipe(Effect.onError(() => removeStored(stored)));
-    return stored;
-  });
+  const fromShared = <A, R>(effect: Effect.Effect<A, SharedThreadError, R>) =>
+    Effect.mapError(effect, (error) => new GuestShareAccessError({ reason: error.reason }));
 
   const submit = Effect.fn("GuestShareService.submit")(function* (
     session: string,
@@ -466,7 +368,7 @@ const make = Effect.gen(function* () {
     if (request.text === "" && uploads.length === 0) {
       return yield* new GuestShareAccessError({ reason: "empty" });
     }
-    const attachments = yield* storeUploads(thread.id, uploads);
+    const attachments = yield* fromShared(shared.storeUploads(thread.id, uploads));
     yield* dispatchGuestCommand({
       type: "thread.guest-message.submit",
       commandId: yield* commandId("submit"),
@@ -475,7 +377,7 @@ const make = Effect.gen(function* () {
       guestMessageId: GuestMessageId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
       text: request.text,
       ...(attachments.length === 0 ? {} : { attachments }),
-    }).pipe(Effect.onError(() => removeStored(attachments)));
+    }).pipe(Effect.onError(() => shared.removeStored(attachments)));
     yield* analytics.record("feature.used", {
       feature: "guest_message.submit",
       variant: attachments.length === 0 ? "text_only" : "with_files",
@@ -488,40 +390,6 @@ const make = Effect.gen(function* () {
       Effect.repeat(Schedule.spaced(ACCESS_RECHECK_INTERVAL)),
       Effect.ignore,
     );
-
-  // The image replies each share's guest stream has sent, in its opening snapshot or live, so an
-  // image loads while the guest's page can show its reply, inherited ones included. Keyed by
-  // share, so a new link on the thread starts empty. A share with an open stream keeps its
-  // record; past the limit, closed ones are dropped.
-  const sentImageReplies = new Map<
-    GuestShareId,
-    { openStreams: number; readonly replies: Map<string, SentReply> }
-  >();
-  const sentRecord = (shareId: GuestShareId) => {
-    let record = sentImageReplies.get(shareId);
-    if (record === undefined) {
-      record = { openStreams: 0, replies: new Map() };
-      sentImageReplies.set(shareId, record);
-      for (const [id, other] of sentImageReplies) {
-        if (sentImageReplies.size <= SHARED_THREAD_REPLIES_LIMIT) break;
-        if (other.openStreams === 0 && id !== shareId) sentImageReplies.delete(id);
-      }
-    }
-    return record;
-  };
-  const rememberSent = (shareId: GuestShareId, items: Iterable<OrchestrationV2TurnItem>) => {
-    for (const item of items) {
-      if (item.type !== "assistant_message") continue;
-      const key = `${item.threadId}\u0000${item.id}`;
-      // Only replies with image syntax can show an image. One edited to drop its images stops
-      // allowing them.
-      if (item.text.includes("![") || /<img/i.test(item.text)) {
-        sentRecord(shareId).replies.set(key, { text: item.text });
-      } else {
-        sentImageReplies.get(shareId)?.replies.delete(key);
-      }
-    }
-  };
 
   /**
    * The thread as the owner's thread subscription sends it: a bounded snapshot, then the same
@@ -553,7 +421,7 @@ const make = Effect.gen(function* () {
     const ended: GuestStreamEvent = { type: "ended" };
     const endsShare = (event: OrchestrationV2DomainEvent) => {
       if (event.type === "thread.archived" || event.type === "thread.deleted") return true;
-      const updated = threadOf(event);
+      const updated = threadOfEvent(event);
       return updated !== null && updated.guestShare?.id !== share.id;
     };
     const live = orchestrator
@@ -570,8 +438,10 @@ const make = Effect.gen(function* () {
         Stream.map((item): ReadonlyArray<GuestStreamEvent> => {
           if (item.kind !== "event") return [];
           if (endsShare(item.event)) return [ended];
-          if (item.event.type === "turn-item.updated") rememberSent(share.id, [item.event.payload]);
-          const updated = threadOf(item.event);
+          if (item.event.type === "turn-item.updated") {
+            shared.rememberSent(share.id, [item.event.payload]);
+          }
+          const updated = threadOfEvent(item.event);
           const view = updated === null ? null : viewOf(updated);
           return view === null
             ? [{ type: "thread", item }]
@@ -618,57 +488,28 @@ const make = Effect.gen(function* () {
     // The record is opened and counted when the stream runs, paired with its release, so a
     // response whose body never runs (HEAD) touches nothing.
     return Stream.unwrap(
-      Effect.acquireRelease(
-        Effect.sync(() => {
-          const record = sentRecord(share.id);
-          record.openStreams += 1;
-          rememberSent(
-            share.id,
-            openingSnapshot.projection.visibleTurnItems.map((row) => row.item),
-          );
-          return record;
-        }),
-        (record) =>
-          Effect.sync(() => {
-            record.openStreams -= 1;
-          }),
-      ).pipe(Effect.as(events)),
+      shared.holdSentRecord(share.id).pipe(
+        Effect.tap(() =>
+          Effect.sync(() =>
+            shared.rememberSent(
+              share.id,
+              openingSnapshot.projection.visibleTurnItems.map((row) => row.item),
+            ),
+          ),
+        ),
+        Effect.as(events),
+      ),
     );
   });
 
-  const unavailable = new GuestShareAccessError({ reason: "unavailable" });
-
-  /** An item of the shared thread, read after the session check. */
-  const threadItem = Effect.fn("GuestShareService.threadItem")(function* (
-    session: string,
-    itemId: string,
-  ) {
-    const { thread } = yield* authorize(session, "session");
-    const item = yield* orchestrator
-      .getTurnItem({ threadId: thread.id, itemId: TurnItemId.make(itemId) })
-      .pipe(Effect.mapError(() => unavailable));
-    return item === null ? yield* unavailable : { thread, item };
-  });
-
   const render = Effect.fn("GuestShareService.render")(function* (session: string, itemId: string) {
-    const { thread, item } = yield* threadItem(session, itemId);
-    if (item.type !== "dynamic_tool") return yield* unavailable;
-    const reference = htmlRenderFromToolItem(item);
-    const [attachmentId] = threadHtmlRenderAttachmentIds(thread.id, [item]);
-    const path =
-      attachmentId === undefined
-        ? null
-        : resolveAttachmentPathById({ attachmentsDir, attachmentId });
-    if (reference === undefined || path === null) return yield* unavailable;
-    return { path, title: reference.title };
+    const { thread } = yield* authorize(session, "session");
+    return yield* fromShared(shared.render(thread.id, itemId));
   });
 
   const item = Effect.fn("GuestShareService.item")(function* (session: string, itemId: string) {
-    const { item } = yield* threadItem(session, itemId);
-    return {
-      item:
-        item.type === "file_change" ? projectTurnItemForWire(item) : projectTurnItemForDetail(item),
-    };
+    const { thread } = yield* authorize(session, "session");
+    return yield* fromShared(shared.item(thread.id, itemId));
   });
 
   const history = Effect.fn("GuestShareService.history")(function* (
@@ -676,27 +517,15 @@ const make = Effect.gen(function* () {
     cursor: string,
   ) {
     const { thread, share } = yield* authorize(session, "session");
-    const page = yield* orchestrator
-      .getThreadHistoryPage(thread.id, cursor)
-      .pipe(Effect.mapError(() => unavailable));
-    rememberSent(
-      share.id,
-      page.items.map((row) => row.item),
-    );
-    return page;
+    return yield* fromShared(shared.history(thread.id, cursor, share.id));
   });
 
   const commandOutput = Effect.fn("GuestShareService.commandOutput")(function* (
     session: string,
     itemId: string,
   ) {
-    const { thread, item } = yield* threadItem(session, itemId);
-    if (item.type !== "command_execution") return yield* unavailable;
-    return commandOutputs.subscribe({ threadId: thread.id, itemId: item.id }).pipe(
-      // A lost hub stream ends the output; the row reloads it when reopened.
-      Stream.catchCause(() => Stream.empty),
-      Stream.interruptWhen(untilRevoked(session)),
-    );
+    const { thread } = yield* authorize(session, "session");
+    return yield* fromShared(shared.commandOutput(thread.id, itemId, untilRevoked(session)));
   });
 
   const attachment = Effect.fn("GuestShareService.attachment")(function* (
@@ -704,52 +533,12 @@ const make = Effect.gen(function* () {
     attachmentId: string,
   ) {
     const { thread, share } = yield* authorize(session, "session");
-    // A dismissed message's files are deleted with it.
-    const fromShare = share.messages
-      .flatMap((message) => (message.status === "dismissed" ? [] : (message.attachments ?? [])))
-      .find((candidate) => candidate.id === attachmentId);
-    const found =
-      fromShare ??
-      (yield* orchestrator.getThreadRecords(thread.id, ["messages"]).pipe(
-        Effect.map(({ messages }) =>
-          messages
-            .flatMap((message) => message.attachments ?? [])
-            .find((candidate) => candidate.id === attachmentId),
-        ),
-        Effect.mapError(() => unavailable),
-      ));
-    const path =
-      found === undefined ? null : resolveAttachmentPath({ attachmentsDir, attachment: found });
-    if (found === undefined || path === null) return yield* unavailable;
-    const exists = yield* fileSystem.exists(path).pipe(Effect.orElseSucceed(() => false));
-    return exists ? { path, attachment: found } : yield* unavailable;
+    return yield* fromShared(shared.attachment(thread.id, share.messages, attachmentId));
   });
 
   const media = Effect.fn("GuestShareService.media")(function* (session: string, path: string) {
     const { share } = yield* authorize(session, "session");
-    const mimeType = guestHostImageType(path);
-    if (mimeType === null) return yield* unavailable;
-    const sent = sentImageReplies.get(share.id)?.replies.values() ?? [];
-    // Each sent reply is parsed once, on the first request that needs it.
-    if (
-      !repliesShowImage(
-        path,
-        [...sent],
-        (reply) => (reply.sources ??= chatMarkdownImageSources(reply.text)),
-      )
-    ) {
-      return yield* unavailable;
-    }
-    // The bytes must be the image the name says, as for a guest's own upload.
-    const header = yield* fileSystem.open(path, { flag: "r" }).pipe(
-      Effect.flatMap((file) => file.readAlloc(GUEST_UPLOAD_HEADER_BYTES)),
-      Effect.scoped,
-      Effect.mapError(() => unavailable),
-    );
-    if (Option.isNone(header) || !matchesImageSignature(mimeType, header.value)) {
-      return yield* unavailable;
-    }
-    return { path, mimeType };
+    return yield* fromShared(shared.media(share.id, path));
   });
 
   return GuestShareService.of({

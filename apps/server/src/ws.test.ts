@@ -92,6 +92,7 @@ import * as ThreadBranchService from "./orchestration-v2/ThreadBranchService.ts"
 import * as ConversationFolderService from "./conversationFolders/ConversationFolderService.ts";
 import * as WorkspaceService from "./workspace/WorkspaceService.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
+import * as RemoteControlService from "./remoteControl/RemoteControlService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -594,6 +595,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(ThreadBranchService.ThreadBranchService)({}),
   Layer.mock(WorkspaceService.WorkspaceService)({}),
   Layer.mock(ConversationFolderService.ConversationFolderService)({}),
+  Layer.mock(RemoteControlService.RemoteControlService)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
   Layer.mock(SecretResolver.SecretResolver)({}),

@@ -38,6 +38,7 @@ vi.mock("expo-camera", () => ({
   CameraView: () => null,
   useCameraPermissions: () => [null, vi.fn()],
 }));
+vi.mock("expo-web-browser", () => ({ openBrowserAsync: vi.fn() }));
 vi.mock("expo-haptics", () => ({
   notificationAsync: vi.fn(async () => {}),
   NotificationFeedbackType: { Success: "success", Error: "error" },

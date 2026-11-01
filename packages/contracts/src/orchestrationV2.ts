@@ -3480,6 +3480,9 @@ const OrchestrationV2InternalCommand = Schema.Union([
     guestMessageId: GuestMessageId,
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
+    /** Set by remote control, where one share has several senders. */
+    senderName: Schema.optional(TrimmedNonEmptyString),
+    unreviewed: Schema.optional(Schema.Literal(true)),
   }),
   /** Leaves a summary card in a thread; `wake` also tells its agent, in the same commit. */
   Schema.Struct({

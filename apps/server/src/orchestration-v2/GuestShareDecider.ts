@@ -164,6 +164,8 @@ export function decideGuestShareCommand(input: {
             status: "pending",
             submittedAt: DateTime.formatIso(now),
             ...(attachments.length === 0 ? {} : { attachments }),
+            ...(command.senderName === undefined ? {} : { senderName: command.senderName }),
+            ...(command.unreviewed === undefined ? {} : { unreviewed: command.unreviewed }),
           },
         ]),
       };
@@ -210,11 +212,13 @@ export function decideGuestMessageSend(input: {
   const share = input.thread.guestShare ?? null;
   if (share === null) return Result.fail("This thread has no guest link.");
   const message = share.messages.find((candidate) => candidate.id === input.guestMessageId);
-  const name = share.guestName ?? "Guest";
+  const name = message?.senderName ?? share.guestName ?? "Guest";
   const guestText = message?.text ?? "";
   return Result.map(resolveMessage(share, input.guestMessageId, "sent"), (next) => ({
     thread: { ...input.thread, guestShare: next, updatedAt: input.now },
-    text: `Message from guest ${name}, sent by the owner:\n\n${guestText}`,
+    text: message?.unreviewed
+      ? `Message from remote device ${name}, not reviewed by the owner:\n\n${guestText}`
+      : `Message from guest ${name}, sent by the owner:\n\n${guestText}`,
     guest: { guestMessageId: input.guestMessageId, name, text: guestText, shareId: share.id },
   }));
 }

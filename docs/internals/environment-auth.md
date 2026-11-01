@@ -39,6 +39,27 @@ tokens never enter `SessionStore`, so no RPC, WebSocket, or MCP path can accept
 one. Guest routes also require T3 Connect to still serve the link's hostname;
 the request's Host header is not checked, because a LAN client can forge it.
 
+### Remote control is narrower than any scope
+
+[Remote control](../user/remote-control.md) reaches one conversation from a
+paired device. Its credentials live in the `remote_control_*` tables and in
+cookies scoped to `/api/remote`, never in `SessionStore`, so a device has no
+environment scope at all: every remote route checks the session, its two
+expiries, and the access level on each request
+([RemoteControlService](../../apps/server/src/remoteControl/RemoteControlService.ts)).
+Links and codes are HMACs of the switch and a generation under a server key, so
+nothing recoverable is stored and bumping the generation kills both. Only
+`access:write` can read them back, which is the same bar as issuing them.
+
+`Secure` follows what the browser sees, because a browser silently drops a
+Secure cookie set over plain HTTP and pairing would dead-end on every LAN. A
+plain HTTP session therefore has no Secure flag, is tied to its peer address,
+and is capped at Chat: anyone on that network can read the traffic, so
+approving and stopping need an encrypted route. A tailnet peer counts as
+encrypted even though the browser sees HTTP. `X-Forwarded-Proto` is believed
+only from loopback, where Tailscale Serve and the T3 Connect tunnel arrive;
+from any other peer it would be a way to lift the cap.
+
 ### MCP clients are a separate audience
 
 Agents T3++ did not launch sign in to `/mcp` through a narrow OAuth

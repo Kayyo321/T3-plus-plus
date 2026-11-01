@@ -12,6 +12,8 @@ import {
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  REMOTE_CONTROL_SHARE_EXPIRES_AT,
+  REMOTE_CONTROL_SHARE_HOST,
   RunId,
   ThreadId,
   TurnItemId,
@@ -196,6 +198,22 @@ it.effect("spends an invite once and ends the guest stream when the owner stops 
     );
     assert.isTrue(Exit.isFailure(yield* Effect.exit(guestShares.stream(session))));
     assert.isTrue(Exit.isFailure(yield* Effect.exit(guestShares.check(session))));
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("offers no guest link while remote control holds the thread's queue", () =>
+  Effect.gen(function* () {
+    const { orchestrator, guestShares } = yield* shareThread;
+    yield* orchestrator.dispatch({
+      type: "thread.guest-share.open",
+      commandId: CommandId.make("open-remote-queue"),
+      threadId,
+      shareId: GuestShareId.make("remote-queue"),
+      host: REMOTE_CONTROL_SHARE_HOST,
+      expiresAt: REMOTE_CONTROL_SHARE_EXPIRES_AT,
+    });
+    const error = yield* guestShares.create({ threadId }).pipe(Effect.flip);
+    assert.equal(error.reason, "remote_control_active");
   }).pipe(Effect.provide(layerTest)),
 );
 

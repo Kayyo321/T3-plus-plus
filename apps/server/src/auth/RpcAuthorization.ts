@@ -119,6 +119,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.gitGraphChanges]: AuthOrchestrationReadScope,
   [WS_METHODS.gitGraphBlame]: AuthOrchestrationReadScope,
   [WS_METHODS.gitGraphPreview]: AuthOrchestrationReadScope,
+  [WS_METHODS.remoteControlSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.remoteControlReachability]: AuthOrchestrationReadScope,
   [WS_METHODS.auditList]: AuthOrchestrationReadScope,
   [WS_METHODS.auditSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.threadRewindPreview]: AuthOrchestrationReadScope,

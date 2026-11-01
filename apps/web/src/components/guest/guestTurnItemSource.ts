@@ -3,9 +3,6 @@ import {
   EMPTY_COMMAND_OUTPUT,
 } from "@t3tools/client-runtime/state/command-output";
 import {
-  GUEST_COMMAND_OUTPUT_ROUTE,
-  GUEST_ITEM_ROUTE,
-  GUEST_SHARE_PARAM,
   OrchestrationV2CommandOutputFrame,
   OrchestrationV2GetTurnItemResult,
 } from "@t3tools/contracts";
@@ -19,6 +16,7 @@ import * as Stream from "effect/Stream";
 import { Atom } from "effect/reactivity";
 
 import type { TurnItemSource } from "../chat/timelineRowContext";
+import type { SharedThreadRoutes } from "./guestStream.logic";
 
 /** What an expanded guest row says when it cannot read the item. */
 class GuestItemReadError extends Data.TaggedError("GuestItemReadError")<{
@@ -30,38 +28,33 @@ const decodeFrame = Schema.decodeUnknownOption(
   Schema.fromJsonString(OrchestrationV2CommandOutputFrame),
 );
 
-const itemUrl = (route: string, shareId: string, itemId: string) =>
-  `${route}?${GUEST_SHARE_PARAM}=${encodeURIComponent(shareId)}&item=${encodeURIComponent(itemId)}`;
-
-/** `item` is null when the thread no longer has the item, or the share ended. */
-async function fetchGuestItemDetail(
-  shareId: string,
-  itemId: string,
-): Promise<OrchestrationV2GetTurnItemResult> {
-  const response = await fetch(itemUrl(GUEST_ITEM_ROUTE, shareId, itemId));
-  if (response.status === 403) return { item: null };
+/** `item` is null when the thread no longer has the item, or the session ended. */
+async function fetchGuestItemDetail(url: string): Promise<OrchestrationV2GetTurnItemResult> {
+  const response = await fetch(url);
+  if (response.status === 401 || response.status === 403 || response.status === 404) {
+    return { item: null };
+  }
   if (!response.ok) throw new Error(`Guest item request failed with ${response.status}.`);
   return decodeDetail(await response.json());
 }
 
-// Keys are JSON so a share id or item id can never run into the next part.
+// Keys are JSON so a url can never run into the revision after it.
 const guestItemDetailAtom = Atom.family((key: string) => {
-  const [shareId, itemId] = JSON.parse(key) as [string, string, string];
+  const [url] = JSON.parse(key) as [string, string];
   return Atom.make(
     Effect.tryPromise({
-      try: () => fetchGuestItemDetail(shareId, itemId),
+      try: () => fetchGuestItemDetail(url),
       catch: () => new GuestItemReadError({ message: "Could not load this item." }),
     }),
   );
 });
 
 /** Ends after the frame of a settled command, so the browser does not reconnect to it. */
-const guestCommandOutputAtom = Atom.family((key: string) => {
-  const [shareId, itemId] = JSON.parse(key) as [string, string];
+const guestCommandOutputAtom = Atom.family((url: string) => {
   const frames = Stream.callback<OrchestrationV2CommandOutputFrame, GuestItemReadError>((queue) =>
     Effect.acquireRelease(
       Effect.sync(() => {
-        const source = new EventSource(itemUrl(GUEST_COMMAND_OUTPUT_ROUTE, shareId, itemId));
+        const source = new EventSource(url);
         source.addEventListener("message", (message) => {
           const frame = decodeFrame(message.data);
           if (Option.isNone(frame)) return;
@@ -94,9 +87,11 @@ const guestCommandOutputAtom = Atom.family((key: string) => {
   );
 });
 
-/** Expanded rows on the guest page read through the guest routes, with the page's share cookie. */
-export const guestTurnItemSource = (shareId: string): TurnItemSource => ({
+/** Expanded rows read through the page's own routes, with the page's cookie. */
+export const sharedTurnItemSource = (
+  routes: Pick<SharedThreadRoutes, "item" | "commandOutput">,
+): TurnItemSource => ({
   detail: ({ itemId, revision }) =>
-    guestItemDetailAtom(JSON.stringify([shareId, itemId, revision])),
-  commandOutput: ({ itemId }) => guestCommandOutputAtom(JSON.stringify([shareId, itemId])),
+    guestItemDetailAtom(JSON.stringify([routes.item(itemId), revision])),
+  commandOutput: ({ itemId }) => guestCommandOutputAtom(routes.commandOutput(itemId)),
 });

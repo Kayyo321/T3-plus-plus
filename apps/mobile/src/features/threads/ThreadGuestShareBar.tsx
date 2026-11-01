@@ -7,6 +7,7 @@ import {
 import {
   AuthOrchestrationOperateScope,
   type ChatAttachment,
+  isRemoteControlShare,
   type ScopedThreadRef,
   type ThreadGuestMessage,
   type ThreadGuestShare,
@@ -79,7 +80,8 @@ export function ThreadGuestShareBar(props: {
     );
     return () => clearTimeout(timer);
   }, [expiresAt]);
-  if (threadRef === null || !share) return null;
+  // Remote control's queue uses the same slot and has its own bar.
+  if (threadRef === null || !share || isRemoteControlShare(share)) return null;
 
   const disabled = busy || !props.canOperateThread;
   const stopSharing = () =>
@@ -128,7 +130,8 @@ export function ThreadGuestPendingMessage(props: {
   /** The feed's own attachment rendering, so the owner sees the files before Send. */
   readonly renderAttachments: (attachments: ReadonlyArray<ChatAttachment>) => ReactNode;
 }) {
-  const { threadRef, guestName, message } = props;
+  const { threadRef, message } = props;
+  const guestName = message.senderName ?? props.guestName;
   const canOperate = useEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope);
   const resolveGuestMessage = useAtomCommand(
     threadEnvironment.resolveGuestMessage,

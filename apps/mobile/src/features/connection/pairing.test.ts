@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
+import {
+  buildPairingUrl,
+  extractPairingUrlFromQrPayload,
+  parsePairingUrl,
+  isRemoteControlLink,
+} from "./pairing";
 
 describe("buildPairingUrl", () => {
   it("uses HTTP for a schemeless IP address", () => {
@@ -42,5 +47,15 @@ describe("parsePairingUrl", () => {
       host: "https://desktop.tailnet.ts.net",
       code: "pairing-token",
     });
+  });
+});
+
+describe("isRemoteControlLink", () => {
+  it("tells a conversation link from an environment pairing link", () => {
+    expect(isRemoteControlLink("https://env.t3.test/remote#abc.1.signature")).toBe(true);
+    expect(isRemoteControlLink("http://192.168.1.10:3773/remote#abc.1.signature")).toBe(true);
+    expect(isRemoteControlLink("https://env.t3.test/#token=abc")).toBe(false);
+    expect(isRemoteControlLink("https://env.t3.test/remote")).toBe(false);
+    expect(isRemoteControlLink("not a url")).toBe(false);
   });
 });

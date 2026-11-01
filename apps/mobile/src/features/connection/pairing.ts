@@ -1,3 +1,4 @@
+import { REMOTE_CONTROL_PAGE_PATH } from "@t3tools/contracts";
 import { readHostedPairingRequest } from "@t3tools/shared/remote";
 import * as Schema from "effect/Schema";
 
@@ -67,6 +68,19 @@ export function parsePairingUrl(url: string): { host: string; code: string } {
     return { host: parsed.toString().replace(/\/$/, ""), code };
   } catch {
     return { host: trimmed, code: "" };
+  }
+}
+
+/**
+ * Whether this is a remote control link, which opens one conversation's page rather than pairing
+ * an environment. The page holds its own session, so it opens in the system browser.
+ */
+export function isRemoteControlLink(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.pathname === REMOTE_CONTROL_PAGE_PATH && parsed.hash.length > 1;
+  } catch {
+    return false;
   }
 }
 

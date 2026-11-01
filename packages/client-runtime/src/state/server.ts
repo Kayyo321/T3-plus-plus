@@ -1634,6 +1634,42 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:guest-share:create",
       tag: WS_METHODS.guestShareCreate,
     }),
+    remoteControlLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:remote-control:live",
+      tag: WS_METHODS.remoteControlSubscribe,
+    }),
+    remoteControlReachability: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:remote-control:reachability",
+      tag: WS_METHODS.remoteControlReachability,
+    }),
+    enableRemoteControl: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:enable",
+      tag: WS_METHODS.remoteControlEnable,
+    }),
+    updateRemoteControl: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:update",
+      tag: WS_METHODS.remoteControlUpdate,
+    }),
+    disableRemoteControl: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:disable",
+      tag: WS_METHODS.remoteControlDisable,
+    }),
+    rotateRemoteControlLink: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:rotate-link",
+      tag: WS_METHODS.remoteControlRotateLink,
+    }),
+    revealRemoteControlLink: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:reveal-link",
+      tag: WS_METHODS.remoteControlRevealLink,
+    }),
+    revokeRemoteControlDevice: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:revoke-device",
+      tag: WS_METHODS.remoteControlRevokeDevice,
+    }),
+    resolveRemoteControlPairing: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:resolve-pairing",
+      tag: WS_METHODS.remoteControlResolvePairing,
+    }),
     // Off the config lane: answering a card must not queue behind settings
     // edits. One answer per card at a time.
     answerSecretRequest: createEnvironmentRpcCommand(runtime, {
