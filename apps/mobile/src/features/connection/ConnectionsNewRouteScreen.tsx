@@ -4,6 +4,7 @@ import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScroll
 import { useAuth } from "@clerk/expo";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
+import * as WebBrowser from "expo-web-browser";
 import {
   StackActions,
   useIsFocused,
@@ -23,7 +24,12 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
 import { SettingsScreen } from "../settings/components/SettingsScreen";
 import { AppText as Text, AppTextInput, type AppTextInputProps } from "../../components/ui/AppText";
 import { FrostedCutout } from "../../components/ui/FrostedCutout";
-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
+import {
+  buildPairingUrl,
+  extractPairingUrlFromQrPayload,
+  isRemoteControlLink,
+  parsePairingUrl,
+} from "./pairing";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
@@ -133,6 +139,12 @@ function PairingForm({
 
     try {
       const pairingUrl = extractPairingUrlFromQrPayload(data);
+      if (isRemoteControlLink(pairingUrl)) {
+        void WebBrowser.openBrowserAsync(pairingUrl);
+        setScanComplete(true);
+        setScannerLocked(false);
+        return;
+      }
       const { host, code } = parsePairingUrl(pairingUrl);
       setHostInput(host);
       setCodeInput(code);
@@ -152,6 +164,10 @@ function PairingForm({
   };
 
   const handleSubmit = async () => {
+    if (isRemoteControlLink(hostInput)) {
+      void WebBrowser.openBrowserAsync(hostInput.trim());
+      return;
+    }
     const pairingUrl = buildPairingUrl(hostInput, codeInput);
     setOwnAttempt(true);
     setSubmitError(null);
