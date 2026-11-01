@@ -18,6 +18,8 @@ export interface McpCredentialRequest {
   /** False omits the preview capability wherever the token is honored. Defaults to full access. */
   readonly browserToolsAvailable?: boolean;
   readonly capabilities?: ReadonlySet<McpInvocationContext.McpCapability>;
+  /** Replaces the default capabilities, for chat threads that must not reach the machine. */
+  readonly limitedTo?: ReadonlySet<McpInvocationContext.McpCapability>;
   readonly subagent?: boolean;
 }
 
@@ -109,12 +111,14 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
           subagent: request.subagent === true,
         },
         client: undefined,
-        capabilities: new Set<McpInvocationContext.McpCapability>([
-          "orchestration",
-          "worktree",
-          "pull-requests",
-          ...(request.capabilities ?? (browserToolsAvailable ? (["preview"] as const) : [])),
-        ]),
+        capabilities:
+          request.limitedTo ??
+          new Set<McpInvocationContext.McpCapability>([
+            "orchestration",
+            "worktree",
+            "pull-requests",
+            ...(request.capabilities ?? (browserToolsAvailable ? (["preview"] as const) : [])),
+          ]),
         issuedAt,
       };
       yield* SynchronizedRef.update(state, ({ records }) => {

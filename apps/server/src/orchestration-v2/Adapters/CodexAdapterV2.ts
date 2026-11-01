@@ -736,6 +736,13 @@ function codexRuntimeModeTurnDefaults(runtimeMode: RuntimeMode): {
   }
 }
 
+// Nothing can prompt in Chat mode: writes fail in the read-only sandbox and the shell tool is off.
+const CODEX_CHAT_MODE_TURN_DEFAULTS = {
+  approvalPolicy: "never",
+  approvalsReviewer: "user",
+  sandboxPolicy: { type: "readOnly" },
+} satisfies ReturnType<typeof codexRuntimeModeTurnDefaults>;
+
 export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTurnStartParams")(
   function* (input: {
     readonly nativeThreadId: string;
@@ -749,7 +756,10 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
     readonly omitServiceTier?: boolean;
     readonly appContext?: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"];
   }) {
-    const runtimeModeDefaults = codexRuntimeModeTurnDefaults(input.runtimePolicy.runtimeMode);
+    const runtimeModeDefaults =
+      input.runtimePolicy.capabilityMode === "chat"
+        ? CODEX_CHAT_MODE_TURN_DEFAULTS
+        : codexRuntimeModeTurnDefaults(input.runtimePolicy.runtimeMode);
     const approvalPolicy =
       input.runtimePolicy.approvalPolicy === undefined
         ? runtimeModeDefaults.approvalPolicy
@@ -1348,6 +1358,9 @@ function codexThreadRuntimeParams(input: {
     ...(input.modelSelection === undefined ? {} : { model: input.modelSelection.model }),
     config: {
       ...CODEX_THREAD_CONFIG,
+      ...(input.runtimePolicy?.capabilityMode === "chat"
+        ? { "features.shell_tool": false, "features.unified_exec": false }
+        : {}),
       ...(mcpSession === undefined
         ? {}
         : {

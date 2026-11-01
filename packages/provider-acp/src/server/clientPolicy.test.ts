@@ -44,6 +44,19 @@ describe("acpPermissionDisposition", () => {
     },
   };
 
+  it("refuses every kind in a chat thread, reads included", () => {
+    const chat: AcpRuntimePolicy = {
+      runtimeMode: "full-access",
+      capabilityMode: "chat",
+      cwd,
+      approvalPolicy: "never",
+    };
+    for (const kind of ["read", "search", "edit", "execute"] as const) {
+      assert.equal(acpPermissionDisposition(chat, permissionRequest(kind, [])), "deny");
+    }
+    assert.equal(acpClientExecuteDisposition(chat), "deny");
+  });
+
   it("auto-allows mutations only when every location is in cwd or an additional writable root", () => {
     assert.equal(
       acpPermissionDisposition(policy, permissionRequest("edit", [{ path: "src/index.ts" }])),

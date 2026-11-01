@@ -69,6 +69,7 @@ import {
   ProviderApprovalFullAccessOverride,
   ProviderApprovalOption,
   ProviderInteractionMode,
+  ThreadCapabilityMode,
   ProviderRequestKind,
   ProviderUserInputAnswers,
   UserInputAttachments,
@@ -155,12 +156,20 @@ export const OrchestrationV2AppThreadLineage = Schema.Struct({
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   rootThreadId: ThreadId,
   sideChat: Schema.optional(Schema.Boolean),
+  /** The environment's one orchestrator conversation, shown only in its panel. */
+  orchestrator: Schema.optional(Schema.Boolean),
 });
 export type OrchestrationV2AppThreadLineage = typeof OrchestrationV2AppThreadLineage.Type;
 
 /** Subagents and side chats live inside their parent's view, never in thread lists. */
 export const isListedThreadLineage = (lineage: OrchestrationV2AppThreadLineage): boolean =>
-  lineage.relationshipToParent !== "subagent" && lineage.sideChat !== true;
+  lineage.relationshipToParent !== "subagent" &&
+  lineage.sideChat !== true &&
+  lineage.orchestrator !== true;
+
+export const isOrchestratorAgentThread = (thread: {
+  readonly lineage: OrchestrationV2AppThreadLineage;
+}): boolean => thread.lineage.orchestrator === true;
 
 export const OrchestrationV2ContextTransferType = Schema.Literals([
   "fork",
@@ -447,6 +456,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
+  capabilityMode: Schema.optional(ThreadCapabilityMode),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
@@ -1875,6 +1885,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.pull-request-synced",
       "thread.runtime-mode-updated",
       "thread.interaction-mode-updated",
+      "thread.capability-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
       "thread.guest-share-updated",
@@ -2064,6 +2075,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
+  capabilityMode: Schema.optional(ThreadCapabilityMode),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
@@ -2755,6 +2767,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.metadata-updated",
       "thread.runtime-mode-updated",
       "thread.interaction-mode-updated",
+      "thread.capability-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
       "thread.guest-share-updated",
@@ -2896,6 +2909,7 @@ export const OrchestrationV2Command = Schema.Union([
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
+    capabilityMode: Schema.optional(ThreadCapabilityMode),
     branch: Schema.NullOr(TrimmedNonEmptyString),
     worktreePath: Schema.NullOr(TrimmedNonEmptyString),
     /** Only the server sets this; a client's thread.create never carries one. */
@@ -3104,6 +3118,12 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     interactionMode: ProviderInteractionMode,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("thread.capability-mode.set"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    capabilityMode: ThreadCapabilityMode,
   }),
   Schema.Struct({
     type: Schema.Literal("thread.model-selection.set"),

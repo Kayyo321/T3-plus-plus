@@ -475,6 +475,8 @@ export interface ClaudeAgentSdkQueryPresetTools {
 export type ClaudeAgentSdkQueryTools = ClaudeAgentSdkQueryToolList | ClaudeAgentSdkQueryPresetTools;
 
 export const CLAUDE_READ_ONLY_ALLOWED_TOOLS = ["Read", "Glob", "Grep"] as const;
+// Chat threads research but never reach the machine: `tools` withholds everything else.
+export const CLAUDE_CHAT_MODE_TOOLS = ["WebSearch", "WebFetch"] as const;
 
 function claudeAgentSdkQueryToolsForSdk(
   tools: ClaudeAgentSdkQueryTools,
@@ -2556,6 +2558,14 @@ export function claudeRuntimeQueryPolicyForRuntimePolicy(
   runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
   availability: ClaudeBypassAvailability = CLAUDE_BYPASS_FULLY_AVAILABLE,
 ): ClaudeRuntimeQueryPolicy {
+  if (runtimePolicy.capabilityMode === "chat") {
+    return {
+      permissionMode: "dontAsk",
+      tools: CLAUDE_CHAT_MODE_TOOLS,
+      allowedTools: CLAUDE_CHAT_MODE_TOOLS,
+      installPermissionCallback: false,
+    };
+  }
   const requestedMode = permissionModeForClaudeRuntimePolicy(runtimePolicy);
   const downgraded = requestedMode === "bypassPermissions" && availability.bypassDisabled;
   const permissionMode = downgraded

@@ -183,6 +183,24 @@ describe("CodexAdapterV2 runtime policy", () => {
       }),
   );
 
+  it.effect("runs a chat thread read-only with nothing to approve", () =>
+    Effect.gen(function* () {
+      const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
+        nativeThreadId: "native-chat",
+        codexInput: [{ type: "text", text: "test" }],
+        runtimePolicy: {
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          capabilityMode: "chat",
+          cwd: null,
+        },
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+      });
+      assert.equal(params.approvalPolicy, "never");
+      assert.deepEqual(params.sandboxPolicy, { type: "readOnly" });
+    }),
+  );
+
   it.effect("derives concrete Codex turn policies from every T3 runtime mode", () =>
     Effect.gen(function* () {
       const build = (

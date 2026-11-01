@@ -1,11 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import type { ProviderRequestKind, RuntimeMode } from "@t3tools/contracts";
+import type { ProviderRequestKind, RuntimeMode, ThreadCapabilityMode } from "@t3tools/contracts";
 import type * as EffectAcpSchema from "effect-acp/compat";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 export interface AcpRuntimePolicy {
   readonly runtimeMode: RuntimeMode;
+  readonly capabilityMode?: ThreadCapabilityMode | undefined;
   readonly cwd: string | null;
   readonly approvalPolicy?: unknown;
   readonly sandboxPolicy?: unknown;
@@ -193,6 +194,7 @@ export function acpPermissionDisposition(
   runtimePolicy: AcpRuntimePolicy,
   request: EffectAcpSchema.RequestPermissionRequest,
 ): AcpPermissionDisposition {
+  if (runtimePolicy.capabilityMode === "chat") return "deny";
   return acpOperationDisposition(runtimePolicy, {
     kind: request.toolCall.kind,
     locations: request.toolCall.locations,
@@ -218,6 +220,7 @@ export function acpMcpToolApprovalElicitationDisposition(
 export function acpClientExecuteDisposition(
   runtimePolicy: AcpRuntimePolicy,
 ): AcpPermissionDisposition {
+  if (runtimePolicy.capabilityMode === "chat") return "deny";
   return acpOperationDisposition(runtimePolicy, { kind: "execute", locations: undefined });
 }
 

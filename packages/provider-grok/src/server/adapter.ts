@@ -299,7 +299,9 @@ export function makeGrokAcpAdapterFlavor(
         })),
     // Auto prompts represent classifier refusals and must reach the user.
     permissionDisposition: (policy, request) =>
-      grokLaunchRuntimeMode(policy) === "auto" ? "ask" : acpPermissionDisposition(policy, request),
+      policy.capabilityMode !== "chat" && grokLaunchRuntimeMode(policy) === "auto"
+        ? "ask"
+        : acpPermissionDisposition(policy, request),
     approvalOptions: grokApprovalOptions,
     promptFailure: (cause) =>
       makeProviderFailure({

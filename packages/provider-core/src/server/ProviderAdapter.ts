@@ -20,6 +20,7 @@ import {
   OrchestrationV2TurnItem,
   ProviderApprovalDecision,
   ProviderInteractionMode,
+  ThreadCapabilityMode,
   ProviderDriverKind,
   ProviderInstanceId,
   PositiveInt,
@@ -48,6 +49,8 @@ import type {
 export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
+  /** "chat" withholds file and shell tools from the session; see chatModeEnforcementForDriver. */
+  capabilityMode: Schema.optional(ThreadCapabilityMode),
   cwd: Schema.NullOr(Schema.String),
   approvalPolicy: Schema.optional(Schema.Unknown),
   sandboxPolicy: Schema.optional(Schema.Unknown),

@@ -390,6 +390,24 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     );
   });
 
+  it("withholds every machine tool from a chat thread, whatever its runtime mode", () => {
+    const queryPolicy = ClaudeAdapterV2.claudeRuntimeQueryPolicyForRuntimePolicy(
+      ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        capabilityMode: "chat",
+        cwd: "/workspace",
+      }),
+    );
+
+    assert.deepEqual(queryPolicy, {
+      permissionMode: "dontAsk",
+      tools: ClaudeAdapterV2.CLAUDE_CHAT_MODE_TOOLS,
+      allowedTools: ClaudeAdapterV2.CLAUDE_CHAT_MODE_TOOLS,
+      installPermissionCallback: false,
+    });
+  });
+
   it("maps canonical read-only never policy to Claude dontAsk with read-only tools", () => {
     const queryPolicy = ClaudeAdapterV2.claudeRuntimeQueryPolicyForRuntimePolicy(
       ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({

@@ -3,9 +3,11 @@ import {
   type ModelSelection,
   type OrchestrationV2AppThread,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   type RuntimeMode,
   type ServerProvider,
+  type ThreadCapabilityMode,
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -29,6 +31,7 @@ function makeThread(input: {
   readonly now: DateTime.Utc;
   readonly worktreePath: string | null;
   readonly runtimeMode?: RuntimeMode;
+  readonly capabilityMode?: ThreadCapabilityMode;
 }): OrchestrationV2AppThread {
   const threadId = ThreadId.make("thread:runtime-policy");
   return {
@@ -41,6 +44,7 @@ function makeThread(input: {
     modelSelection,
     runtimeMode: input.runtimeMode ?? "full-access",
     interactionMode: "default",
+    ...(input.capabilityMode === undefined ? {} : { capabilityMode: input.capabilityMode }),
     branch: null,
     worktreePath: input.worktreePath,
     activeProviderThreadId: null,
@@ -61,11 +65,13 @@ function makeThread(input: {
 }
 
 const grokInstanceId = ProviderInstanceId.make("grok");
+const piInstanceId = ProviderInstanceId.make("pi");
 const supportedRuntimeModesByInstance = new Map<ProviderInstanceId, ReadonlyArray<RuntimeMode>>([
   [grokInstanceId, ["approval-required", "auto", "full-access"]],
 ]);
 const providerInstanceFor = (instanceId: ProviderInstanceId) =>
   ({
+    driverKind: ProviderDriverKind.make(instanceId),
     snapshot: {
       getSnapshot: Effect.succeed({
         supportedRuntimeModes: supportedRuntimeModesByInstance.get(instanceId),
@@ -123,6 +129,22 @@ it.layer(layerTest)("RuntimePolicyV2", (it) => {
       assert.equal(yield* modeFor(grokInstanceId, "auto"), "auto");
       assert.equal(yield* modeFor(grokInstanceId, "full-access"), "full-access");
       assert.equal(yield* modeFor(providerInstanceId, "auto-accept-edits"), "auto-accept-edits");
+    }),
+  );
+
+  it.effect("carries Chat mode, and refuses a driver that cannot enforce it", () =>
+    Effect.gen(function* () {
+      const policy = yield* RuntimePolicy.RuntimePolicyV2;
+      const now = yield* DateTime.now;
+      const thread = makeThread({ now, worktreePath: null, capabilityMode: "chat" });
+
+      const enforced = yield* policy.resolve({ thread, modelSelection });
+      assert.equal(enforced.capabilityMode, "chat");
+
+      const refused = yield* policy
+        .resolve({ thread, modelSelection: { instanceId: piInstanceId, model: "m" } })
+        .pipe(Effect.flip);
+      assert.equal(refused._tag, "ChatModeUnavailableError");
     }),
   );
 });

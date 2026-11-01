@@ -596,6 +596,17 @@ const OPENCODE_RESTRICTED_PERMISSIONS = [
 export function openCodePermissionRules(
   runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
 ): PermissionRuleset {
+  if (runtimePolicy.capabilityMode === "chat") {
+    // Reads count as machine access in Chat mode; only talking, asking, and the web remain.
+    return [
+      { permission: "*", pattern: "*", action: "deny" },
+      ...["question", "todowrite", "webfetch", "websearch", "t3-code_*"].map((permission) => ({
+        permission,
+        pattern: "*",
+        action: "allow" as const,
+      })),
+    ];
+  }
   const sandboxPolicy = recordValue(runtimePolicy, "sandboxPolicy");
   const sandboxType = recordString(sandboxPolicy, "type");
   const rawApprovalPolicy = runtimePolicy.approvalPolicy;

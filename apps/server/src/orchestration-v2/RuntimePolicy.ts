@@ -1,4 +1,5 @@
 import {
+  chatModeEnforcementForDriver,
   ModelSelection,
   OrchestrationV2AppThread,
   ProjectId,
@@ -28,7 +29,19 @@ export class RuntimePolicyResolveError extends Schema.TaggedError<RuntimePolicyR
   }
 }
 
-export const RuntimePolicyV2Error = Schema.Union([RuntimePolicyResolveError]);
+export class ChatModeUnavailableError extends Schema.TaggedError<ChatModeUnavailableError>()(
+  "ChatModeUnavailableError",
+  { driver: Schema.String },
+) {
+  override get message(): string {
+    return `Chat mode cannot be enforced on ${this.driver}. Choose another provider or switch this thread to Code.`;
+  }
+}
+
+export const RuntimePolicyV2Error = Schema.Union([
+  RuntimePolicyResolveError,
+  ChatModeUnavailableError,
+]);
 export type RuntimePolicyV2Error = typeof RuntimePolicyV2Error.Type;
 
 export const RuntimePolicyV2Override = Schema.Struct({
@@ -55,6 +68,9 @@ export const layer: Layer.Layer<RuntimePolicyV2> = Layer.succeed(RuntimePolicyV2
     return Effect.succeed({
       runtimeMode: input.thread.runtimeMode,
       interactionMode: input.thread.interactionMode,
+      ...(input.thread.capabilityMode === undefined
+        ? {}
+        : { capabilityMode: input.thread.capabilityMode }),
       cwd: input.thread.worktreePath,
     });
   }),
@@ -83,6 +99,13 @@ export const layerFromProjectStore: Layer.Layer<
     return RuntimePolicyV2.of({
       resolve: Effect.fn("RuntimePolicyV2.resolve")(function* (input) {
         const instance = yield* providerInstances.getInstance(input.modelSelection.instanceId);
+        if (
+          input.thread.capabilityMode === "chat" &&
+          instance !== undefined &&
+          chatModeEnforcementForDriver(instance.driverKind) === null
+        ) {
+          return yield* new ChatModeUnavailableError({ driver: instance.driverKind });
+        }
         const supportedRuntimeModes =
           instance === undefined
             ? undefined
@@ -115,6 +138,9 @@ export const layerFromProjectStore: Layer.Layer<
         return ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
           runtimeMode: providerRuntimeMode(input.thread.runtimeMode, supportedRuntimeModes),
           interactionMode: input.thread.interactionMode,
+          ...(input.thread.capabilityMode === undefined
+            ? {}
+            : { capabilityMode: input.thread.capabilityMode }),
           cwd,
         });
       }),

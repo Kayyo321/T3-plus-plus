@@ -35,6 +35,28 @@ export const ProviderInteractionMode = Schema.Literals(["default", "plan"]);
 export type ProviderInteractionMode = typeof ProviderInteractionMode.Type;
 export const DEFAULT_PROVIDER_INTERACTION_MODE: ProviderInteractionMode = "default";
 
+/** What exists at all, unlike permission modes, which govern approvals. */
+export const ThreadCapabilityMode = Schema.Literals(["code", "chat"]);
+export type ThreadCapabilityMode = typeof ThreadCapabilityMode.Type;
+
+/**
+ * How a driver keeps a chat thread away from files and shells. `enforced` withholds the tools from
+ * the provider session. `best-effort` refuses every request T3++ sees, but the agent can act without
+ * asking. Drivers absent here cannot run chat threads.
+ */
+export type ChatModeEnforcement = "enforced" | "best-effort";
+
+const CHAT_MODE_ENFORCEMENT: Readonly<Record<string, ChatModeEnforcement>> = {
+  claudeAgent: "enforced",
+  codex: "enforced",
+  opencode: "enforced",
+  grok: "best-effort",
+  acpRegistry: "best-effort",
+};
+
+export const chatModeEnforcementForDriver = (driver: string): ChatModeEnforcement | null =>
+  CHAT_MODE_ENFORCEMENT[driver] ?? null;
+
 export const ProviderRequestKind = Schema.Literals([
   "command",
   "file-read",

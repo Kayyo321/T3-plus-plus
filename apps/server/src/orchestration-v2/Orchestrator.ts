@@ -522,6 +522,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.project.adopt-folder":
     case "thread.runtime-mode.set":
     case "thread.interaction-mode.set":
+    case "thread.capability-mode.set":
     case "thread.model-selection.set":
     case "provider-session.detach":
     case "message.dispatch":
@@ -2690,6 +2691,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       modelSelection: command.modelSelection,
       runtimeMode: command.runtimeMode,
       interactionMode: command.interactionMode,
+      ...(command.capabilityMode === undefined ? {} : { capabilityMode: command.capabilityMode }),
       branch: command.branch,
       worktreePath: command.worktreePath,
       activeProviderThreadId: null,
@@ -2989,6 +2991,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           | "thread.title.regeneration.complete"
           | "thread.runtime-mode.set"
           | "thread.interaction-mode.set"
+          | "thread.capability-mode.set"
           | "thread.model-selection.set"
           | "provider.switch";
       }
@@ -3133,6 +3136,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandType: command.type,
         cause: `Thread ${command.threadId} is archived.`,
       });
+    }
+    if (command.type === "thread.capability-mode.set") {
+      const { runs } = yield* getProjectionWithPendingEvents(command.threadId, events);
+      if (runs.some(isActiveRun)) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: `Thread ${command.threadId} has a run in progress. Stop it before changing mode.`,
+        });
+      }
     }
     // Reject reorder after unpin so a raced request cannot restore a cleared pin.
     if (command.type === "thread.pin.reorder" && thread.pinnedAt == null) {
@@ -3828,6 +3841,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return { ...thread, runtimeMode: command.runtimeMode, updatedAt: now };
         case "thread.interaction-mode.set":
           return { ...thread, interactionMode: command.interactionMode, updatedAt: now };
+        case "thread.capability-mode.set":
+          return { ...thread, capabilityMode: command.capabilityMode, updatedAt: now };
         case "thread.model-selection.set":
         case "provider.switch":
           return {
@@ -3897,6 +3912,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           return "thread.runtime-mode-updated" as const;
         case "thread.interaction-mode.set":
           return "thread.interaction-mode-updated" as const;
+        case "thread.capability-mode.set":
+          return "thread.capability-mode-updated" as const;
         case "thread.model-selection.set":
           return thread.providerInstanceId === command.modelSelection.instanceId
             ? ("thread.model-selection-updated" as const)
@@ -4034,13 +4051,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             command.worktreePath !== undefined &&
             command.worktreePath !== thread.worktreePath
           ? (providerContext?.providerSessions ?? []).map((session) => session.id)
-          : command.type === "thread.runtime-mode.set"
-            ? (providerContext?.providerSessions ?? [])
-                .filter(
-                  (session) => !session.capabilities.sessions.supportsRuntimeModeSwitchInSession,
-                )
-                .map((session) => session.id)
-            : (providerSwitchPlan?.releaseProviderSessionIds ?? []),
+          : command.type === "thread.capability-mode.set" &&
+              command.capabilityMode !== (thread.capabilityMode ?? "code")
+            ? // Tools are fixed when a provider session opens.
+              (providerContext?.providerSessions ?? []).map((session) => session.id)
+            : command.type === "thread.runtime-mode.set"
+              ? (providerContext?.providerSessions ?? [])
+                  .filter(
+                    (session) => !session.capabilities.sessions.supportsRuntimeModeSwitchInSession,
+                  )
+                  .map((session) => session.id)
+              : (providerSwitchPlan?.releaseProviderSessionIds ?? []),
     );
     if (detachSessionIds.size > 0) {
       const liveSessions = (providerContext?.providerSessions ?? []).filter(
@@ -4074,7 +4095,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                         ? "Workspace changed."
                         : command.type === "thread.runtime-mode.set"
                           ? "Runtime mode changed."
-                          : "Provider or model selection changed.",
+                          : command.type === "thread.capability-mode.set"
+                            ? "Chat or Code mode changed."
+                            : "Provider or model selection changed.",
               },
             });
             const pendingEffect = {
@@ -4093,7 +4116,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                         ? "Workspace changed."
                         : command.type === "thread.runtime-mode.set"
                           ? "Runtime mode changed."
-                          : "Provider or model selection changed.",
+                          : command.type === "thread.capability-mode.set"
+                            ? "Chat or Code mode changed."
+                            : "Provider or model selection changed.",
                 // Terminal detaches revoke MCP credentials; reattachments need other detach reasons to preserve them.
                 ...(command.type === "thread.archive" ? { revokeMcpCredential: true } : {}),
               },
@@ -12984,6 +13009,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.title.regeneration.complete":
       case "thread.runtime-mode.set":
       case "thread.interaction-mode.set":
+      case "thread.capability-mode.set":
       case "thread.model-selection.set":
       case "provider.switch":
         yield* dispatchThreadMutation(command, events, effects);

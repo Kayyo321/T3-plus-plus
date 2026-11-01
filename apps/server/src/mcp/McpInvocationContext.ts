@@ -20,6 +20,8 @@ const ALL_MCP_CAPABILITIES = [
   "worktree",
   "device",
   "pull-requests",
+  /** The orchestrator's editor-wide tools, each behind a per-domain grant. */
+  "editor",
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 

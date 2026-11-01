@@ -6067,14 +6067,22 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           if (clientFileSystem !== undefined) {
             yield* targetRuntime.handleReadTextFile((request) =>
               clientPolicyContext.pipe(
-                Effect.flatMap(({ policy }) => clientFileSystem.readTextFile(request, policy.cwd)),
+                Effect.flatMap(({ policy }) =>
+                  policy.capabilityMode === "chat"
+                    ? denyClientRequest("fs/read_text_file", "deny")
+                    : clientFileSystem.readTextFile(request, policy.cwd),
+                ),
               ),
             );
             const writeTextFile = clientFileSystem.writeTextFile;
             if (writeTextFile !== undefined) {
               yield* targetRuntime.handleWriteTextFile((request) =>
                 clientPolicyContext.pipe(
-                  Effect.flatMap(({ policy }) => writeTextFile(request, policy.cwd)),
+                  Effect.flatMap(({ policy }) =>
+                    policy.capabilityMode === "chat"
+                      ? denyClientRequest("fs/write_text_file", "deny")
+                      : writeTextFile(request, policy.cwd),
+                  ),
                 ),
               );
             }

@@ -3,7 +3,9 @@ import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   isOrchestrationV2WorkActive,
+  isOrchestratorAgentThread,
   ModelSelection,
+  type OrchestrationV2AppThread,
   OrchestrationV2DomainEvent,
   OrchestrationV2ProviderSession,
   type OrchestrationV2ProviderThread,
@@ -13,6 +15,7 @@ import {
   ThreadId,
   type ProviderThreadId,
 } from "@t3tools/contracts";
+import type * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -209,6 +212,12 @@ export interface ProviderSessionManagerV2Shape {
     readonly threadId: ThreadId;
   }) => Effect.Effect<ReadonlyArray<ThreadId>>;
 }
+
+/** A chat thread gets no T3 tools: `delegate_task` would hand it a code thread by another door. */
+const mcpCapabilityLimit = (
+  thread: OrchestrationV2AppThread,
+): ReadonlySet<McpInvocationContext.McpCapability> | undefined =>
+  thread.capabilityMode === "chat" && !isOrchestratorAgentThread(thread) ? new Set() : undefined;
 
 export class ProviderSessionManagerV2 extends Context.Service<
   ProviderSessionManagerV2,
@@ -452,15 +461,28 @@ export const layerWithOptions = (
                 // Live providers build MCP clients once; reuse credentials across workspace handoffs.
                 const { browser: browserToolsAvailable, device: deviceToolsAvailable } =
                   yield* agentAccessSettings(threadId);
-                const capabilities = new Set<
-                  import("../mcp/McpInvocationContext.ts").McpCapability
-                >(["orchestration", "worktree", "pull-requests"]);
+                const capabilities = new Set<McpInvocationContext.McpCapability>([
+                  "orchestration",
+                  "worktree",
+                  "pull-requests",
+                ]);
                 if (browserToolsAvailable) capabilities.add("preview");
                 if (deviceToolsAvailable) capabilities.add("device");
-                const subagent = yield* projectionStore.getThread(threadId).pipe(
-                  Effect.map((thread) => thread.lineage.relationshipToParent === "subagent"),
-                  Effect.orElseSucceed(() => false),
-                );
+                const { subagent, limitedTo, orchestrator } = yield* projectionStore
+                  .getThread(threadId)
+                  .pipe(
+                    Effect.map((thread) => ({
+                      subagent: thread.lineage.relationshipToParent === "subagent",
+                      orchestrator: isOrchestratorAgentThread(thread),
+                      limitedTo: mcpCapabilityLimit(thread),
+                    })),
+                    Effect.orElseSucceed(() => ({
+                      subagent: false,
+                      orchestrator: false,
+                      limitedTo: undefined,
+                    })),
+                  );
+                if (orchestrator) capabilities.add("editor");
                 const existing = yield* mcpSessions.read(threadId);
                 if (existing !== undefined) {
                   // Reserve before async validation so release cannot revoke between validation and reservation.
@@ -480,8 +502,12 @@ export const layerWithOptions = (
                     resolved !== undefined &&
                     resolved.thread.threadId === threadId &&
                     resolved.thread.providerInstanceId === providerInstanceId &&
-                    resolved.capabilities.has("preview") === browserToolsAvailable &&
-                    resolved.capabilities.has("device") === deviceToolsAvailable &&
+                    (limitedTo === undefined
+                      ? resolved.capabilities.has("preview") === browserToolsAvailable &&
+                        resolved.capabilities.has("device") === deviceToolsAvailable &&
+                        resolved.capabilities.has("orchestration") &&
+                        resolved.capabilities.has("editor") === orchestrator
+                      : resolved.capabilities.size === limitedTo.size) &&
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent
                   ) {
@@ -495,6 +521,7 @@ export const layerWithOptions = (
                   providerInstanceId,
                   browserToolsAvailable,
                   capabilities,
+                  ...(limitedTo === undefined ? {} : { limitedTo }),
                   subagent,
                 });
                 yield* mcpSessions.set(credential.config);

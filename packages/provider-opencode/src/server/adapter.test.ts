@@ -246,6 +246,19 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
 });
 
 describe("OpenCodeAdapterV2", () => {
+  it("denies machine access in a chat thread, whatever its runtime mode", () => {
+    const rules = openCodePermissionRules({
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      capabilityMode: "chat",
+      cwd: "/workspace",
+    });
+    for (const permission of ["bash", "edit", "read", "glob", "grep", "task", "skill"]) {
+      assert.equal(permissionAction(rules, permission), "deny");
+    }
+    assert.equal(permissionAction(rules, "webfetch"), "allow");
+  });
+
   it.effect.each([
     {
       message: "<none>",

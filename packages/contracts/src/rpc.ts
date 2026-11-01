@@ -6,6 +6,7 @@ import {
   OrchestrationV2SearchThreadsResult,
 } from "./orchestrationV2.ts";
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
+import { AuditEntry, AuditListInput, AuditListResult, AuditTrailError } from "./audit.ts";
 import {
   McpAppCallToolInput,
   McpAppCallToolResult,
@@ -544,6 +545,8 @@ export const WS_METHODS = {
   scheduledTasksRunNow: "scheduledTasks.runNow",
   scheduledTasksRotateWebhookToken: "scheduledTasks.rotateWebhookToken",
   secretsAnswerRequest: "secrets.answerRequest",
+  auditList: "audit.list",
+  auditSubscribe: "audit.subscribe",
   guestShareCreate: "guestShare.create",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
@@ -1881,6 +1884,19 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const WsAuditListRpc = Rpc.make(WS_METHODS.auditList, {
+  payload: AuditListInput,
+  success: AuditListResult,
+  error: Schema.Union([AuditTrailError, EnvironmentAuthorizationError]),
+});
+
+const WsAuditSubscribeRpc = Rpc.make(WS_METHODS.auditSubscribe, {
+  payload: Schema.Struct({}),
+  success: AuditEntry,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
 const WsScheduledTasksSubscribeRpc = Rpc.make(WS_METHODS.scheduledTasksSubscribe, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
@@ -1970,6 +1986,8 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 ) {}
 
 export const WsRpcGroup = RpcGroup.make(
+  WsAuditListRpc,
+  WsAuditSubscribeRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
