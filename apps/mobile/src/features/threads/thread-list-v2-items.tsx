@@ -12,6 +12,7 @@ import { RowPressable } from "../../components/ui/RowPressable";
 import { CustomSnoozeSheet } from "./CustomSnoozeSheet";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { threadArrangementOpenAtom } from "../../state/thread-order";
+import { moveThreadToFolder, openConversationFolders } from "./ConversationFoldersSheet";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useVisibleSecondClock } from "./use-visible-second-clock";
@@ -788,6 +789,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   );
   const arrangementMenuItems = useMemo<MenuAction[]>(
     () => [
+      { id: "move-to-folder", title: "Move to folder…", image: "folder" },
+      { id: "folders", title: "Browse folders…", image: "folder.badge.gearshape" },
       ...(props.reorderSupported === true
         ? [
             { id: "arrange", title: "Arrange threads…", image: "line.3.horizontal" },
@@ -938,6 +941,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       if (nativeEvent.event === "auto-settle:enabled") handleSetAutoSettle(true);
       if (nativeEvent.event === "auto-settle:disabled") handleSetAutoSettle(false);
       if (nativeEvent.event === "arrange") appAtomRegistry.set(threadArrangementOpenAtom, true);
+      if (nativeEvent.event === "move-to-folder") moveThreadToFolder(thread);
+      if (nativeEvent.event === "folders") openConversationFolders(thread.environmentId);
       if (nativeEvent.event === "move-up") handleMoveUp();
       if (nativeEvent.event === "move-down") handleMoveDown();
       if (nativeEvent.event === "archive") handleArchive();

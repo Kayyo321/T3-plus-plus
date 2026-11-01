@@ -333,10 +333,9 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     readonly mcpConfigs?: Ref.Ref<
       ReadonlyArray<McpProviderSession.McpProviderSessionConfig | undefined>
     >;
-    readonly beforeOpen?: (input: {
-      readonly providerSessionId: ProviderSessionId;
-      readonly initialProviderItemIdentityVersion?: 2;
-    }) => Effect.Effect<void>;
+    readonly beforeOpen?: (
+      input: ProviderAdapter.ProviderAdapterV2OpenSessionInput,
+    ) => Effect.Effect<void>;
     readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
     readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
     readonly backgroundTasksEndWithProcess?: boolean;
@@ -971,6 +970,12 @@ it.effect("ProviderSessionManagerV2 gives the session its workspace and masks wh
         modelSelection,
         runtimePolicy,
       });
+      const masks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
+      assert.strictEqual(
+        masks.redactDeep({ log: `Authorization: ${WORKSPACE_SECRET}` }).log,
+        "Authorization: [secret:API_KEY]",
+        "while the session lives, log sinks mask its secrets",
+      );
       const [input] = yield* Ref.get(opened);
       assert.deepStrictEqual(Redacted.value(input!.workspace!.environment), {
         API_KEY: WORKSPACE_SECRET,

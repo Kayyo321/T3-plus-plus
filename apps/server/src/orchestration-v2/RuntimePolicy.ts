@@ -5,6 +5,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   type RuntimeMode,
+  runtimeModeWithinWorkspace,
   workspaceSecretsReachDriver,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -162,7 +163,10 @@ export const layerFromProjectStore: Layer.Layer<
             ),
           ));
         return ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-          runtimeMode: providerRuntimeMode(input.thread.runtimeMode, supportedRuntimeModes),
+          runtimeMode: providerRuntimeMode(
+            runtimeModeWithinWorkspace(input.thread.runtimeMode, workspace?.settings.runtimeMode),
+            supportedRuntimeModes,
+          ),
           interactionMode: input.thread.interactionMode,
           ...(input.thread.capabilityMode === undefined
             ? {}

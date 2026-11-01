@@ -1,7 +1,8 @@
 import * as Schema from "effect/Schema";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "@effect/vitest";
 
 import {
+  runtimeModeWithinWorkspace,
   workspaceAllowsCommand,
   WorkspaceSecretName,
   workspaceSecretsReachDriver,
@@ -23,6 +24,17 @@ describe("workspaceAllowsCommand", () => {
     ["npm test\nrm -rf /", false],
   ])("%s -> %s", (command, allowed) => {
     expect(workspaceAllowsCommand(["npm test"], command)).toBe(allowed);
+  });
+});
+
+describe("runtimeModeWithinWorkspace", () => {
+  it.each([
+    ["full-access", "approval-required", "approval-required"],
+    ["full-access", undefined, "full-access"],
+    ["approval-required", "full-access", "approval-required"],
+    ["auto", "auto-accept-edits", "auto-accept-edits"],
+  ] as const)("%s under %s -> %s", (mode, ceiling, expected) => {
+    expect(runtimeModeWithinWorkspace(mode, ceiling)).toBe(expected);
   });
 });
 

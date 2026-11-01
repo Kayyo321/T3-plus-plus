@@ -12,7 +12,7 @@ import * as NodeHttp from "node:http";
 
 import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentHttpApi, type RepositoryIdentity } from "@t3tools/contracts";
+import { EnvironmentHttpApi, type RepositoryIdentity, type ThreadId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
@@ -135,6 +135,7 @@ import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AuditTrail from "./audit/AuditTrail.ts";
 import * as ConversationFolderService from "./conversationFolders/ConversationFolderService.ts";
+import * as WorkspaceProcessEnvironment from "./workspace/WorkspaceProcessEnvironment.ts";
 import * as WorkspaceService from "./workspace/WorkspaceService.ts";
 import * as CodexManagedTokenBroker from "./provider/CodexManagedTokenBroker.ts";
 import * as WebhookRoute from "./scheduledTasks/webhookRoute.ts";
@@ -239,7 +240,16 @@ const layerProviderEventLoggers = Layer.effect(
     );
     if (!store) return ProviderEventLoggers.NoOpProviderEventLoggers;
     yield* Effect.addFinalizer(() => store.close());
-    return { native: store.logger("native"), canonical: store.logger("canonical") };
+    const masks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
+    const masked = (logger: ProviderEventLoggers.EventNdjsonLogger) => ({
+      ...logger,
+      write: (event: unknown, threadId: ThreadId | null) =>
+        logger.write(masks.redactDeep(event), threadId),
+    });
+    return {
+      native: masked(store.logger("native")),
+      canonical: masked(store.logger("canonical")),
+    };
   }),
 );
 

@@ -51,3 +51,36 @@ export class WorkspaceProcessEnvironment extends Context.Reference<{
 }>("t3pp/workspace/WorkspaceProcessEnvironment", {
   defaultValue: () => ({ forThread: () => Effect.succeedNone }),
 }) {}
+
+export interface ActiveSecretMaskSet {
+  /** Returns the release. */
+  readonly add: (mask: SecretMask) => () => void;
+  readonly redactDeep: <A>(value: A) => A;
+}
+
+/**
+ * The masks of every live session with secrets, for sinks that are not tied to a thread: provider
+ * event logs and the server log. A Reference so those sit below the workspace layers without
+ * depending on them; every reader in a process shares the one default.
+ */
+export class ActiveSecretMasks extends Context.Reference<ActiveSecretMaskSet>(
+  "t3pp/workspace/ActiveSecretMasks",
+  {
+    defaultValue: () => {
+      const masks = new Set<SecretMask>();
+      return {
+        add: (mask) => {
+          masks.add(mask);
+          return () => {
+            masks.delete(mask);
+          };
+        },
+        redactDeep: (value) => {
+          let next = value;
+          for (const mask of masks) next = mask.redactDeep(next);
+          return next;
+        },
+      };
+    },
+  },
+) {}

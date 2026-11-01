@@ -40,6 +40,10 @@ import {
 import * as EnvironmentRegistry from "../connection/registry.ts";
 import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import { safeErrorLogAttributes } from "../errors/safeLog.ts";
+import {
+  emptyConversationFolderState,
+  reduceConversationFolderEvent,
+} from "./conversationFolders.ts";
 import * as Persistence from "../platform/persistence.ts";
 import { runCachePersistence } from "./cachePersistence.ts";
 import {
@@ -1298,6 +1302,15 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-tasks:live",
       tag: WS_METHODS.scheduledTasksSubscribe,
     }),
+    workspacesLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:workspaces:live",
+      tag: WS_METHODS.workspacesSubscribe,
+    }),
+    conversationFoldersLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:conversation-folders:live",
+      tag: WS_METHODS.conversationFoldersSubscribe,
+      transform: Stream.scan(() => emptyConversationFolderState, reduceConversationFolderEvent),
+    }),
     // A cold transcript scan is measured in seconds, so keep the result around
     // long enough that switching windows or re-rendering does not rescan.
     usageSummary: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -1511,6 +1524,54 @@ export function createServerEnvironmentAtoms<R, E>(
     signalProcess: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:signal-process",
       tag: WS_METHODS.serverSignalProcess,
+    }),
+    upsertWorkspace: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workspace:upsert",
+      tag: WS_METHODS.workspacesUpsert,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    deleteWorkspace: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workspace:delete",
+      tag: WS_METHODS.workspacesDelete,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    restoreWorkspace: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workspace:restore",
+      tag: WS_METHODS.workspacesRestore,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    purgeWorkspace: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workspace:purge",
+      tag: WS_METHODS.workspacesPurge,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    attachWorkspace: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workspace:attach",
+      tag: WS_METHODS.workspacesAttach,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    setWorkspaceSecret: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workspace:set-secret",
+      tag: WS_METHODS.workspacesSetSecret,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    removeWorkspaceSecret: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:workspace:remove-secret",
+      tag: WS_METHODS.workspacesRemoveSecret,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
+    }),
+    mutateConversationFolders: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:conversation-folders:mutate",
+      tag: WS_METHODS.conversationFoldersMutate,
+      scheduler: configScheduler,
+      concurrency: configConcurrency,
     }),
     upsertScheduledTask: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:scheduled-task:upsert",

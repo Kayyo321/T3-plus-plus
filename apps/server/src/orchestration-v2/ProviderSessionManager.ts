@@ -422,6 +422,7 @@ export const layerWithOptions = (
       const nextSubscriberId = yield* Ref.make(0);
       const sessionOpen = yield* KeyedLock.make<ProviderSessionId>();
       const workspaceEnvironment = yield* WorkspaceProcessEnvironment.WorkspaceProcessEnvironment;
+      const activeSecretMasks = yield* WorkspaceProcessEnvironment.ActiveSecretMasks;
       const threadAttachment = yield* KeyedLock.make<string>();
       const threadAttachmentKey = (input: {
         readonly providerSessionId: ProviderSessionId;
@@ -2241,6 +2242,10 @@ export const layerWithOptions = (
                 }
               });
               const sessionScope = yield* Scope.fork(sessionScopes);
+              if (launch !== undefined && launch.mask !== noSecretMask) {
+                const releaseMask = activeSecretMasks.add(launch.mask);
+                yield* Scope.addFinalizer(sessionScope, Effect.sync(releaseMask));
+              }
               yield* agentScope.clear(input.threadId);
               const runtime = yield* adapter
                 .openSession({

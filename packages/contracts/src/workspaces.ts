@@ -203,6 +203,23 @@ const WORKSPACE_SECRET_SESSION_PROCESS_DRIVERS: ReadonlySet<string> = new Set([
 export const workspaceSecretsReachDriver = (driver: string) =>
   WORKSPACE_SECRET_SESSION_PROCESS_DRIVERS.has(driver);
 
+const RUNTIME_MODES_BY_TRUST: ReadonlyArray<RuntimeMode> = [
+  "approval-required",
+  "auto-accept-edits",
+  "auto",
+  "full-access",
+];
+
+/** A workspace's permission mode is a ceiling: it can hold a conversation back, never loosen it. */
+export const runtimeModeWithinWorkspace = (
+  mode: RuntimeMode,
+  ceiling: RuntimeMode | undefined,
+): RuntimeMode =>
+  ceiling !== undefined &&
+  RUNTIME_MODES_BY_TRUST.indexOf(ceiling) < RUNTIME_MODES_BY_TRUST.indexOf(mode)
+    ? ceiling
+    : mode;
+
 const SHELL_COMPOSITION = /[;&|`$<>(){}\r\n]/u;
 
 /** Prefix match on whole words. Anything that could chain a second command is not a match. */
