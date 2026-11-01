@@ -96,6 +96,25 @@ describe("AcpClientTerminals", () => {
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
   );
 
+  it.live("masks what the agent reads back from a terminal", () =>
+    Effect.gen(function* () {
+      const terminals = yield* makeAcpClientTerminals({
+        defaultCwd: process.cwd(),
+        environment: process.env,
+        redactOutput: (output) => output.replaceAll("workspace-secret", "[secret:KEY]"),
+      });
+      yield* Effect.addFinalizer(() => terminals.disposeAll);
+      const terminal = yield* terminals.create({
+        sessionId: "session",
+        command: process.execPath,
+        args: ["-e", "process.stdout.write('workspace-secret')"],
+      });
+      yield* terminals.waitForExit({ sessionId: "session", ...terminal });
+      const output = yield* terminals.output({ sessionId: "session", ...terminal });
+      expect(output.output).toBe("[secret:KEY]");
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+
   it.live("truncates buffered output from the beginning at the byte limit", () =>
     withTerminals((terminals) =>
       Effect.gen(function* () {

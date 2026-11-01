@@ -31,6 +31,7 @@ import {
   type ThreadTokenUsageSnapshot,
   type ThreadId,
   type TurnTokenUsage,
+  workspaceAllowsCommand,
 } from "@t3tools/contracts";
 import { AgentScope, AgentScopeThreadId } from "@t3tools/shared/AgentScope";
 import { HTML_RENDER_TOOL_NAME } from "@t3tools/shared/htmlRender";
@@ -56,6 +57,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as EffectAcpErrors from "effect-acp/errors";
@@ -693,6 +695,27 @@ function acpMcpContext(
       T3_ACP_MCP_NODE: self.command,
       ...(self.entrypoint === undefined ? {} : { T3_ACP_MCP_ENTRYPOINT: self.entrypoint }),
     },
+  };
+}
+
+/** Every process and terminal the session starts reads this context, so one merge covers them. */
+function withSessionWorkspace(
+  context: AcpMcpContext,
+  workspace: ProviderAdapter.ProviderAdapterV2SessionWorkspace | undefined,
+): AcpMcpContext {
+  if (workspace === undefined) return context;
+  const servers: ReadonlyArray<EffectAcpSchema.McpServer> = workspace.mcpServers.map((server) => ({
+    name: server.name,
+    command: server.command,
+    args: [...(server.args ?? [])],
+    env: [],
+  }));
+  return {
+    ...context,
+    servers: [...context.servers, ...servers],
+    acpServers: context.acpServers.length === 0 ? [] : [...context.acpServers, ...servers],
+    httpServers: context.httpServers.length === 0 ? [] : [...context.httpServers, ...servers],
+    processEnvironment: { ...context.processEnvironment, ...Redacted.value(workspace.environment) },
   };
 }
 
@@ -1442,7 +1465,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
   const host = yield* ProviderHost.ProviderHost;
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
   const { flavor, selfInvocation: self } = options;
-  const readMcpContext = (threadId: ThreadId | null) =>
+  const readInstanceMcpContext = (threadId: ThreadId | null) =>
     threadId === null
       ? Effect.succeed(acpMcpContext(undefined, self, flavor.mcpOverHttp))
       : mcpSessions
@@ -1465,6 +1488,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
     openSession: Effect.fn("AcpAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;
+        const readMcpContext = (threadId: ThreadId | null) =>
+          readInstanceMcpContext(threadId).pipe(
+            Effect.map((context) => withSessionWorkspace(context, input.workspace)),
+          );
         let itemIdentityVersion: 2 | undefined =
           input.initialProviderItemIdentityVersion ??
           (input.initialNativeThreadId === undefined ? 2 : undefined);
@@ -1543,6 +1570,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             : yield* makeAcpClientTerminals({
                 defaultCwd: input.runtimePolicy.cwd ?? process.cwd(),
                 environment: options.clientTerminals.environment,
+                ...(input.workspace === undefined
+                  ? {}
+                  : { redactOutput: input.workspace.mask.redact }),
                 shellCommands: options.clientTerminals.shellCommands,
                 environmentForSession: (sessionId) => {
                   const remembered = terminalEnvironmentBySessionId.get(sessionId);
@@ -6129,8 +6159,18 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 yield* userInput.acknowledgeNativeResponse;
                 return response ?? ({ outcome: { outcome: "cancelled" } } as const);
               }
-              const dispositionFor = (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) =>
-                (flavor.permissionDisposition ?? acpPermissionDisposition)(policy, params);
+              const dispositionFor = (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) => {
+                const disposition = (flavor.permissionDisposition ?? acpPermissionDisposition)(
+                  policy,
+                  params,
+                );
+                const command = parsePermissionRequest(params).toolCall?.command;
+                return disposition === "ask" &&
+                  command !== undefined &&
+                  workspaceAllowsCommand(input.workspace?.allowedCommands ?? [], command)
+                  ? "allow"
+                  : disposition;
+              };
               if (followsAgentWorkState && dispositionFor(latestRuntimePolicy) === "ask") {
                 if (!(yield* awaitRequestTurn(handlerGeneration)))
                   return { outcome: { outcome: "cancelled" } } as const;

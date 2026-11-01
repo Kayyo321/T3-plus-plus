@@ -65,11 +65,14 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import { makeSecretMask } from "@t3tools/shared/secretRedaction";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { Tool } from "effect/ai";
+import { WorkspacesToolkit } from "../../mcp/toolkits/workspaces/tools.ts";
 import { formatClaudeResumeCompactionQuestion } from "@t3tools/shared/claudeCompaction";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
@@ -249,6 +252,46 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     });
     assert.deepEqual(options.thinking, { type: "adaptive", display: "summarized" });
     assert.equal(options.extraArgs?.["thinking-display"], "summarized");
+  });
+
+  it("gives a workspace's session its variables, commands and servers, and masks tool output", async () => {
+    const VALUE = "workspace-secret-value-3107";
+    const workspace = {
+      environment: Redacted.make({ API_KEY: VALUE }),
+      mask: makeSecretMask([{ name: "API_KEY", value: VALUE }]),
+      allowedCommands: ["npm test"],
+      mcpServers: [{ name: "linear", command: "linear-mcp" }],
+    };
+    assert.deepEqual(ClaudeAdapterV2.withWorkspaceEnvironment({ PATH: "/bin" }, workspace), {
+      PATH: "/bin",
+      API_KEY: VALUE,
+    });
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      nativeThreadId: "workspace-thread",
+      resume: false,
+      cwd: "/workspace",
+      allowedTools: ["Read"],
+      workspace,
+    });
+    assert.deepEqual(options.allowedTools, ["Read", "Bash(npm test:*)"]);
+    assert.deepEqual(options.mcpServers, { linear: { type: "stdio", command: "linear-mcp" } });
+    assert.notInclude(JSON.stringify(options), VALUE);
+
+    const hook = options.hooks?.PostToolUse?.[0]?.hooks[0];
+    const run = (tool_response: unknown) =>
+      hook!({ hook_event_name: "PostToolUse", tool_response } as never, undefined, {
+        signal: new AbortController().signal,
+      });
+    const masked = await run({ stdout: `key=${VALUE}`, stderr: "" });
+    assert.deepEqual(masked, {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        updatedToolOutput: { stdout: "key=[secret:API_KEY]", stderr: "" },
+      },
+    });
+    assert.deepEqual(await run({ stdout: "clean", stderr: "" }), { continue: true });
   });
 
   it.each([
@@ -592,6 +635,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
       ...Object.values(WorktreeToolkit.tools),
       ...Object.values(ProjectToolkit.tools),
       ...Object.values(EnvironmentToolkit.tools),
+      ...Object.values(WorkspacesToolkit.tools),
       ...Object.values(PreviewControlsToolkit.tools),
       ...Object.values(HtmlToolkit.tools),
     ]

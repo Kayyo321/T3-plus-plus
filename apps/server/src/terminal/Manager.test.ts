@@ -9,8 +9,10 @@ import {
   ProviderInstanceId,
   ProjectId,
   TerminalProviderInstanceNotFoundError,
+  WorkspaceId,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { makeSecretMask } from "@t3tools/shared/secretRedaction";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -24,6 +26,7 @@ import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Path from "effect/Path";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as Redacted from "effect/Redacted";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -40,6 +43,7 @@ import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.t
 import * as TerminalManager from "./Manager.ts";
 import { terminalOutputStream } from "./OutputProtocol.ts";
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
 
 vi.mock("effect/SynchronizedRef", async (importOriginal) => {
   const original = await importOriginal<typeof SynchronizedRef>();
@@ -424,6 +428,72 @@ it.layer(
       assert.equal(third.threadId, "thread-1");
       expect(ptyAdapter.spawnInputs).toHaveLength(1);
     }),
+  );
+
+  const TERMINAL_SECRET = "terminal-secret-value-5519";
+  const withTerminalWorkspace = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.provideService(WorkspaceProcessEnvironment.WorkspaceProcessEnvironment, {
+        forThread: () =>
+          Effect.succeedSome({
+            workspaceId: WorkspaceId.make("workspace-terminal"),
+            workspaceName: "staging",
+            workingRoot: process.cwd(),
+            environment: Redacted.make({ API_KEY: TERMINAL_SECRET }),
+            secretNames: ["API_KEY"],
+            mask: makeSecretMask([{ name: "API_KEY", value: TERMINAL_SECRET }]),
+            settings: {},
+            fingerprint: "terminal",
+          }),
+      }),
+    );
+
+  it.effect("starts in the workspace with its secrets and masks them on every way out", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, logsDir, getEvents } = yield* createManager(50);
+      yield* manager.open(openInput());
+      expect(ptyAdapter.spawnInputs[0]?.env.API_KEY).toBe(TERMINAL_SECRET);
+      expect(ptyAdapter.spawnInputs[0]?.cwd).toBe(process.cwd());
+
+      const pty = ptyAdapter.processes[0]!;
+      pty.emitData("value=terminal-sec");
+      pty.emitData("ret-value-5519 done\n");
+      yield* manager.close({ threadId: "thread-1" });
+
+      const written = (yield* getEvents).flatMap((event) =>
+        event.type === "output" ? [event.data] : [],
+      );
+      expect(written.join("")).toBe("value=[secret:API_KEY] done\n");
+      expect(yield* readFileString(yield* historyLogPath(logsDir))).toBe(
+        "value=[secret:API_KEY] done\n",
+      );
+      expect(JSON.stringify(yield* getEvents)).not.toContain(TERMINAL_SECRET);
+      expect(JSON.stringify(yield* getEvents)).not.toContain("terminal-sec");
+    }).pipe(withTerminalWorkspace),
+  );
+
+  it.effect("prints a tail that only looked like a secret once the output pauses", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, getEvents } = yield* createManager(50);
+      const outputs = () =>
+        getEvents.pipe(
+          Effect.map((events) =>
+            events.flatMap((event) => (event.type === "output" ? [event.data] : [])).join(""),
+          ),
+        );
+      yield* manager.open(openInput());
+      const printed = yield* Deferred.make<void>();
+      const unsubscribe = yield* manager.subscribe((event) =>
+        event.type === "output" && event.data === "term"
+          ? Deferred.succeed(printed, undefined).pipe(Effect.asVoid)
+          : Effect.void,
+      );
+      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
+      ptyAdapter.processes[0]!.emitData("term");
+      expect(yield* outputs()).toBe("");
+      yield* Deferred.await(printed);
+      expect(yield* outputs()).toBe("term");
+    }).pipe(withTerminalWorkspace),
   );
 
   it.effect("keeps attach streams live when a terminal id is closed and reopened", () =>

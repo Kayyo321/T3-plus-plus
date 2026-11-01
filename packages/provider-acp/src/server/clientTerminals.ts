@@ -129,6 +129,8 @@ export interface AcpClientTerminalsOptions {
     | ((sessionId: string) => NodeJS.ProcessEnv | undefined)
     | undefined;
   readonly forceKillAfter?: Duration.Input | undefined;
+  /** Masks secrets before the agent reads a terminal: T3++ runs these, so it can act in time. */
+  readonly redactOutput?: ((output: string) => string) | undefined;
 }
 
 function acpTerminalCommand(input: {
@@ -154,6 +156,10 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
   const creationPermit = yield* Semaphore.make(1);
   const terminals = new Map<string, ManagedAcpTerminal>();
   let nextTerminalNumber = 1;
+  const readRedactedOutput = (buffer: OutputBufferState) =>
+    options.redactOutput === undefined
+      ? readOutput(buffer)
+      : options.redactOutput(readOutput(buffer));
 
   const enforceTotalOutputLimit = (): void => {
     let excess =
@@ -315,7 +321,7 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
   const output: AcpClientTerminals["output"] = (request) =>
     requireTerminal(request.sessionId, request.terminalId, "terminal/output").pipe(
       Effect.map((terminal) => ({
-        output: readOutput(terminal.buffer),
+        output: readRedactedOutput(terminal.buffer),
         truncated: terminal.buffer.truncated,
         ...(terminal.exitStatus === undefined ? {} : { exitStatus: terminal.exitStatus }),
       })),
@@ -352,7 +358,7 @@ export const makeAcpClientTerminals = Effect.fn("makeAcpClientTerminals")(functi
     const terminal = terminals.get(terminalId);
     if (terminal === undefined || terminal.sessionId !== sessionId) return undefined;
     return {
-      output: readOutput(terminal.buffer),
+      output: readRedactedOutput(terminal.buffer),
       truncated: terminal.buffer.truncated,
       exitStatus: terminal.exitStatus,
     };

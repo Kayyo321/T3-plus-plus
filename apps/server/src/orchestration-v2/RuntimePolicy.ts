@@ -5,6 +5,7 @@ import {
   ProjectId,
   ProviderInstanceId,
   type RuntimeMode,
+  workspaceSecretsReachDriver,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -14,6 +15,7 @@ import * as Schema from "effect/Schema";
 
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 
 export class RuntimePolicyResolveError extends Schema.TaggedError<RuntimePolicyResolveError>()(
@@ -38,9 +40,19 @@ export class ChatModeUnavailableError extends Schema.TaggedError<ChatModeUnavail
   }
 }
 
+export class WorkspaceSecretsUnavailableError extends Schema.TaggedError<WorkspaceSecretsUnavailableError>()(
+  "WorkspaceSecretsUnavailableError",
+  { driver: Schema.String, workspaceName: Schema.String },
+) {
+  override get message(): string {
+    return `Workspace ${this.workspaceName} holds secrets, and ${this.driver} shares a process across conversations, so it cannot receive them without exposing them to others. Choose another provider or detach the workspace.`;
+  }
+}
+
 export const RuntimePolicyV2Error = Schema.Union([
   RuntimePolicyResolveError,
   ChatModeUnavailableError,
+  WorkspaceSecretsUnavailableError,
 ]);
 export type RuntimePolicyV2Error = typeof RuntimePolicyV2Error.Type;
 
@@ -96,6 +108,7 @@ export const layerFromProjectStore: Layer.Layer<
   Effect.gen(function* () {
     const projects = yield* ProjectStore.ProjectStoreV2;
     const providerInstances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
+    const workspaces = yield* WorkspaceProcessEnvironment.WorkspaceProcessEnvironment;
     return RuntimePolicyV2.of({
       resolve: Effect.fn("RuntimePolicyV2.resolve")(function* (input) {
         const instance = yield* providerInstances.getInstance(input.modelSelection.instanceId);
@@ -106,12 +119,25 @@ export const layerFromProjectStore: Layer.Layer<
         ) {
           return yield* new ChatModeUnavailableError({ driver: instance.driverKind });
         }
+        const workspace = Option.getOrUndefined(yield* workspaces.forThread(input.thread.id));
+        if (
+          workspace !== undefined &&
+          workspace.secretNames.length > 0 &&
+          instance !== undefined &&
+          !workspaceSecretsReachDriver(instance.driverKind)
+        ) {
+          return yield* new WorkspaceSecretsUnavailableError({
+            driver: instance.driverKind,
+            workspaceName: workspace.workspaceName,
+          });
+        }
         const supportedRuntimeModes =
           instance === undefined
             ? undefined
             : (yield* instance.snapshot.getSnapshot).supportedRuntimeModes;
         const cwd =
           input.thread.worktreePath ??
+          workspace?.workingRoot ??
           (yield* projects.get(input.thread.projectId).pipe(
             Effect.mapError(
               (cause) =>
