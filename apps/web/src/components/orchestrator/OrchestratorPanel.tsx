@@ -283,7 +283,8 @@ export default function OrchestratorPanel(props: {
   return (
     <aside
       aria-label="Orchestrator"
-      className="relative z-30 flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col border-l border-border bg-background"
+      data-orchestrator-dock
+      className="flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col border-l border-border bg-background"
     >
       <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3">
         <span className="font-mono text-2xs tracking-wide text-muted-foreground uppercase">
