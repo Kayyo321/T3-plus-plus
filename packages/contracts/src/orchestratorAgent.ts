@@ -1,0 +1,314 @@
+import * as Schema from "effect/Schema";
+
+import {
+  CommandId,
+  ForwardCompatibleArray,
+  IsoDateTime,
+  NonNegativeInt,
+  ProjectId,
+  RunId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
+import { ModelSelection } from "./modelSelection.ts";
+import { chatModeEnforcementForDriver } from "./providerPolicy.ts";
+import type { ServerProvider } from "./server.ts";
+
+export const OrchestratorDomain = Schema.Literals([
+  "conversations",
+  "sessions",
+  "projects",
+  "workspace-ui",
+  "git",
+  "tasks",
+  "supervision",
+  "settings",
+  "remote-control",
+  "computer-use",
+]);
+export type OrchestratorDomain = typeof OrchestratorDomain.Type;
+
+/** `off` refuses reads too. `ask` runs reads and asks before every change. */
+export const OrchestratorGrantLevel = Schema.Literals(["off", "ask", "allow"]);
+export type OrchestratorGrantLevel = typeof OrchestratorGrantLevel.Type;
+
+export const OrchestratorToolEffect = Schema.Literals(["read", "write", "external", "destructive"]);
+export type OrchestratorToolEffect = typeof OrchestratorToolEffect.Type;
+
+/** Supervision steps are granted one by one, since a nudge and a stop differ in kind. */
+export const OrchestratorSupervisionAction = Schema.Literals([
+  "message",
+  "answer",
+  "interrupt",
+  "restart",
+  "stop",
+  "rewind",
+]);
+export type OrchestratorSupervisionAction = typeof OrchestratorSupervisionAction.Type;
+
+export const OrchestratorGrants = Schema.Struct({
+  domains: Schema.Record(OrchestratorDomain, OrchestratorGrantLevel),
+  /** Pushes, PRs, remote sharing: anything that leaves the machine, under any domain level. */
+  askBeforeExternal: Schema.Boolean,
+  /** Deletes and hard rollbacks, under any domain level. */
+  askBeforeDestructive: Schema.Boolean,
+  supervisionActions: Schema.Record(OrchestratorSupervisionAction, OrchestratorGrantLevel),
+});
+export type OrchestratorGrants = typeof OrchestratorGrants.Type;
+
+export const DEFAULT_ORCHESTRATOR_GRANTS: OrchestratorGrants = {
+  domains: {
+    conversations: "allow",
+    sessions: "allow",
+    projects: "allow",
+    "workspace-ui": "allow",
+    git: "allow",
+    tasks: "allow",
+    supervision: "allow",
+    settings: "ask",
+    "remote-control": "ask",
+    "computer-use": "off",
+  },
+  askBeforeExternal: true,
+  askBeforeDestructive: true,
+  supervisionActions: {
+    message: "allow",
+    answer: "ask",
+    interrupt: "ask",
+    restart: "ask",
+    stop: "ask",
+    rewind: "ask",
+  },
+};
+
+export const OrchestratorBrainBlockReason = Schema.Literals([
+  "provider_removed",
+  "provider_disabled",
+  "not_installed",
+  "unavailable",
+  "cannot_enforce_tools",
+  "signed_out",
+  "quota_exhausted",
+  "model_retired",
+  "provider_error",
+]);
+export type OrchestratorBrainBlockReason = typeof OrchestratorBrainBlockReason.Type;
+
+export const OrchestratorBrainAvailability = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("unconfigured") }),
+  Schema.Struct({ status: Schema.Literal("available") }),
+  Schema.Struct({
+    status: Schema.Literal("blocked"),
+    reason: OrchestratorBrainBlockReason,
+    message: TrimmedNonEmptyString,
+  }),
+]);
+export type OrchestratorBrainAvailability = typeof OrchestratorBrainAvailability.Type;
+
+const blocked = (reason: OrchestratorBrainBlockReason, message: string) =>
+  ({ status: "blocked", reason, message }) as const;
+
+/**
+ * Never suggests another provider: choosing one is the user's call, since it can spend money or
+ * send context somewhere they did not pick.
+ */
+export const orchestratorBrainAvailability = (
+  brain: ModelSelection | null,
+  providers: ReadonlyArray<ServerProvider>,
+): OrchestratorBrainAvailability => {
+  if (brain === null) return { status: "unconfigured" };
+  const provider = providers.find((candidate) => candidate.instanceId === brain.instanceId);
+  if (provider === undefined) {
+    return blocked("provider_removed", `The provider ${brain.instanceId} is no longer configured.`);
+  }
+  const name = provider.displayName ?? provider.instanceId;
+  if (!provider.enabled) return blocked("provider_disabled", `${name} is turned off in Settings.`);
+  if (!provider.installed) return blocked("not_installed", `${name} is not installed here.`);
+  if (provider.availability === "unavailable") {
+    return blocked("unavailable", provider.unavailableReason ?? `${name} is unavailable.`);
+  }
+  if (chatModeEnforcementForDriver(provider.driver) !== "enforced") {
+    return blocked(
+      "cannot_enforce_tools",
+      `${name} cannot run without file and shell tools, so its grants could not hold.`,
+    );
+  }
+  if (provider.auth.status === "unauthenticated") {
+    return blocked("signed_out", `${name} is signed out.`);
+  }
+  if (provider.usageLimits?.windows.some((window) => window.usedPercent >= 100) === true) {
+    return blocked("quota_exhausted", `${name} has used up its current quota.`);
+  }
+  if (provider.status === "error") {
+    return blocked("provider_error", provider.message ?? `${name} reports an error.`);
+  }
+  if (provider.models.length > 0 && !provider.models.some((model) => model.slug === brain.model)) {
+    return blocked("model_retired", `${name} no longer offers ${brain.model}.`);
+  }
+  return { status: "available" };
+};
+
+export const OrchestratorApprovalId = TrimmedNonEmptyString.pipe(
+  Schema.brand("OrchestratorApprovalId"),
+);
+export type OrchestratorApprovalId = typeof OrchestratorApprovalId.Type;
+
+export const OrchestratorApproval = Schema.Struct({
+  id: OrchestratorApprovalId,
+  tool: TrimmedNonEmptyString,
+  domain: OrchestratorDomain,
+  effect: OrchestratorToolEffect,
+  /** Plain words for the prompt, built from the tool and its target. */
+  summary: Schema.String,
+  requestedAt: IsoDateTime,
+});
+export type OrchestratorApproval = typeof OrchestratorApproval.Type;
+
+export const SupervisionThresholds = Schema.Struct({
+  /** A run this long fires `long_running`. */
+  maxRunMinutes: NonNegativeInt,
+  silenceMinutes: NonNegativeInt,
+  /** The same action fingerprint this many times in a row fires `loop`. */
+  repeatedActionLimit: NonNegativeInt,
+  retryLimit: NonNegativeInt,
+  waitingMinutes: NonNegativeInt,
+  nudgeCap: NonNegativeInt,
+  cooldownMinutes: NonNegativeInt,
+});
+export type SupervisionThresholds = typeof SupervisionThresholds.Type;
+
+export const DEFAULT_SUPERVISION_THRESHOLDS: SupervisionThresholds = {
+  maxRunMinutes: 45,
+  silenceMinutes: 10,
+  repeatedActionLimit: 4,
+  retryLimit: 3,
+  waitingMinutes: 30,
+  nudgeCap: 3,
+  cooldownMinutes: 10,
+};
+
+export const SupervisionSignalKind = Schema.Literals([
+  "long_running",
+  "silent",
+  "loop",
+  "retries",
+  "long_wait",
+  "over_budget",
+  "child_blocking",
+]);
+export type SupervisionSignalKind = typeof SupervisionSignalKind.Type;
+
+/** Off means "let it run". Interactive threads start off, unattended work starts on. */
+export const SupervisionThreadMode = Schema.Literals(["on", "off"]);
+export type SupervisionThreadMode = typeof SupervisionThreadMode.Type;
+
+export const SupervisionThreadState = Schema.Struct({
+  mode: SupervisionThreadMode,
+  reviews: NonNegativeInt,
+  lastReviewAt: Schema.NullOr(IsoDateTime),
+  snoozedUntil: Schema.NullOr(IsoDateTime),
+  /** The run these counts belong to; a new run starts them over. */
+  runId: Schema.NullOr(RunId),
+  /** The cap was reached and the owner has been told. */
+  escalatedAt: Schema.NullOr(IsoDateTime),
+});
+export type SupervisionThreadState = typeof SupervisionThreadState.Type;
+
+export const SupervisionSetThreadInput = Schema.Struct({
+  threadId: ThreadId,
+  mode: SupervisionThreadMode,
+});
+export type SupervisionSetThreadInput = typeof SupervisionSetThreadInput.Type;
+
+export const SupervisionGetThreadInput = Schema.Struct({ threadId: ThreadId });
+export type SupervisionGetThreadInput = typeof SupervisionGetThreadInput.Type;
+
+export const SupervisionState = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("active"), watching: NonNegativeInt }),
+  Schema.Struct({ status: Schema.Literal("paused"), reason: TrimmedNonEmptyString }),
+]);
+export type SupervisionState = typeof SupervisionState.Type;
+
+export const OrchestratorSnapshot = Schema.Struct({
+  brain: Schema.NullOr(ModelSelection),
+  availability: OrchestratorBrainAvailability,
+  threadId: Schema.NullOr(ThreadId),
+  grants: OrchestratorGrants,
+  thresholds: SupervisionThresholds,
+  supervision: SupervisionState,
+  pendingApprovals: ForwardCompatibleArray(OrchestratorApproval),
+});
+export type OrchestratorSnapshot = typeof OrchestratorSnapshot.Type;
+
+/** What the owner is looking at, so "this conversation" means something. */
+export const OrchestratorFocus = Schema.Struct({
+  threadId: Schema.optional(ThreadId),
+  projectId: Schema.optional(ProjectId),
+  workspaceName: Schema.optional(Schema.String),
+  layoutName: Schema.optional(Schema.String),
+  branch: Schema.optional(Schema.String),
+});
+export type OrchestratorFocus = typeof OrchestratorFocus.Type;
+
+export const OrchestratorSetBrainInput = Schema.Struct({
+  brain: ModelSelection,
+  /** A run in progress is interrupted first. Without it the change is refused and says so. */
+  interruptRun: Schema.optional(Schema.Boolean),
+});
+export type OrchestratorSetBrainInput = typeof OrchestratorSetBrainInput.Type;
+
+export const OrchestratorSetGrantsInput = Schema.Struct({ grants: OrchestratorGrants });
+export const OrchestratorSetThresholdsInput = Schema.Struct({ thresholds: SupervisionThresholds });
+
+export const OrchestratorSendInput = Schema.Struct({
+  commandId: CommandId,
+  text: TrimmedNonEmptyString,
+  focus: Schema.optional(OrchestratorFocus),
+});
+export type OrchestratorSendInput = typeof OrchestratorSendInput.Type;
+
+export const OrchestratorSendResult = Schema.Struct({ threadId: ThreadId });
+export type OrchestratorSendResult = typeof OrchestratorSendResult.Type;
+
+export const OrchestratorAnswerApprovalInput = Schema.Struct({
+  id: OrchestratorApprovalId,
+  allow: Schema.Boolean,
+});
+export type OrchestratorAnswerApprovalInput = typeof OrchestratorAnswerApprovalInput.Type;
+
+/** Requests the owner's clients act on, so the UI shows the orchestrator's hands. */
+export const OrchestratorUiDirective = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("open-panel"), panel: TrimmedNonEmptyString }),
+  Schema.Struct({ type: Schema.Literal("close-panel"), panel: TrimmedNonEmptyString }),
+  Schema.Struct({ type: Schema.Literal("apply-layout"), name: TrimmedNonEmptyString }),
+  Schema.Struct({ type: Schema.Literal("open-thread"), threadId: ThreadId }),
+  Schema.Struct({ type: Schema.Literal("split-thread"), threadId: ThreadId }),
+  /** The orchestrator needs the owner: a toast everywhere, a push where the platform allows. */
+  Schema.Struct({
+    type: Schema.Literal("escalate"),
+    threadId: Schema.optional(ThreadId),
+    message: TrimmedNonEmptyString,
+  }),
+]);
+export type OrchestratorUiDirective = typeof OrchestratorUiDirective.Type;
+
+export const OrchestratorErrorReason = Schema.Literals([
+  "blocked",
+  "run_active",
+  "approval_gone",
+  "store_failed",
+  "start_failed",
+]);
+
+export class OrchestratorAgentError extends Schema.TaggedError<OrchestratorAgentError>()(
+  "OrchestratorAgentError",
+  {
+    reason: OrchestratorErrorReason,
+    detail: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return this.detail ?? `The orchestrator could not do that (${this.reason}).`;
+  }
+}

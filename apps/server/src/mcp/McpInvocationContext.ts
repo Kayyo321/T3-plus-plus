@@ -25,6 +25,8 @@ const ALL_MCP_CAPABILITIES = [
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];
 
+export const ORCHESTRATOR_MCP_PATH = "/mcp/orchestrator";
+
 export interface McpThreadCaller {
   readonly threadId: ThreadId;
   readonly providerSessionId: string;

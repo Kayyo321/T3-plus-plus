@@ -45,6 +45,8 @@ import * as McpToolAccess from "./McpToolAccess.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
+import { EditorToolkit } from "./toolkits/editor/tools.ts";
+import * as EditorHandlers from "./toolkits/editor/handlers.ts";
 import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
@@ -1113,6 +1115,8 @@ const layerEnvironmentToolkit = toolkitRegistration(
   EnvironmentHandlers.layer,
 ).pipe(Layer.provide(ThreadCommandExecutor.layer));
 
+const layerEditorToolkit = toolkitRegistration(EditorToolkit, EditorHandlers.layer);
+
 export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, ProjectHandlers.layer);
 
 export const layerAttachmentToolkit = toolkitRegistration(
@@ -1163,4 +1167,31 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
 );
 
-export const layer = layerTools.pipe(Layer.provideMerge(layerMcpTransport));
+/**
+ * The orchestrator's own endpoint, so every other agent's tool list and context stay as they were.
+ * Its session has no preview or device tools; its other tools are governed by grants.
+ */
+const layerOrchestratorTools = Layer.mergeAll(
+  layerOrchestratorToolkit,
+  layerThreadToolkit,
+  layerAttachmentToolkit,
+  layerProjectRegistration,
+  layerEnvironmentToolkit,
+  layerEditorToolkit,
+  layerWorktreeToolkitRegistration,
+  layerPullRequestsToolkit,
+);
+
+const layerOrchestratorTransport = McpServer.layerHttp({
+  name: "T3++ Orchestrator",
+  version: packageJson.version,
+  path: McpInvocationContext.ORCHESTRATOR_MCP_PATH,
+  protocols: [McpProtocol.v2025_06_18],
+  allowSessionTermination: true,
+}).pipe(Layer.provide(layerMcpAuthMiddleware));
+
+export const layer = Layer.merge(
+  layerTools.pipe(Layer.provideMerge(layerMcpTransport)),
+  // Fresh so this endpoint gets its own McpServer rather than sharing the memoized one.
+  Layer.fresh(layerOrchestratorTools.pipe(Layer.provideMerge(layerOrchestratorTransport))),
+);

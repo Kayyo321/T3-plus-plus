@@ -1,4 +1,7 @@
 import * as AuditTrail from "../audit/AuditTrail.ts";
+import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
+import * as OrchestratorTurnContext from "../orchestratorAgent/OrchestratorTurnContext.ts";
+import * as SupervisionMonitor from "../orchestratorAgent/SupervisionMonitor.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -152,6 +155,7 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       McpAppModelContext.layer,
+      OrchestratorTurnContext.layer,
       PreviewAgentActivity.layer,
       layerCheckpointServiceProvided,
       layerEventSink,
@@ -368,10 +372,32 @@ export const layer = Layer.mergeAll(
   layerLegacyV1ThreadImporterProvided,
 );
 
+const layerOrchestratorAgentProvided = OrchestratorAgent.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      AuditTrail.layer,
+      OrchestratorTurnContext.layer,
+      layerOrchestratorProvided,
+      layerThreadManagementProvided,
+      layerManagedProjectFoldersProvided,
+    ),
+  ),
+);
+
 export const layerProduction = Layer.mergeAll(
   layer.pipe(Layer.provide(layerProjectService)),
   layerProjectService,
   AuditTrail.layer,
+  layerOrchestratorAgentProvided,
+  SupervisionMonitor.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        AuditTrail.layer,
+        layerOrchestratorAgentProvided,
+        layerThreadManagementProvided,
+      ),
+    ),
+  ),
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,

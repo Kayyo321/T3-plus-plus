@@ -8,6 +8,21 @@ import {
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import { AuditEntry, AuditListInput, AuditListResult, AuditTrailError } from "./audit.ts";
 import {
+  OrchestratorAgentError,
+  OrchestratorAnswerApprovalInput,
+  OrchestratorBrainAvailability,
+  OrchestratorSendInput,
+  OrchestratorSendResult,
+  OrchestratorSetBrainInput,
+  OrchestratorSetGrantsInput,
+  OrchestratorSetThresholdsInput,
+  OrchestratorSnapshot,
+  OrchestratorUiDirective,
+  SupervisionGetThreadInput,
+  SupervisionSetThreadInput,
+  SupervisionThreadState,
+} from "./orchestratorAgent.ts";
+import {
   McpAppCallToolInput,
   McpAppCallToolResult,
   McpAppReadResourceInput,
@@ -545,6 +560,17 @@ export const WS_METHODS = {
   scheduledTasksRunNow: "scheduledTasks.runNow",
   scheduledTasksRotateWebhookToken: "scheduledTasks.rotateWebhookToken",
   secretsAnswerRequest: "secrets.answerRequest",
+  orchestratorAgentSubscribe: "orchestratorAgent.subscribe",
+  orchestratorAgentCheckAvailability: "orchestratorAgent.checkAvailability",
+  orchestratorAgentSetBrain: "orchestratorAgent.setBrain",
+  orchestratorAgentSetGrants: "orchestratorAgent.setGrants",
+  orchestratorAgentSetThresholds: "orchestratorAgent.setThresholds",
+  orchestratorAgentSend: "orchestratorAgent.send",
+  orchestratorAgentInterrupt: "orchestratorAgent.interrupt",
+  orchestratorAgentAnswerApproval: "orchestratorAgent.answerApproval",
+  orchestratorAgentSubscribeDirectives: "orchestratorAgent.subscribeDirectives",
+  supervisionGetThread: "supervision.getThread",
+  supervisionSetThread: "supervision.setThread",
   auditList: "audit.list",
   auditSubscribe: "audit.subscribe",
   guestShareCreate: "guestShare.create",
@@ -1884,6 +1910,76 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const OrchestratorRpcError = Schema.Union([OrchestratorAgentError, EnvironmentAuthorizationError]);
+
+const WsOrchestratorAgentSubscribeRpc = Rpc.make(WS_METHODS.orchestratorAgentSubscribe, {
+  payload: Schema.Struct({}),
+  success: OrchestratorSnapshot,
+  error: OrchestratorRpcError,
+  stream: true,
+});
+
+const WsOrchestratorAgentCheckAvailabilityRpc = Rpc.make(
+  WS_METHODS.orchestratorAgentCheckAvailability,
+  {
+    payload: Schema.Struct({}),
+    success: OrchestratorBrainAvailability,
+    error: EnvironmentAuthorizationError,
+  },
+);
+
+const WsOrchestratorAgentSetBrainRpc = Rpc.make(WS_METHODS.orchestratorAgentSetBrain, {
+  payload: OrchestratorSetBrainInput,
+  error: OrchestratorRpcError,
+});
+
+const WsOrchestratorAgentSetGrantsRpc = Rpc.make(WS_METHODS.orchestratorAgentSetGrants, {
+  payload: OrchestratorSetGrantsInput,
+  error: OrchestratorRpcError,
+});
+
+const WsOrchestratorAgentSetThresholdsRpc = Rpc.make(WS_METHODS.orchestratorAgentSetThresholds, {
+  payload: OrchestratorSetThresholdsInput,
+  error: OrchestratorRpcError,
+});
+
+const WsOrchestratorAgentSendRpc = Rpc.make(WS_METHODS.orchestratorAgentSend, {
+  payload: OrchestratorSendInput,
+  success: OrchestratorSendResult,
+  error: OrchestratorRpcError,
+});
+
+const WsOrchestratorAgentInterruptRpc = Rpc.make(WS_METHODS.orchestratorAgentInterrupt, {
+  payload: Schema.Struct({}),
+  error: OrchestratorRpcError,
+});
+
+const WsOrchestratorAgentAnswerApprovalRpc = Rpc.make(WS_METHODS.orchestratorAgentAnswerApproval, {
+  payload: OrchestratorAnswerApprovalInput,
+  error: OrchestratorRpcError,
+});
+
+const WsOrchestratorAgentSubscribeDirectivesRpc = Rpc.make(
+  WS_METHODS.orchestratorAgentSubscribeDirectives,
+  {
+    payload: Schema.Struct({}),
+    success: OrchestratorUiDirective,
+    error: EnvironmentAuthorizationError,
+    stream: true,
+  },
+);
+
+const WsSupervisionGetThreadRpc = Rpc.make(WS_METHODS.supervisionGetThread, {
+  payload: SupervisionGetThreadInput,
+  success: SupervisionThreadState,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsSupervisionSetThreadRpc = Rpc.make(WS_METHODS.supervisionSetThread, {
+  payload: SupervisionSetThreadInput,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsAuditListRpc = Rpc.make(WS_METHODS.auditList, {
   payload: AuditListInput,
   success: AuditListResult,
@@ -1986,6 +2082,17 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 ) {}
 
 export const WsRpcGroup = RpcGroup.make(
+  WsOrchestratorAgentSubscribeRpc,
+  WsOrchestratorAgentCheckAvailabilityRpc,
+  WsOrchestratorAgentSetBrainRpc,
+  WsOrchestratorAgentSetGrantsRpc,
+  WsOrchestratorAgentSetThresholdsRpc,
+  WsOrchestratorAgentSendRpc,
+  WsOrchestratorAgentInterruptRpc,
+  WsOrchestratorAgentAnswerApprovalRpc,
+  WsOrchestratorAgentSubscribeDirectivesRpc,
+  WsSupervisionGetThreadRpc,
+  WsSupervisionSetThreadRpc,
   WsAuditListRpc,
   WsAuditSubscribeRpc,
   WsGuestShareCreateRpc,

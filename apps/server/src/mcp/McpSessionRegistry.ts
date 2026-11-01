@@ -101,6 +101,10 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
       const rawToken = yield* crypto.randomBytes(32).pipe(Effect.map(tokenFromBytes), Effect.orDie);
       const tokenHash = yield* hashToken(rawToken);
       const browserToolsAvailable = request.browserToolsAvailable ?? true;
+      const sessionEndpoint =
+        request.limitedTo?.has("editor") === true
+          ? endpoint.replace(/\/mcp$/, McpInvocationContext.ORCHESTRATOR_MCP_PATH)
+          : endpoint;
       const scope: McpInvocationContext.McpThreadInvocationScope = {
         environmentId,
         requestNamespace: providerSessionId,
@@ -132,7 +136,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
           threadId: scope.thread.threadId,
           providerSessionId,
           providerInstanceId: scope.thread.providerInstanceId,
-          endpoint,
+          endpoint: sessionEndpoint,
           authorizationHeader: `Bearer ${rawToken}`,
           browserToolsAvailable: scope.capabilities.has("preview"),
           capabilities: scope.capabilities,

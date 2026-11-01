@@ -217,7 +217,16 @@ export interface ProviderSessionManagerV2Shape {
 const mcpCapabilityLimit = (
   thread: OrchestrationV2AppThread,
 ): ReadonlySet<McpInvocationContext.McpCapability> | undefined =>
-  thread.capabilityMode === "chat" && !isOrchestratorAgentThread(thread) ? new Set() : undefined;
+  isOrchestratorAgentThread(thread)
+    ? new Set<McpInvocationContext.McpCapability>([
+        "orchestration",
+        "worktree",
+        "pull-requests",
+        "editor",
+      ])
+    : thread.capabilityMode === "chat"
+      ? new Set()
+      : undefined;
 
 export class ProviderSessionManagerV2 extends Context.Service<
   ProviderSessionManagerV2,
@@ -468,21 +477,13 @@ export const layerWithOptions = (
                 ]);
                 if (browserToolsAvailable) capabilities.add("preview");
                 if (deviceToolsAvailable) capabilities.add("device");
-                const { subagent, limitedTo, orchestrator } = yield* projectionStore
-                  .getThread(threadId)
-                  .pipe(
-                    Effect.map((thread) => ({
-                      subagent: thread.lineage.relationshipToParent === "subagent",
-                      orchestrator: isOrchestratorAgentThread(thread),
-                      limitedTo: mcpCapabilityLimit(thread),
-                    })),
-                    Effect.orElseSucceed(() => ({
-                      subagent: false,
-                      orchestrator: false,
-                      limitedTo: undefined,
-                    })),
-                  );
-                if (orchestrator) capabilities.add("editor");
+                const { subagent, limitedTo } = yield* projectionStore.getThread(threadId).pipe(
+                  Effect.map((thread) => ({
+                    subagent: thread.lineage.relationshipToParent === "subagent",
+                    limitedTo: mcpCapabilityLimit(thread),
+                  })),
+                  Effect.orElseSucceed(() => ({ subagent: false, limitedTo: undefined })),
+                );
                 const existing = yield* mcpSessions.read(threadId);
                 if (existing !== undefined) {
                   // Reserve before async validation so release cannot revoke between validation and reservation.
@@ -505,9 +506,11 @@ export const layerWithOptions = (
                     (limitedTo === undefined
                       ? resolved.capabilities.has("preview") === browserToolsAvailable &&
                         resolved.capabilities.has("device") === deviceToolsAvailable &&
-                        resolved.capabilities.has("orchestration") &&
-                        resolved.capabilities.has("editor") === orchestrator
-                      : resolved.capabilities.size === limitedTo.size) &&
+                        resolved.capabilities.has("orchestration")
+                      : resolved.capabilities.size === limitedTo.size &&
+                        [...limitedTo].every((capability) =>
+                          resolved.capabilities.has(capability),
+                        )) &&
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent
                   ) {

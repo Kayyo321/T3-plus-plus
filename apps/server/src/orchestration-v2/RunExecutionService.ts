@@ -1,5 +1,8 @@
 import { makeAssistantStreamingFilter } from "./assistantStreaming.ts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import * as Option from "effect/Option";
+import * as OrchestratorTurnContext from "../orchestratorAgent/OrchestratorTurnContext.ts";
+import { orchestratorPromptPreamble } from "../orchestratorAgent/OrchestratorTurnContext.ts";
 import {
   isOrchestrationV2WorkActive,
   CommandId,
@@ -11,6 +14,7 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderFailure,
+  isOrchestratorAgentThread,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2Run,
@@ -612,6 +616,10 @@ export const layer: Layer.Layer<
     const providerEventIngestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const mcpAppModelContext = yield* McpAppModelContext.McpAppModelContext;
+    // Optional so harnesses without an orchestrator build without it.
+    const orchestratorTurnContext = yield* Effect.serviceOption(
+      OrchestratorTurnContext.OrchestratorTurnContext,
+    );
     const previewAgentActivity = yield* PreviewAgentActivity.PreviewAgentActivity;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
     const finalizationObserver = yield* RunFinalizationService.RunFinalizationObserver;
@@ -1653,6 +1661,16 @@ export const layer: Layer.Layer<
           key: `mcp_app_${entry.itemId.replace(/[^\w.-]/g, "_")}`,
           text: entry.text,
         }));
+        const message = isOrchestratorAgentThread(input.appThread)
+          ? {
+              ...input.message,
+              text: `${orchestratorPromptPreamble(
+                Option.isSome(orchestratorTurnContext)
+                  ? yield* orchestratorTurnContext.value.focusFor(input.run.threadId)
+                  : undefined,
+              )}${input.message.text}`,
+            }
+          : input.message;
         const turnInput = {
           appThread: input.appThread,
           threadId: input.run.threadId,
@@ -1670,7 +1688,7 @@ export const layer: Layer.Layer<
           attemptId: input.attemptId,
           rootNodeId: input.rootNode.id,
           providerThread: input.providerThread,
-          message: input.message,
+          message,
           modelSelection: input.modelSelection,
           runtimePolicy: input.runtimePolicy,
           ...(appContext.length === 0 ? {} : { appContext }),

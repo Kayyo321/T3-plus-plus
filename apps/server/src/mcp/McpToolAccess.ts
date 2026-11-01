@@ -20,6 +20,7 @@ import {
   DispatchModeLimit,
   type DispatchModeRefusal,
 } from "../orchestration-v2/DispatchModeLimit.ts";
+import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import { assertNotLinked, assertSameLink, callerLinkOrigin } from "./linkOrigin.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
@@ -364,6 +365,12 @@ const takesLinkedEnvironment = (tool: Tool.Any) => {
   );
 };
 
+// Fails closed: an orchestrator call with no gate to govern it must not run ungoverned.
+const orchestratorGateMissing = new OrchestratorMcpFailure({
+  code: "capability_denied",
+  message: "The orchestrator's grants are unavailable here.",
+});
+
 const linksUnavailable = new OrchestratorMcpFailure({
   code: "orchestration_error",
   message: "This environment cannot reach linked environments.",
@@ -382,6 +389,7 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
 ) {
   // Optional so toolkits that never leave this environment build without it.
   const forwarding = yield* Effect.serviceOption(PeerForwarding.PeerForwarding);
+  const orchestrator = yield* Effect.serviceOption(OrchestratorAgent.OrchestratorAgent);
   const handlers: Record<string, unknown> = { ...checked };
   for (const [name, declaration] of Object.entries<Declaration<unknown>>(declarations)) {
     const tool = toolkit.tools[name];
@@ -403,6 +411,18 @@ const routed = Effect.fn("McpToolAccess.routed")(function* <Tools extends Record
         yield* (remote as RemoteCheck<typeof params>)(params);
         if (Option.isNone(forwarding)) return yield* linksUnavailable;
         return yield* forwarding.value.call(scope, tool, target, { ...params, environmentId });
+      });
+  }
+  for (const [name, handler] of Object.entries(handlers)) {
+    handlers[name] = (params: unknown) =>
+      Effect.flatMap(McpInvocationContext.McpInvocationContext, (scope) => {
+        const run = (handler as (input: unknown) => Effect.Effect<unknown, OrchestratorMcpFailure>)(
+          params,
+        );
+        if (!scope.capabilities.has("editor")) return run;
+        return Option.isSome(orchestrator)
+          ? orchestrator.value.governTool(name, params, run)
+          : Effect.fail(orchestratorGateMissing);
       });
   }
   return handlers as Toolkit.HandlersFrom<Tools>;

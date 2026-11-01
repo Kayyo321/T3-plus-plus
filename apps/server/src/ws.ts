@@ -122,6 +122,8 @@ import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts"
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as AuditTrail from "./audit/AuditTrail.ts";
+import * as OrchestratorAgent from "./orchestratorAgent/OrchestratorAgent.ts";
+import * as SupervisionMonitor from "./orchestratorAgent/SupervisionMonitor.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
@@ -1313,6 +1315,8 @@ export const layerWsRpc = (
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const auditTrail = yield* AuditTrail.AuditTrail;
+      const orchestratorAgent = yield* OrchestratorAgent.OrchestratorAgent;
+      const supervision = yield* SupervisionMonitor.SupervisionMonitor;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
@@ -2184,6 +2188,21 @@ export const layerWsRpc = (
               Effect.as(commandOutputHub.subscribe(input)),
             ),
           ),
+        [WS_METHODS.orchestratorAgentSubscribe]: (_input) => orchestratorAgent.changes,
+        [WS_METHODS.orchestratorAgentCheckAvailability]: (_input) =>
+          orchestratorAgent.checkAvailability,
+        [WS_METHODS.orchestratorAgentSetBrain]: (input) => orchestratorAgent.setBrain(input),
+        [WS_METHODS.orchestratorAgentSetGrants]: (input) =>
+          orchestratorAgent.setGrants(input.grants),
+        [WS_METHODS.orchestratorAgentSetThresholds]: (input) =>
+          orchestratorAgent.setThresholds(input.thresholds),
+        [WS_METHODS.orchestratorAgentSend]: (input) => orchestratorAgent.send(input),
+        [WS_METHODS.orchestratorAgentInterrupt]: (_input) => orchestratorAgent.interrupt,
+        [WS_METHODS.orchestratorAgentAnswerApproval]: (input) =>
+          orchestratorAgent.answerApproval(input),
+        [WS_METHODS.orchestratorAgentSubscribeDirectives]: (_input) => orchestratorAgent.directives,
+        [WS_METHODS.supervisionGetThread]: (input) => supervision.threadState(input.threadId),
+        [WS_METHODS.supervisionSetThread]: (input) => supervision.setThreadMode(input),
         [WS_METHODS.auditList]: (input) => auditTrail.list(input),
         [WS_METHODS.auditSubscribe]: (_input) => auditTrail.changes,
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>

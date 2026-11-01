@@ -64,6 +64,15 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [ORCHESTRATION_V2_WS_METHODS.forceStopThread]: AuthOrchestrationOperateScope,
   // A guest link hands thread access to someone outside, like a pairing link.
   [WS_METHODS.guestShareCreate]: AuthAccessWriteScope,
+  // Grants decide what an agent may do unasked, so they follow access management.
+  [WS_METHODS.orchestratorAgentSetGrants]: AuthAccessWriteScope,
+  [WS_METHODS.orchestratorAgentSetBrain]: AuthOrchestrationOperateScope,
+  [WS_METHODS.orchestratorAgentSetThresholds]: AuthOrchestrationOperateScope,
+  [WS_METHODS.orchestratorAgentSend]: AuthOrchestrationOperateScope,
+  [WS_METHODS.supervisionSetThread]: AuthOrchestrationOperateScope,
+  [WS_METHODS.orchestratorAgentInterrupt]: AuthOrchestrationOperateScope,
+  // Answering is what lets the orchestrator act, so it is access management too.
+  [WS_METHODS.orchestratorAgentAnswerApproval]: AuthAccessWriteScope,
   [WS_METHODS.peerLinksLink]: AuthAccessWriteScope,
   [WS_METHODS.peerLinksUnlink]: AuthAccessWriteScope,
   // A link lets every agent here reach the other environment: Settings' bar.
