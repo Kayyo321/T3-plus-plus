@@ -20,6 +20,9 @@ expired work again when you turn it back on.
    Choose **Send** to run it as a normal turn, or **Dismiss**. Files they attached show with the
    message, and **Send** includes them.
 
+To reach a conversation yourself from another device, or to let someone act on it without you
+approving each message, use [remote control](./remote-control.md) instead.
+
 Choose **Stop sharing** to end the link at once. Archiving the thread, creating a new link, or
 unlinking the machine from T3 Connect also ends it. You can send or dismiss guest messages from the mobile app.
 
