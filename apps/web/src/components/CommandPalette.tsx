@@ -55,6 +55,7 @@ import {
   ArrowLeftIcon,
   BotIcon,
   BugIcon,
+  EyeIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -148,7 +149,7 @@ import {
   useCommandPaletteMount,
   useCommandPaletteStore,
 } from "../commandPaletteStore";
-import { useOrchestratorDock } from "../state/orchestratorAgent";
+import { orchestratorEnvironment, useOrchestratorDock } from "../state/orchestratorAgent";
 import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
@@ -435,6 +436,7 @@ function OpenCommandPaletteDialog(props: {
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
     reportFailure: false,
   });
+  const setThreadSupervision = useAtomCommand(orchestratorEnvironment.setThreadSupervision);
   const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
     reportFailure: false,
   });
@@ -1330,6 +1332,27 @@ function OpenCommandPaletteDialog(props: {
   const plainPromptLink = promptLinkInput
     ? composerPromptLink({ ...promptLinkInput, withContext: false })
     : null;
+  if (activeThread) {
+    for (const entry of [
+      { mode: "on", title: "Supervise this conversation", terms: ["watch", "stuck", "loop"] },
+      { mode: "off", title: "Let this conversation run", terms: ["unwatch", "stop supervising"] },
+    ] as const) {
+      actionItems.push({
+        kind: "action",
+        value: `action:supervision-${entry.mode}`,
+        searchTerms: ["supervise", "orchestrator", ...entry.terms],
+        title: entry.title,
+        searchTitle: entry.title,
+        icon: <EyeIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await setThreadSupervision({
+            environmentId: activeThread.environmentId,
+            input: { threadId: activeThread.id, mode: entry.mode },
+          });
+        },
+      });
+    }
+  }
   if (promptLinkInput !== null && plainPromptLink !== null) {
     actionItems.push({
       kind: "action",

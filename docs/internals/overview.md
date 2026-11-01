@@ -88,6 +88,21 @@ blocked work. It records the activity timestamp for stable
 sorting and detaches idle provider sessions. Clients render the persisted result; they do not
 derive settlement from their own clocks or PR caches.
 
+## The orchestrator agent is held by its session, not its prompt
+
+The [orchestrator agent](../user/orchestrator.md) runs in Chat mode, so its provider session has no
+file or shell tools. That is what makes its grants real: with a shell, an agent could reach anything
+a grant refuses, including the secret store. Every tool call on its session passes through
+[`governTool`](../../apps/server/src/orchestratorAgent/OrchestratorAgent.ts), and a tool missing from
+[`ORCHESTRATOR_TOOL_POLICY`](../../apps/server/src/orchestratorAgent/toolPolicy.ts) is refused, so a new
+tool stays out of reach until someone classifies it. Only drivers that withhold tools outright can be
+its brain; `best-effort` ones ask their agent to behave, which grants cannot rest on.
+
+Its tools live on their own endpoint, `/mcp/orchestrator`, so they add nothing to any other agent's
+tool list or context. Its thread takes messages only through the service, which checks availability
+first. Provider availability is computed from provider state with no fallback: the service never picks
+another provider, since that could spend money or send context somewhere the owner did not choose.
+
 ## Waiting for asynchronous work
 
 Tests use [drainable workers](../../packages/shared/src/DrainableWorker.ts) to wait until both the

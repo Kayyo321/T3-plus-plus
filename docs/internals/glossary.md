@@ -24,6 +24,7 @@ Terms whose meaning matters across T3++. Architecture and lifecycle constraints 
 | Command                 | A request to change domain state. Accepting it does not mean its side effects have finished.              |
 | Event                   | A persisted fact produced by a command.                                                                   |
 | Orchestrator            | The service that serializes commands and decides their events from current state, without I/O.            |
+| Orchestrator agent      | The docked agent that operates the app for the owner. Distinct from the command orchestrator above.       |
 | Projection / read model | A persisted view of current state, committed in the same transaction as the events that change it.        |
 | Command receipt         | A durable record of a command's result, used to make retries idempotent.                                  |
 | Outbox effect           | Side-effect intent committed with the events, such as starting a provider turn or capturing a checkpoint. |
