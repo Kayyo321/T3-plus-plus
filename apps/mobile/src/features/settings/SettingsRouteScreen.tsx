@@ -276,6 +276,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
     {
       rows: [
         serverPage("SettingsEnvironmentMaintenance", "arrow.clockwise", "Maintenance"),
+        page("SettingsOrchestrator", "sparkles", "Orchestrator"),
         page("SettingsLabs", "sparkles", "Labs"),
         page("SettingsAbout", "info.circle", "About"),
         page("SettingsArchive", "archivebox", "Archive"),

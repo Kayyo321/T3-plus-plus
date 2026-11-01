@@ -1,3 +1,4 @@
+import { DraftConversationBar } from "./ThreadConversationBar";
 import { DraftEnvironmentControl } from "./DraftEnvironmentControl";
 import { NativeScrollEdgeEffectsContext } from "../../native/NativeScrollViewMarker";
 import { DraftThreadHeader } from "./DraftThreadHeader";
@@ -906,6 +907,11 @@ export function NewTaskDraftScreen(props: {
           content: heroViewport,
           controls: (
             <View className="pb-1">
+              <DraftConversationBar
+                mode={flow.capabilityMode}
+                driver={undefined}
+                onChangeMode={flow.setCapabilityMode}
+              />
               {projectClone && projectClone.phase !== "done" && selectedProject ? (
                 <View className="px-1 pb-2">
                   <ProjectCloneBanner

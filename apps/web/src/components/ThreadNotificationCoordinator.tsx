@@ -40,7 +40,9 @@ import {
   createThreadNotificationGate,
   type ThreadNotificationKind,
   type ThreadNotificationObservation,
+  observeScheduledRuns,
 } from "./ThreadNotificationCoordinator.logic";
+import { serverEnvironment } from "../state/server";
 import { toastManager } from "./ui/toast";
 
 interface Announcement {
@@ -311,7 +313,28 @@ export function startThreadNotifications(
       environmentThreadShells.delegatedUnderParentAtom,
       reobserve,
     );
+    const unsubscribeScheduled = registry.subscribe(
+      serverEnvironment.scheduledTasksLive({ environmentId, input: {} }),
+      (result) => {
+        if (result._tag !== "Success") return;
+        for (const task of observeScheduledRuns(entry.scheduledRuns, result.value.tasks)) {
+          const failed = task.latestRun?.outcome !== "succeeded";
+          announce(environmentId, {
+            kind: failed ? "input" : "completion",
+            toastType: failed ? "warning" : "success",
+            title: task.title,
+            description: task.latestRun?.error ?? `Scheduled run ${task.latestRun?.outcome}`,
+            leadingIcon: null,
+            threadId: task.latestRun?.threadId ?? null,
+            actionLabel: "Open",
+            tag: `scheduled:${task.id}:${task.latestRun?.id}`,
+          });
+        }
+      },
+      { immediate: true },
+    );
     entry.unsubscribe = () => {
+      unsubscribeScheduled();
       unsubscribeShell();
       unsubscribeRequests();
       unsubscribeDelegated();

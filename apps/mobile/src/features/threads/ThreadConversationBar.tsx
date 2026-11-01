@@ -28,6 +28,8 @@ function ModeRow(props: {
   } | null;
   readonly documentCount: number;
   readonly onOpenDocuments: (() => void) | null;
+  readonly teamCount?: number;
+  readonly onOpenTeam?: () => void;
 }) {
   const notice = props.mode === "chat" ? chatModeNotice(props.driver) : null;
   const { action } = props;
@@ -49,6 +51,16 @@ function ModeRow(props: {
           >
             <SymbolView name="doc.text" size={12} tintColorClassName="accent-foreground-muted" />
             <Text className="text-xs text-foreground">Documents {props.documentCount}</Text>
+          </Pressable>
+        ) : null}
+        {props.onOpenTeam && props.teamCount ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open team board, ${props.teamCount}`}
+            onPress={props.onOpenTeam}
+            className="flex-row items-center gap-1.5 rounded-full bg-subtle px-2.5 py-1 active:opacity-70"
+          >
+            <Text className="text-xs text-foreground">Team {props.teamCount}</Text>
           </Pressable>
         ) : null}
         <View className="flex-1" />
@@ -121,7 +133,11 @@ export function ThreadConversationBar(props: {
   const setMode = useAtomCommand(threadEnvironment.setCapabilityMode, { reportFailure: false });
   const [changing, setChanging] = useState(false);
   const documentCount = partitionDocuments(documents.data?.documents ?? []).active.length;
-  if (mode !== "chat" && documentCount === 0) return null;
+  const teams = useEnvironmentQuery(
+    serverEnvironment.teamworkList({ environmentId, input: { parentThreadId: threadId } }),
+  );
+  const teamCount = teams.data?.runs.length ?? 0;
+  if (mode !== "chat" && documentCount === 0 && teamCount === 0) return null;
 
   const change = threadModeSwitch({ mode, runActive: props.runActive });
   const handleChange = async () => {
@@ -145,6 +161,11 @@ export function ThreadConversationBar(props: {
       mode={mode}
       driver={props.driver}
       documentCount={documentCount}
+      teamCount={teamCount}
+      onOpenTeam={() => {
+        Keyboard.dismiss();
+        navigation.navigate("ThreadTeam", { environmentId, threadId });
+      }}
       onOpenDocuments={() => {
         Keyboard.dismiss();
         navigation.navigate("ThreadDocuments", { environmentId, threadId });

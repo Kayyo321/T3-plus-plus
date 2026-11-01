@@ -1,3 +1,4 @@
+import { RemoteComputerUse } from "./RemoteComputerUse";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 import { derivePhase } from "~/session-logic";
@@ -644,6 +645,12 @@ function RemoteConversation({
             {actionError}
           </p>
         ) : null}
+        <RemoteComputerUse
+          routeFor={(route) => routeFor(route, switchId)}
+          canApprove={canApprove && !offline}
+          canStop={canControl && !offline}
+          onAct={(url, body) => void act(url, body)}
+        />
         {canApprove && !offline ? (
           <PendingRequests
             projection={projection}

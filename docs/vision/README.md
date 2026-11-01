@@ -50,14 +50,14 @@ client; gaps are named in the row. Mobile and desktop were not run for this tabl
 | Background service              | Exists  | `t3 service` ([background service](../user/background-service.md)). Distinct from background _tasks_ inside a conversation.                                                    |
 | Terminal                        | Exists  | [Terminal](../user/terminal.md). Basis for IDE mode.                                                                                                                           |
 | Nested sessions                 | Partial | Services, MCP, and sidebar rows exist; not exercised in a real client.                                                                                                         |
-| Teamwork                        | Partial | Board, gates, budgets, and web panel work; members start by hand; no mobile board; real multi-provider run untested.                                                           |
+| Teamwork                        | Partial | Board, gates, budgets, web panel, and mobile board exist; members start by hand; real multi-provider run untested; mobile not run.                                             |
 | Split view                      | Partial | Implemented; layout controls seen, split not exercised in a real client.                                                                                                       |
 | Saved layouts                   | Partial | Implemented; settings page exists, not exercised end to end.                                                                                                                   |
 | Conversation folders            | Partial | Implemented with nested rows; not exercised end to end.                                                                                                                        |
 | Chat mode                       | Partial | Enforced per adapter; web and mobile controls exist; mobile not run.                                                                                                           |
-| Scheduled tasks                 | Partial | Service and settings UI exist; web completion notifications are not subscribed.                                                                                                |
-| Computer use                    | Partial | Service and web panel exist; live backend untested; remote page does not show it yet.                                                                                          |
-| IDE mode                        | Partial | Implemented; not exercised in a real client.                                                                                                                                   |
+| Scheduled tasks                 | Partial | Service, settings page, and web notifications exist; a real scheduled run and notification were not observed.                                                                  |
+| Computer use                    | Partial | Service, web panel, and remote view exist; live backend untested.                                                                                                              |
+| IDE mode                        | Partial | Layout applies in the web client; composer is cramped at narrow widths.                                                                                                        |
 | UI overhaul and ASCII landing   | Partial | ASCII landing and density shipped; wider overhaul incomplete.                                                                                                                  |
 
 ## Product principles for the fork

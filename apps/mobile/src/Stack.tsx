@@ -74,6 +74,11 @@ import {
   ThreadRouteScreen,
 } from "./features/threads/ThreadRouteScreen";
 import { ThreadComputerUseSheet } from "./features/threads/ThreadComputerUseSheet";
+import {
+  OrchestratorScreen,
+  SettingsOrchestratorRouteScreen,
+} from "./features/threads/OrchestratorScreen";
+import { ThreadTeamScreen } from "./features/threads/ThreadTeamScreen";
 import { ThreadDocumentScreen } from "./features/threads/ThreadDocumentScreen";
 import { ThreadDocumentsScreen } from "./features/threads/ThreadDocumentsScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
@@ -280,6 +285,10 @@ const SETTINGS_SCREENS = {
     screen: SettingsWorktreesRouteScreen,
     linking: "settings/worktrees",
     options: { ...SETTINGS_PAGE_OPTIONS, title: "Worktrees" },
+  }),
+  SettingsOrchestrator: createNativeStackScreen({
+    screen: SettingsOrchestratorRouteScreen,
+    options: { ...SETTINGS_PAGE_OPTIONS, title: "Orchestrator" },
   }),
   SettingsLabs: createNativeStackScreen({
     screen: SettingsLabsRouteScreen,
@@ -804,6 +813,16 @@ const RootStackConfig = createWorkspaceStackNavigator({
       screen: ThreadTerminalRouteScreen,
       linking: `${THREAD_LINKING_PREFIX}/terminal`,
       options: SOLID_HEADER_OPTIONS,
+    }),
+    ThreadTeam: createNativeStackScreen({
+      screen: ThreadTeamScreen,
+      linking: `${THREAD_LINKING_PREFIX}/team`,
+      options: { ...SOLID_HEADER_OPTIONS, title: "Team" },
+    }),
+    Orchestrator: createNativeStackScreen({
+      screen: OrchestratorScreen,
+      linking: "orchestrator/:environmentId",
+      options: { ...SOLID_HEADER_OPTIONS, title: "Orchestrator" },
     }),
     ThreadDocuments: createNativeStackScreen({
       screen: ThreadDocumentsScreen,
