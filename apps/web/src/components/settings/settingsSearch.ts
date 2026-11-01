@@ -328,6 +328,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["red green blue orange additions deletions changes counts palette colorblind"],
   },
   {
+    id: "interface-density",
+    title: "Density",
+    to: "/settings/appearance",
+    searchTerms: ["compact comfortable spacing padding dense tight airy"],
+  },
+  {
     id: "chat-width",
     title: "Chat width",
     to: "/settings/appearance",

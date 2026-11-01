@@ -258,6 +258,42 @@ export function AppearanceSettingsPanel() {
         />
 
         <SettingsRow
+          {...searchableSetting("interface-density")}
+          description="Choose how much room the interface gives each control."
+          resetAction={
+            settings.interfaceDensity !== DEFAULT_UNIFIED_SETTINGS.interfaceDensity ? (
+              <SettingResetButton
+                label="density"
+                onClick={() =>
+                  updateSettings({ interfaceDensity: DEFAULT_UNIFIED_SETTINGS.interfaceDensity })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={settings.interfaceDensity}
+                onValueChange={(value) => {
+                  if (value === "comfortable" || value === "compact")
+                    updateSettings({ interfaceDensity: value });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Density">
+                  <SelectValue>
+                    {settings.interfaceDensity === "compact" ? "Compact" : "Comfortable"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="comfortable">Comfortable (default)</SelectItem>
+                  <SelectItem value="compact">Compact</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
+
+        <SettingsRow
           {...searchableSetting("chat-width")}
           description="Set how wide messages and the composer can grow on large screens."
           resetAction={

@@ -78,6 +78,9 @@ function startClientAppearance(): void {
     if (previous?.chatWidth !== settings.chatWidth) {
       root.dataset.chatWidth = settings.chatWidth;
     }
+    if (previous?.interfaceDensity !== settings.interfaceDensity) {
+      root.dataset.density = settings.interfaceDensity;
+    }
     if (previous?.appearanceContrast !== settings.appearanceContrast) {
       applyAppearanceContrast(root, settings.appearanceContrast);
     }
