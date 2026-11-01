@@ -1,8 +1,12 @@
 import {
   CheckpointId,
   CheckpointScopeId,
+  ContextTransferId,
   latestProviderTurnForAttempt,
   type OrchestrationV2DomainEvent,
+  type OrchestrationV2RewindKeepTail,
+  type OrchestrationV2RewindMode,
+  type OrchestrationV2Run,
   ProviderThreadId,
   ThreadId,
   VcsProcessExitError,
@@ -35,6 +39,7 @@ import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAda
 import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { RuntimePolicyV2 } from "./RuntimePolicy.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+import * as ThreadForkService from "./ThreadForkService.ts";
 
 export const ROLLBACK_FAILED_MESSAGE =
   "The provider could not roll back this conversation. Try again; if it keeps failing, check the provider and server logs.";
@@ -48,6 +53,7 @@ export class CheckpointRollbackExecutionError extends Schema.TaggedError<Checkpo
       "provider-turn-unavailable",
       "unexpected-failure",
       "shared-workspace",
+      "checkpoint-unavailable",
     ]),
     threadId: ThreadId,
     providerThreadId: ProviderThreadId,
@@ -65,6 +71,8 @@ export class CheckpointRollbackExecutionError extends Schema.TaggedError<Checkpo
         return `Provider turn for rollback target ${this.checkpointId} is unavailable on provider thread ${this.providerThreadId}.`;
       case "shared-workspace":
         return SHARED_WORKSPACE_RESTORE_MESSAGE;
+      case "checkpoint-unavailable":
+        return `Checkpoint ${this.checkpointId} on thread ${this.threadId} cannot be restored.`;
       case "unexpected-failure":
         return ROLLBACK_FAILED_MESSAGE;
     }
@@ -87,14 +95,20 @@ export function rollbackFailureClientMessage(error: CheckpointRollbackExecutionE
     : ROLLBACK_FAILED_MESSAGE;
 }
 
+export interface CheckpointRollbackInput {
+  readonly threadId: ThreadId;
+  readonly providerThreadId: ProviderThreadId;
+  readonly checkpointId: CheckpointId;
+  readonly scopeId: CheckpointScopeId;
+  readonly restoreFiles?: boolean;
+  readonly filesOnly?: boolean;
+  readonly keepTail?: OrchestrationV2RewindKeepTail;
+}
+
 export interface CheckpointRollbackServiceV2Shape {
-  readonly execute: (input: {
-    readonly threadId: ThreadId;
-    readonly providerThreadId: ProviderThreadId;
-    readonly checkpointId: CheckpointId;
-    readonly scopeId: CheckpointScopeId;
-    readonly restoreFiles?: boolean;
-  }) => Effect.Effect<void, CheckpointRollbackExecutionError>;
+  readonly execute: (
+    input: CheckpointRollbackInput,
+  ) => Effect.Effect<void, CheckpointRollbackExecutionError>;
 }
 
 export class CheckpointRollbackServiceV2 extends Context.Service<
@@ -118,6 +132,7 @@ export const layer: Layer.Layer<
   | ServerConfig.ServerConfig
   | ServerSettings.ServerSettingsService
   | ThreadCommandExecutor.ThreadCommandExecutor
+  | ThreadForkService.ThreadForkServiceV2
 > = Layer.effect(
   CheckpointRollbackServiceV2,
   Effect.gen(function* () {
@@ -132,15 +147,160 @@ export const layer: Layer.Layer<
     const projects = yield* ProjectStore.ProjectStoreV2;
     const path = yield* Path.Path;
     const threadCommands = yield* ThreadCommandExecutor.ThreadCommandExecutor;
+    const forks = yield* ThreadForkService.ThreadForkServiceV2;
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
 
-    const execute = Effect.fn("orchestrationV2.checkpointRollback.execute")(function* (input: {
-      readonly threadId: ThreadId;
-      readonly providerThreadId: ProviderThreadId;
-      readonly checkpointId: CheckpointId;
-      readonly scopeId: CheckpointScopeId;
-      readonly restoreFiles?: boolean;
-    }) {
+    /** The archived branch for what this rewind discards, committed with the rewind itself. */
+    const planTail = Effect.fn("orchestrationV2.checkpointRollback.planTail")(function* (
+      input: CheckpointRollbackInput,
+      mode: OrchestrationV2RewindMode,
+      discarded: ReadonlyArray<OrchestrationV2Run>,
+    ) {
+      const { keepTail } = input;
+      if (keepTail === undefined) return [];
+      if (mode === "conversation" && discarded.length === 0) return [];
+      const records = yield* projections.getThreadRecords(input.threadId, [
+        "runs",
+        "providerThreads",
+      ]);
+      const lastRun =
+        discarded.at(-1) ??
+        records.runs
+          .filter((run) => ThreadForkService.isForkableSourceRunStatus(run.status))
+          .toSorted((left, right) => right.ordinal - left.ordinal)[0];
+      if (lastRun === undefined) return [];
+      const now = yield* DateTime.now;
+      const transferId = yield* ids.allocate.contextTransfer({
+        sourceThreadId: input.threadId,
+        targetThreadId: keepTail.targetThreadId,
+        type: "fork",
+      });
+      const { targetThread, transfer } = yield* forks.plan({
+        sourceProjection: records,
+        sourceRun: lastRun,
+        sourceProviderThread: records.providerThreads.find(
+          (candidate) => candidate.id === lastRun.providerThreadId,
+        ),
+        canonicalSourcePoint: { threadId: input.threadId, runId: lastRun.id },
+        transferId: ContextTransferId.make(transferId),
+        targetThreadId: keepTail.targetThreadId,
+        title: keepTail.title ?? `${records.thread.title} before rewind`,
+        rewindTail: {
+          archived: true,
+          tail: {
+            sourceThreadId: input.threadId,
+            mode,
+            discardedRunIds: discarded.map((run) => run.id),
+            snapshotRef: keepTail.snapshotRef,
+            rewoundAt: DateTime.formatIso(now),
+          },
+        },
+        createdBy: "system",
+        creationSource: "server",
+        createdAt: now,
+      });
+      const created: OrchestrationV2DomainEvent = {
+        id: yield* ids.allocate.event({ threadId: targetThread.id }),
+        type: "thread.created",
+        threadId: targetThread.id,
+        providerInstanceId: targetThread.providerInstanceId,
+        occurredAt: now,
+        payload: targetThread,
+      };
+      return transfer === null
+        ? [created]
+        : [
+            created,
+            {
+              id: yield* ids.allocate.event({ threadId: targetThread.id }),
+              type: "context-transfer.created" as const,
+              threadId: targetThread.id,
+              providerInstanceId: lastRun.providerInstanceId,
+              occurredAt: now,
+              payload: transfer,
+            } satisfies OrchestrationV2DomainEvent,
+          ];
+    });
+
+    /** Restores the worktree the checkpoint was taken in; provider and conversation stay put. */
+    const executeFilesOnly = Effect.fn("orchestrationV2.checkpointRollback.executeFilesOnly")(
+      function* (input: CheckpointRollbackInput) {
+        const context = yield* projections.getThreadRecords(input.threadId, [
+          "checkpoints",
+          "checkpointScopes",
+        ]);
+        const checkpoint = context.checkpoints.find(
+          (candidate) => candidate.id === input.checkpointId,
+        );
+        const scope = context.checkpointScopes.find((candidate) => candidate.id === input.scopeId);
+        const fail = (reason: "checkpoint-unavailable" | "shared-workspace") =>
+          new CheckpointRollbackExecutionError({
+            reason,
+            threadId: input.threadId,
+            providerThreadId: input.providerThreadId,
+            checkpointId: input.checkpointId,
+          });
+        if (
+          checkpoint === undefined ||
+          scope === undefined ||
+          checkpoint.scopeId !== scope.id ||
+          checkpoint.status !== "ready"
+        ) {
+          return yield* fail("checkpoint-unavailable");
+        }
+        const { thread } = context;
+        if (
+          !(yield* isCheckpointRestoreIsolated(thread, scope, {
+            fileSystem,
+            projections,
+            projects,
+            path,
+          }))
+        ) {
+          return yield* fail("shared-workspace");
+        }
+        const stashPaths = input.keepTail?.stashPaths ?? [];
+        if (stashPaths.length > 0) {
+          yield* checkpoints.stashPaths({
+            scope,
+            paths: stashPaths,
+            message: `T3++ rewind of ${thread.title}`,
+          });
+        }
+        yield* checkpoints.restore({ scope, checkpoint });
+        yield* threadCommands.withLock(
+          input.threadId,
+          Effect.gen(function* () {
+            const now = yield* DateTime.now;
+            const current = yield* projections.getThread(input.threadId);
+            yield* eventSink.write({
+              events: [
+                {
+                  id: yield* ids.allocate.event({ threadId: input.threadId }),
+                  type: "thread.metadata-updated",
+                  threadId: input.threadId,
+                  providerInstanceId: current.providerInstanceId,
+                  occurredAt: now,
+                  payload: {
+                    ...current,
+                    filesRewound: {
+                      at: DateTime.formatIso(now),
+                      appRunOrdinal: checkpoint.appRunOrdinal ?? 0,
+                    },
+                    updatedAt: now,
+                  },
+                },
+                ...(yield* planTail(input, "files", [])),
+              ],
+            });
+          }),
+        );
+      },
+    );
+
+    const execute = Effect.fn("orchestrationV2.checkpointRollback.execute")(function* (
+      input: CheckpointRollbackInput,
+    ) {
       const context = yield* projections.getCheckpointRollbackContext(input.threadId, input);
       const { providerThread, checkpoint, scope, targetAttempt, runsToRollback, staleCheckpoints } =
         context;
@@ -273,8 +433,19 @@ export const layer: Layer.Layer<
               target: rollbackTarget,
               providerThreadTurns,
             });
-      if (input.restoreFiles !== false) yield* checkpoints.restore({ scope, checkpoint });
-      if (staleCheckpoints.length > 0) {
+      if (input.restoreFiles !== false) {
+        const stashPaths = input.keepTail?.stashPaths ?? [];
+        if (stashPaths.length > 0) {
+          yield* checkpoints.stashPaths({
+            scope,
+            paths: stashPaths,
+            message: `T3++ rewind of ${context.thread.title}`,
+          });
+        }
+        yield* checkpoints.restore({ scope, checkpoint });
+      }
+      // The branch a rewind keeps may still diff against these.
+      if (staleCheckpoints.length > 0 && input.keepTail === undefined) {
         yield* checkpoints.deleteStaleRefs({ scope, checkpoints: staleCheckpoints });
       }
 
@@ -347,6 +518,13 @@ export const layer: Layer.Layer<
               );
             }
           }
+          events.unshift(
+            ...(yield* planTail(
+              input,
+              input.restoreFiles === false ? "conversation" : "both",
+              runsToRollback,
+            )),
+          );
           yield* eventSink.write({ events });
         }),
       );
@@ -358,9 +536,10 @@ export const layer: Layer.Layer<
         function* (input) {
           // Storage cleanup removes worktrees under the same lease.
           const thread = yield* projections.getThread(input.threadId);
+          const run = input.filesOnly === true ? executeFilesOnly(input) : execute(input);
           yield* thread.worktreePath === null
-            ? execute(input)
-            : withWorkspaceLease(path.resolve(thread.worktreePath), execute(input));
+            ? run
+            : withWorkspaceLease(path.resolve(thread.worktreePath), run);
         },
         (effect, input) =>
           effect.pipe(

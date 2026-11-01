@@ -82,6 +82,7 @@ import {
   deriveBlockedOnThreadWait,
   derivePendingBackgroundWork,
 } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { forkHistoryRows, restoreKeptRuns } from "@t3tools/shared/orchestrationV2Timeline";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -1299,12 +1300,15 @@ function isTurnItemAtOrBeforeRun(input: {
 function visibleTurnItemsThroughRun(input: {
   readonly sourceProjection: OrchestrationV2ThreadProjection;
   readonly sourceRunId: NonNullable<OrchestrationV2TurnItem["runId"]>;
+  readonly throughTurnItemId?: TurnItemId | undefined;
+  readonly keepRunIds?: ReadonlyArray<RunId> | undefined;
 }): Array<Omit<OrchestrationV2ProjectedTurnItem, "position">> {
   const sourceRun = input.sourceProjection.runs.find((run) => run.id === input.sourceRunId);
   if (sourceRun === undefined) {
     return [];
   }
 
+  const runs = restoreKeptRuns(input.sourceProjection.runs, input.keepRunIds);
   const runOrdinalById = new Map(input.sourceProjection.runs.map((run) => [run.id, run.ordinal]));
   const inheritedPrefix = input.sourceProjection.visibleTurnItems
     .filter(
@@ -1317,13 +1321,23 @@ function visibleTurnItemsThroughRun(input: {
       item: row.item,
     }));
   const localPrefix = inheritedVisibleTurnItemsFromLocalItems(
-    input.sourceProjection.turnItems.filter((item) => {
+    forkHistoryRows(input.sourceProjection.turnItems, sourceRun, {
+      throughTurnItemId: input.throughTurnItemId,
+    }).filter((item) => {
       if (
         isOrchestrationV2SupersededInterrupt({
           item,
           attempts: input.sourceProjection.attempts,
           items: input.sourceProjection.turnItems,
         })
+      ) {
+        return false;
+      }
+      // A fork stays as it was forked; a rewind branch shows only the turns it took.
+      if (
+        input.keepRunIds !== undefined &&
+        item.runId !== null &&
+        runs.some((run) => run.id === item.runId && run.status === "rolled_back")
       ) {
         return false;
       }
@@ -1337,6 +1351,21 @@ function visibleTurnItemsThroughRun(input: {
   );
 
   return [...inheritedPrefix, ...localPrefix];
+}
+
+function shellRewindBranch(thread: Pick<OrchestrationV2AppThread, "rewindTail">) {
+  const tail = thread.rewindTail;
+  return tail === undefined
+    ? {}
+    : {
+        rewindBranch: {
+          sourceThreadId: tail.sourceThreadId,
+          mode: tail.mode,
+          discardedRunCount: tail.discardedRunIds.length,
+          hasSnapshot: tail.snapshotRef !== null,
+          rewoundAt: tail.rewoundAt,
+        },
+      };
 }
 
 // Side chats show only their own rows; the fork transfer carries the parent's context to the model.
@@ -1365,6 +1394,8 @@ function buildVisibleTurnItems(input: {
       : visibleTurnItemsThroughRun({
           sourceProjection: input.sourceProjection,
           sourceRunId: forkedFrom.runId,
+          throughTurnItemId: forkedFrom.throughTurnItemId,
+          keepRunIds: input.projection.thread.rewindTail?.discardedRunIds,
         });
   const markerItem = makeForkMarkerTurnItem({
     targetProjection: input.projection,
@@ -1500,6 +1531,7 @@ export function threadShellFromProjection(
     ...(projection.thread.capabilityMode === undefined
       ? {}
       : { capabilityMode: projection.thread.capabilityMode }),
+    ...shellRewindBranch(projection.thread),
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
     pullRequests: threadPullRequestsOf(projection.thread),
@@ -1784,6 +1816,7 @@ function shellFromState(input: {
     ...(input.state.thread.capabilityMode === undefined
       ? {}
       : { capabilityMode: input.state.thread.capabilityMode }),
+    ...shellRewindBranch(input.state.thread),
     branch: input.state.thread.branch,
     worktreePath: input.state.thread.worktreePath,
     pullRequests: threadPullRequestsOf(input.state.thread),

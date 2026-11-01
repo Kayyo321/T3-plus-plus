@@ -8,6 +8,34 @@ import {
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import { AuditEntry, AuditListInput, AuditListResult, AuditTrailError } from "./audit.ts";
 import {
+  BackgroundTask,
+  BackgroundTaskError,
+  BackgroundTaskListInput,
+  BackgroundTaskListResult,
+  BackgroundTaskLogInput,
+  BackgroundTaskLogResult,
+  BackgroundTaskRefInput,
+  BackgroundTaskStartInput,
+  BackgroundTaskStreamItem,
+} from "./backgroundTasks.ts";
+import {
+  NestedSessionCloseParentInput,
+  NestedSessionCloseParentResult,
+  NestedSessionError,
+  NestedSessionReportInput,
+  NestedSessionStartInput,
+  NestedSessionStartResult,
+  ThreadBranchError,
+  ThreadForkPreview,
+  ThreadForkPreviewInput,
+  ThreadRewindInput,
+  ThreadRewindPreview,
+  ThreadRewindPreviewInput,
+  ThreadRewindReopenInput,
+  ThreadRewindReopenResult,
+  ThreadRewindResult,
+} from "./threadBranching.ts";
+import {
   McpAppCallToolInput,
   McpAppCallToolResult,
   McpAppReadResourceInput,
@@ -547,6 +575,19 @@ export const WS_METHODS = {
   secretsAnswerRequest: "secrets.answerRequest",
   auditList: "audit.list",
   auditSubscribe: "audit.subscribe",
+  threadRewindPreview: "threadBranch.previewRewind",
+  threadRewind: "threadBranch.rewind",
+  threadRewindReopen: "threadBranch.reopenRewindBranch",
+  threadForkPreview: "threadBranch.previewFork",
+  nestedSessionStart: "nestedSessions.start",
+  nestedSessionReport: "nestedSessions.report",
+  nestedSessionCloseParent: "nestedSessions.closeParent",
+  backgroundTaskStart: "backgroundTasks.start",
+  backgroundTaskStop: "backgroundTasks.stop",
+  backgroundTaskRemove: "backgroundTasks.remove",
+  backgroundTaskList: "backgroundTasks.list",
+  backgroundTaskReadLog: "backgroundTasks.readLog",
+  backgroundTaskSubscribe: "backgroundTasks.subscribe",
   guestShareCreate: "guestShare.create",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
@@ -1890,6 +1931,89 @@ const WsAuditListRpc = Rpc.make(WS_METHODS.auditList, {
   error: Schema.Union([AuditTrailError, EnvironmentAuthorizationError]),
 });
 
+const threadBranchErrors = Schema.Union([ThreadBranchError, EnvironmentAuthorizationError]);
+const nestedSessionErrors = Schema.Union([NestedSessionError, EnvironmentAuthorizationError]);
+const backgroundTaskErrors = Schema.Union([BackgroundTaskError, EnvironmentAuthorizationError]);
+
+const WsThreadRewindPreviewRpc = Rpc.make(WS_METHODS.threadRewindPreview, {
+  payload: ThreadRewindPreviewInput,
+  success: ThreadRewindPreview,
+  error: threadBranchErrors,
+});
+
+const WsThreadRewindRpc = Rpc.make(WS_METHODS.threadRewind, {
+  payload: ThreadRewindInput,
+  success: ThreadRewindResult,
+  error: threadBranchErrors,
+});
+
+const WsThreadRewindReopenRpc = Rpc.make(WS_METHODS.threadRewindReopen, {
+  payload: ThreadRewindReopenInput,
+  success: ThreadRewindReopenResult,
+  error: threadBranchErrors,
+});
+
+const WsThreadForkPreviewRpc = Rpc.make(WS_METHODS.threadForkPreview, {
+  payload: ThreadForkPreviewInput,
+  success: ThreadForkPreview,
+  error: threadBranchErrors,
+});
+
+const WsNestedSessionStartRpc = Rpc.make(WS_METHODS.nestedSessionStart, {
+  payload: NestedSessionStartInput,
+  success: NestedSessionStartResult,
+  error: nestedSessionErrors,
+});
+
+const WsNestedSessionReportRpc = Rpc.make(WS_METHODS.nestedSessionReport, {
+  payload: NestedSessionReportInput,
+  success: Schema.Void,
+  error: nestedSessionErrors,
+});
+
+const WsNestedSessionCloseParentRpc = Rpc.make(WS_METHODS.nestedSessionCloseParent, {
+  payload: NestedSessionCloseParentInput,
+  success: NestedSessionCloseParentResult,
+  error: nestedSessionErrors,
+});
+
+const WsBackgroundTaskStartRpc = Rpc.make(WS_METHODS.backgroundTaskStart, {
+  payload: BackgroundTaskStartInput,
+  success: BackgroundTask,
+  error: backgroundTaskErrors,
+});
+
+const WsBackgroundTaskStopRpc = Rpc.make(WS_METHODS.backgroundTaskStop, {
+  payload: BackgroundTaskRefInput,
+  success: BackgroundTask,
+  error: backgroundTaskErrors,
+});
+
+const WsBackgroundTaskRemoveRpc = Rpc.make(WS_METHODS.backgroundTaskRemove, {
+  payload: BackgroundTaskRefInput,
+  success: Schema.Void,
+  error: backgroundTaskErrors,
+});
+
+const WsBackgroundTaskListRpc = Rpc.make(WS_METHODS.backgroundTaskList, {
+  payload: BackgroundTaskListInput,
+  success: BackgroundTaskListResult,
+  error: backgroundTaskErrors,
+});
+
+const WsBackgroundTaskReadLogRpc = Rpc.make(WS_METHODS.backgroundTaskReadLog, {
+  payload: BackgroundTaskLogInput,
+  success: BackgroundTaskLogResult,
+  error: backgroundTaskErrors,
+});
+
+const WsBackgroundTaskSubscribeRpc = Rpc.make(WS_METHODS.backgroundTaskSubscribe, {
+  payload: Schema.Struct({}),
+  success: BackgroundTaskStreamItem,
+  error: backgroundTaskErrors,
+  stream: true,
+});
+
 const WsAuditSubscribeRpc = Rpc.make(WS_METHODS.auditSubscribe, {
   payload: Schema.Struct({}),
   success: AuditEntry,
@@ -1988,6 +2112,19 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 export const WsRpcGroup = RpcGroup.make(
   WsAuditListRpc,
   WsAuditSubscribeRpc,
+  WsThreadRewindPreviewRpc,
+  WsThreadRewindRpc,
+  WsThreadRewindReopenRpc,
+  WsThreadForkPreviewRpc,
+  WsNestedSessionStartRpc,
+  WsNestedSessionReportRpc,
+  WsNestedSessionCloseParentRpc,
+  WsBackgroundTaskStartRpc,
+  WsBackgroundTaskStopRpc,
+  WsBackgroundTaskRemoveRpc,
+  WsBackgroundTaskListRpc,
+  WsBackgroundTaskReadLogRpc,
+  WsBackgroundTaskSubscribeRpc,
   WsGuestShareCreateRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,

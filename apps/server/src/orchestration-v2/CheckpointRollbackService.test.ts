@@ -37,6 +37,7 @@ import { ProviderWorkspaceMissingError } from "../provider/Errors.ts";
 import { resolveCodexRollbackTurnCount } from "./Adapters/CodexAdapterV2.ts";
 import * as CheckpointService from "./CheckpointService.ts";
 import * as CheckpointRollbackService from "./CheckpointRollbackService.ts";
+import * as ThreadForkService from "./ThreadForkService.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import * as EventSink from "./EventSink.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -52,6 +53,7 @@ const unrelatedProject = Option.some({
 const layerCheckpointRollbackService = CheckpointRollbackService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
+      ThreadForkService.layer,
       NodeServices.layer,
       Layer.mock(ServerConfig.ServerConfig)({ worktreesDir: "/synthetic-worktrees" } as never),
       ServerSettings.layerTest(),
@@ -222,6 +224,7 @@ it.effect.each([
     const testLayer = CheckpointRollbackService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(
+          ThreadForkService.layer,
           ThreadCommandExecutor.layer,
           NodeServices.layer,
           Layer.mock(ServerConfig.ServerConfig)({ worktreesDir } as never),

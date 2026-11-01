@@ -122,6 +122,9 @@ import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts"
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as AuditTrail from "./audit/AuditTrail.ts";
+import * as BackgroundTaskService from "./backgroundTasks/BackgroundTaskService.ts";
+import * as NestedSessionService from "./orchestration-v2/NestedSessionService.ts";
+import * as ThreadBranchService from "./orchestration-v2/ThreadBranchService.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
@@ -1313,6 +1316,14 @@ export const layerWsRpc = (
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const auditTrail = yield* AuditTrail.AuditTrail;
+      const backgroundTasks = yield* BackgroundTaskService.BackgroundTaskService;
+      const nestedSessions = yield* NestedSessionService.NestedSessionService;
+      const threadBranches = yield* ThreadBranchService.ThreadBranchService;
+      const clientActor: NestedSessionService.DispatchActor = {
+        kind: "user",
+        createdBy: "user",
+        creationSource: "web",
+      };
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
@@ -2186,6 +2197,21 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.auditList]: (input) => auditTrail.list(input),
         [WS_METHODS.auditSubscribe]: (_input) => auditTrail.changes,
+        [WS_METHODS.threadRewindPreview]: (input) => threadBranches.previewRewind(input),
+        [WS_METHODS.threadRewind]: (input) => threadBranches.rewind(input, clientActor),
+        [WS_METHODS.threadRewindReopen]: (input) =>
+          threadBranches.reopenRewindBranch(input, clientActor),
+        [WS_METHODS.threadForkPreview]: (input) => threadBranches.previewFork(input),
+        [WS_METHODS.nestedSessionStart]: (input) => nestedSessions.start(input, clientActor),
+        [WS_METHODS.nestedSessionReport]: (input) => nestedSessions.report(input, clientActor),
+        [WS_METHODS.nestedSessionCloseParent]: (input) =>
+          nestedSessions.closeParent(input, clientActor),
+        [WS_METHODS.backgroundTaskStart]: (input) => backgroundTasks.start(input, clientActor),
+        [WS_METHODS.backgroundTaskStop]: (input) => backgroundTasks.stop(input, clientActor),
+        [WS_METHODS.backgroundTaskRemove]: (input) => backgroundTasks.remove(input, clientActor),
+        [WS_METHODS.backgroundTaskList]: (input) => backgroundTasks.list(input),
+        [WS_METHODS.backgroundTaskReadLog]: (input) => backgroundTasks.readLog(input),
+        [WS_METHODS.backgroundTaskSubscribe]: (_input) => backgroundTasks.stream,
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),

@@ -24,6 +24,7 @@ import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 
 const CHECKPOINT_REFS_PREFIX = "refs/t3/orchestration-v2/checkpoints";
+const REWIND_SNAPSHOT_REFS_PREFIX = "refs/t3/orchestration-v2/rewinds";
 const ROOT_CHECKPOINT_SCOPE_NAME = "root";
 
 export class CheckpointRootScopePrepareError extends Schema.TaggedError<CheckpointRootScopePrepareError>()(
@@ -91,12 +92,25 @@ export class CheckpointDeleteStaleRefsError extends Schema.TaggedError<Checkpoin
   }
 }
 
+export class CheckpointSnapshotError extends Schema.TaggedError<CheckpointSnapshotError>()(
+  "CheckpointSnapshotError",
+  {
+    scopeId: CheckpointScopeId,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to read the workspace for scope ${this.scopeId}.`;
+  }
+}
+
 export const CheckpointServiceV2Error = Schema.Union([
   CheckpointRootScopePrepareError,
   CheckpointBaselineCaptureError,
   CheckpointCaptureError,
   CheckpointRestoreError,
   CheckpointDeleteStaleRefsError,
+  CheckpointSnapshotError,
 ]);
 export type CheckpointServiceV2Error = typeof CheckpointServiceV2Error.Type;
 
@@ -138,6 +152,31 @@ export interface CheckpointServiceV2Shape {
     readonly scope: OrchestrationV2CheckpointScope;
     readonly checkpoints: ReadonlyArray<OrchestrationV2Checkpoint>;
   }) => Effect.Effect<void, CheckpointServiceV2Error>;
+  /** Captures the workspace under its own hidden ref. Null where checkpoints do not work. */
+  readonly snapshotWorkspace: (input: {
+    readonly scope: OrchestrationV2CheckpointScope;
+    readonly name: string;
+  }) => Effect.Effect<CheckpointRef | null, CheckpointServiceV2Error>;
+  readonly listChanges: (input: {
+    readonly scope: OrchestrationV2CheckpointScope;
+    readonly from: CheckpointRef;
+    readonly to: CheckpointRef;
+  }) => Effect.Effect<ReadonlyArray<CheckpointFileChange>, CheckpointServiceV2Error>;
+  readonly stashPaths: (input: {
+    readonly scope: OrchestrationV2CheckpointScope;
+    readonly paths: ReadonlyArray<string>;
+    readonly message: string;
+  }) => Effect.Effect<void, CheckpointServiceV2Error>;
+  readonly deleteRef: (input: {
+    readonly scope: OrchestrationV2CheckpointScope;
+    readonly ref: CheckpointRef;
+  }) => Effect.Effect<void, CheckpointServiceV2Error>;
+}
+
+export interface CheckpointFileChange {
+  readonly path: string;
+  readonly additions: number;
+  readonly deletions: number;
 }
 
 export class CheckpointServiceV2 extends Context.Service<
@@ -538,6 +577,67 @@ export const layer: Layer.Layer<
         ),
       );
 
+    const snapshotError = (scope: OrchestrationV2CheckpointScope) =>
+      Effect.mapError(
+        (cause: unknown) => new CheckpointSnapshotError({ scopeId: scope.id, cause }),
+      );
+
+    const snapshotWorkspace: CheckpointServiceV2Shape["snapshotWorkspace"] = (input) =>
+      withWorkspaceLock(
+        input.scope.cwd,
+        Effect.gen(function* () {
+          if (!(yield* isGitCheckpointable(input.scope.cwd))) return null;
+          const digest = yield* crypto
+            .digest("SHA-256", new TextEncoder().encode(input.scope.id))
+            .pipe(Effect.orDie);
+          const ref = CheckpointRef.make(
+            `${REWIND_SNAPSHOT_REFS_PREFIX}/${Hex.encode(digest).slice(0, 32)}/${input.name}`,
+          );
+          return yield* checkpointStore
+            .captureCheckpoint({ cwd: input.scope.cwd, checkpointRef: ref })
+            .pipe(
+              Effect.as(ref),
+              Effect.catchTags({ VcsUnsupportedOperationError: () => Effect.succeed(null) }),
+            );
+        }),
+      ).pipe(snapshotError(input.scope));
+
+    const listChanges: CheckpointServiceV2Shape["listChanges"] = (input) =>
+      checkpointStore
+        .diffCheckpoints({
+          cwd: input.scope.cwd,
+          fromCheckpointRef: input.from,
+          toCheckpointRef: input.to,
+          fallbackFromToHead: false,
+          ignoreWhitespace: false,
+          format: "numstat",
+        })
+        .pipe(
+          Effect.map((diff) =>
+            parseTurnDiffFilesFromNumstat(diff).map(({ path, additions, deletions }) => ({
+              path,
+              additions,
+              deletions,
+            })),
+          ),
+          snapshotError(input.scope),
+        );
+
+    const stashPaths: CheckpointServiceV2Shape["stashPaths"] = (input) =>
+      withWorkspaceLock(
+        input.scope.cwd,
+        checkpointStore.stashPaths({
+          cwd: input.scope.cwd,
+          paths: input.paths,
+          message: input.message,
+        }),
+      ).pipe(snapshotError(input.scope));
+
+    const deleteRef: CheckpointServiceV2Shape["deleteRef"] = (input) =>
+      checkpointStore
+        .deleteCheckpointRefs({ cwd: input.scope.cwd, checkpointRefs: [input.ref] })
+        .pipe(snapshotError(input.scope));
+
     const deleteStaleRefs: CheckpointServiceV2Shape["deleteStaleRefs"] = (input) =>
       withWorkspaceLock(
         input.scope.cwd,
@@ -573,6 +673,10 @@ export const layer: Layer.Layer<
       capture,
       restore,
       deleteStaleRefs,
+      snapshotWorkspace,
+      listChanges,
+      stashPaths,
+      deleteRef,
     } satisfies CheckpointServiceV2Shape);
   }),
 );

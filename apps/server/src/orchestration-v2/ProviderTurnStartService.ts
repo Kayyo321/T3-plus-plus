@@ -62,6 +62,10 @@ import {
   restartCancelledBackgroundWorkNote,
 } from "./RestartBackgroundNote.ts";
 
+/** The conversation stayed, so the agent would otherwise trust edits that are gone. */
+const filesRewoundNote = (turn: number) =>
+  `The user restored this workspace's files to how they were ${turn === 0 ? "before the first turn" : `after turn ${turn}`}. This conversation was kept, so edits you remember may no longer exist. Re-read files before relying on them.`;
+
 export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStartError>()(
   "ProviderTurnStartError",
   {
@@ -384,7 +388,8 @@ export const layer: Layer.Layer<
                     ))),
             )));
       const isSideChatHandoff = (handoff: OrchestrationV2ContextHandoff) =>
-        projection.thread.lineage.sideChat === true &&
+        (projection.thread.lineage.sideChat === true ||
+          projection.thread.lineage.nestedSession === true) &&
         ContextHandoffService.isSideChatContextHandoff(handoff);
       const handoffs = projection.contextHandoffs.filter(
         (handoff) =>
@@ -848,10 +853,25 @@ export const layer: Layer.Layer<
         run,
         attempts: projection.attempts,
       });
-      const restartNote =
+      const previousStartedRun = projection.runs.findLast(
+        (candidate) => candidate.ordinal < run.ordinal && candidate.startedAt !== null,
+      );
+      const filesRewound = projection.thread.filesRewound;
+      const restartNote = [
         restartCancelledWork.length === 0
           ? ""
-          : restartCancelledBackgroundWorkNote(restartCancelledWork);
+          : restartCancelledBackgroundWorkNote(restartCancelledWork),
+        filesRewound !== undefined &&
+        (previousStartedRun?.startedAt == null ||
+          DateTime.isGreaterThan(
+            DateTime.makeUnsafe(filesRewound.at),
+            previousStartedRun.startedAt,
+          ))
+          ? filesRewoundNote(filesRewound.appRunOrdinal)
+          : "",
+      ]
+        .filter((note) => note !== "")
+        .join("\n\n");
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );

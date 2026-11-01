@@ -211,6 +211,8 @@ export interface CommandPolicyV2Shape {
       readonly hasStrongNativeSource: boolean;
       readonly sourceRunStatus: OrchestrationV2Run["status"];
       readonly fromSpecificTurn: boolean;
+      /** The fork cuts its source run short, which a provider's turn boundaries cannot express. */
+      readonly midTurn?: boolean;
       /** Later source runs are still active; providers cannot fork a thread mid-turn. */
       readonly sourceBusy: boolean;
     },
@@ -377,6 +379,7 @@ const decideForkExecution: CommandPolicyV2Shape["decideForkExecution"] = (input)
     input.sameProvider &&
     input.hasStrongNativeSource &&
     !input.sourceBusy &&
+    input.midTurn !== true &&
     input.capabilities.threads.canForkThread &&
     (!input.fromSpecificTurn || input.capabilities.threads.canForkFromTurn) &&
     input.capabilities.identity.nativeThreadIds === "strong";

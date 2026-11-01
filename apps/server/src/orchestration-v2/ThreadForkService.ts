@@ -4,12 +4,17 @@ import {
   OrchestrationV2AppThread,
   OrchestrationV2ContextSourcePoint,
   OrchestrationV2ContextTransfer,
+  OrchestrationV2ConversationMessage,
   OrchestrationV2CreationSource,
+  OrchestrationV2NestedForkOptions,
   OrchestrationV2ProviderThread,
   OrchestrationV2ProviderTurnTokenUsage,
+  OrchestrationV2RewindTail,
   OrchestrationV2Run,
   OrchestrationV2ThreadProjection,
+  OrchestrationV2TurnItem,
   ThreadId,
+  TurnItemId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -19,7 +24,8 @@ import * as Schema from "effect/Schema";
 
 export interface ThreadForkPlanV2 {
   readonly targetThread: OrchestrationV2AppThread;
-  readonly transfer: OrchestrationV2ContextTransfer;
+  /** Null for a nested session that inherits nothing: there is nothing to carry over. */
+  readonly transfer: OrchestrationV2ContextTransfer | null;
 }
 
 export class ThreadForkPlanError extends Schema.TaggedError<ThreadForkPlanError>()(
@@ -48,6 +54,39 @@ export function forkableSourceRunStatusError(
   return `Fork source run ${run.id} is ${run.status}; in-progress and rolled-back runs cannot be forked.`;
 }
 
+/**
+ * Where a fork from a message lands. A user message that opened its run forks at the end of the
+ * run before it. Anything later in a run cuts that run, which only a portable transfer can honor.
+ */
+export function messageForkPoint(input: {
+  readonly message: Pick<OrchestrationV2ConversationMessage, "id" | "role">;
+  readonly run: OrchestrationV2Run;
+  readonly runs: ReadonlyArray<OrchestrationV2Run>;
+  readonly runItems: ReadonlyArray<OrchestrationV2TurnItem>;
+}):
+  | { readonly run: OrchestrationV2Run; readonly throughTurnItemId: TurnItemId | undefined }
+  | { readonly refused: string } {
+  const { message, run } = input;
+  if (message.role === "user" && run.userMessageId === message.id) {
+    const previous = input.runs
+      .filter((candidate) => candidate.ordinal < run.ordinal)
+      .filter((candidate) => isForkableSourceRunStatus(candidate.status))
+      .toSorted((left, right) => right.ordinal - left.ordinal)[0];
+    return previous === undefined
+      ? { refused: "Nothing comes before this message, so there is nothing to fork." }
+      : { run: previous, throughTurnItemId: undefined };
+  }
+  const ordered = input.runItems.toSorted((left, right) => left.ordinal - right.ordinal);
+  const index = ordered.findIndex(
+    (item) =>
+      (item.type === "assistant_message" || item.type === "user_message") &&
+      item.messageId === message.id,
+  );
+  if (index === -1) return { refused: `Message ${message.id} has no timeline row.` };
+  const through = message.role === "user" ? ordered[index - 1] : ordered[index];
+  return { run, throughTurnItemId: through === ordered.at(-1) ? undefined : through?.id };
+}
+
 export interface ThreadForkServiceV2Shape {
   readonly plan: (input: {
     readonly sourceProjection: Pick<OrchestrationV2ThreadProjection, "thread">;
@@ -60,6 +99,14 @@ export interface ThreadForkServiceV2Shape {
     readonly targetThreadId: ThreadId;
     readonly title?: string;
     readonly sideChat?: boolean;
+    readonly nested?: OrchestrationV2NestedForkOptions;
+    /** The fork point inside `sourceRun`, when the fork cuts it short. */
+    readonly throughTurnItemId?: TurnItemId;
+    /** Rewind branches keep their rolled-back source run and, until reopened, stay archived. */
+    readonly rewindTail?: {
+      readonly tail: OrchestrationV2RewindTail;
+      readonly archived: boolean;
+    };
     readonly createdBy: OrchestrationV2Actor;
     readonly creationSource: OrchestrationV2CreationSource;
     readonly createdAt: DateTime.Utc;
@@ -92,15 +139,21 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
             : "A subagent cannot start a side chat.",
         });
       }
-      if (sourceRun !== null && !isForkableSourceRunStatus(sourceRun.status)) {
+      if (
+        sourceRun !== null &&
+        input.rewindTail === undefined &&
+        !isForkableSourceRunStatus(sourceRun.status)
+      ) {
         return yield* new ThreadForkPlanError({
           sourceThreadId: input.sourceProjection.thread.id,
           targetThreadId: input.targetThreadId,
           cause: forkableSourceRunStatusError(sourceRun),
         });
       }
+      const { nested } = input;
+      const { filesRewound: _filesRewound, ...sourceThread } = input.sourceProjection.thread;
       const targetThread: OrchestrationV2AppThread = {
-        ...input.sourceProjection.thread,
+        ...sourceThread,
         // PR context follows the conversation; watching remains the source thread's responsibility.
         pullRequests: input.sourceProjection.thread.pullRequests?.map(
           ({ watch: _watch, ...link }) => link,
@@ -113,20 +166,39 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         titleRegeneration: null,
         // Side chats share the parent's worktree, so they start supervised.
         ...(input.sideChat ? { runtimeMode: "approval-required" as const } : {}),
+        ...(nested?.modelSelection === undefined
+          ? {}
+          : {
+              modelSelection: nested.modelSelection,
+              providerInstanceId: nested.modelSelection.instanceId,
+            }),
+        ...(nested?.runtimeMode === undefined ? {} : { runtimeMode: nested.runtimeMode }),
+        ...(nested?.interactionMode === undefined
+          ? {}
+          : { interactionMode: nested.interactionMode }),
         activeProviderThreadId: null,
         lineage: {
           parentThreadId: input.sourceProjection.thread.id,
           relationshipToParent: "fork",
           rootThreadId: input.sourceProjection.thread.lineage.rootThreadId,
           ...(input.sideChat ? { sideChat: true } : {}),
+          ...(nested === undefined ? {} : { nestedSession: true }),
         },
+        ...(input.rewindTail === undefined ? {} : { rewindTail: input.rewindTail.tail }),
         forkedFrom:
           sourceRun === null
             ? null
-            : { type: "run", threadId: input.sourceProjection.thread.id, runId: sourceRun.id },
+            : {
+                type: "run",
+                threadId: input.sourceProjection.thread.id,
+                runId: sourceRun.id,
+                ...(input.throughTurnItemId === undefined
+                  ? {}
+                  : { throughTurnItemId: input.throughTurnItemId }),
+              },
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
-        archivedAt: null,
+        archivedAt: input.rewindTail?.archived === true ? input.createdAt : null,
         settledOverride: null,
         settledAt: null,
         snoozedUntil: null,
@@ -138,6 +210,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         opens: null,
         deletedAt: null,
       };
+      if (nested?.inherit === "none") return { targetThread, transfer: null };
       const transfer: OrchestrationV2ContextTransfer = {
         id: input.transferId,
         type: "fork",
@@ -150,9 +223,11 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         // Only native forks retain this context; portable handoffs rebuild it.
         sourceTokenUsage:
           (sourceRun?.status === "completed" || sourceRun?.status === "waiting") &&
+          input.throughTurnItemId === undefined &&
           input.sourceProviderThread?.nativeThreadRef?.strength === "strong"
             ? input.sourceTokenUsage
             : undefined,
+        ...(nested?.contextSeed === undefined ? {} : { contextSeed: nested.contextSeed }),
         targetProviderInstanceId: null,
         targetRunId: null,
         status: "pending",

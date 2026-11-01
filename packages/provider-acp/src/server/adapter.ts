@@ -596,6 +596,7 @@ export const AcpProviderCapabilitiesV2 = {
     providerCanRollbackConversation: true,
     providerRollbackReturnsSnapshot: true,
     providerCanReadConversationSnapshot: false,
+    rollbackStartsFreshSession: true,
   },
   identity: {
     nativeThreadIds: "strong",
