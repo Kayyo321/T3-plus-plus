@@ -1,6 +1,10 @@
 import {
   GUEST_ATTACHMENT_ROUTE,
+  GUEST_COMMAND_OUTPUT_ROUTE,
+  GUEST_HISTORY_ROUTE,
+  GUEST_ITEM_ROUTE,
   GUEST_MEDIA_ROUTE,
+  GUEST_RENDER_ROUTE,
   GUEST_MESSAGE_MAX_ATTACHMENT_BYTES,
   GUEST_MESSAGE_MAX_ATTACHMENTS,
   GUEST_SHARE_PARAM,
@@ -20,8 +24,14 @@ import { boundedSnapshotProjection } from "@t3tools/shared/orchestrationV2Bounde
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-export interface GuestStreamState {
-  readonly view: GuestShareView | null;
+/** What the shared stream reducer needs from a page's view of its share. */
+export interface SharedThreadViewBase {
+  readonly shareId: string;
+  readonly messages: ReadonlyArray<ThreadGuestMessage>;
+}
+
+export interface GuestStreamState<View extends SharedThreadViewBase = GuestShareView> {
+  readonly view: View | null;
   /** The thread as the owner's client holds it, built with the same reducer. */
   readonly projection: OrchestrationV2ThreadProjection | null;
   readonly sequence: number;
@@ -37,7 +47,9 @@ export interface GuestStreamState {
   readonly awaitingRowIds: ReadonlySet<GuestMessageId>;
 }
 
-export const initialGuestStreamState: GuestStreamState = {
+export const initialSharedStreamState = <
+  View extends SharedThreadViewBase,
+>(): GuestStreamState<View> => ({
   view: null,
   projection: null,
   sequence: 0,
@@ -45,14 +57,16 @@ export const initialGuestStreamState: GuestStreamState = {
   historyCursor: null,
   ended: false,
   awaitingRowIds: new Set(),
-};
+});
+
+export const initialGuestStreamState: GuestStreamState = initialSharedStreamState();
 
 const guestMessageIdOf = (item: OrchestrationV2TurnItem) =>
   item.type === "user_message" ? item.context?.guest?.guestMessageId : undefined;
 
 function withPendingFrom(
   awaiting: ReadonlySet<GuestMessageId>,
-  view: GuestShareView,
+  view: SharedThreadViewBase,
 ): ReadonlySet<GuestMessageId> {
   const pending = view.messages.filter((message) => message.status === "pending");
   if (pending.every((message) => awaiting.has(message.id))) return awaiting;
@@ -94,10 +108,14 @@ export type GuestHistoryPageLoaded = {
  * pass through the same projection reducer, once each. Older pages merge in front, as they do in
  * the owner's view.
  */
-export function applyGuestStreamEvent(
-  state: GuestStreamState,
-  event: GuestStreamEvent | GuestHistoryPageLoaded,
-): GuestStreamState {
+export function applyGuestStreamEvent<View extends SharedThreadViewBase = GuestShareView>(
+  state: GuestStreamState<View>,
+  event:
+    | { readonly type: "view"; readonly view: View }
+    | Extract<GuestStreamEvent, { readonly type: "thread" }>
+    | { readonly type: "ended" }
+    | GuestHistoryPageLoaded,
+): GuestStreamState<View> {
   switch (event.type) {
     case "history-page":
       // A snapshot since the request replaced the thread and its cursor.
@@ -203,13 +221,36 @@ export function inviteShareId(credential: string): string | null {
   return shareId && signature ? shareId : null;
 }
 
+/** The routes behind a shared thread's page, so one timeline serves guests and remote devices. */
+export interface SharedThreadRoutes {
+  readonly attachment: (attachmentId: string) => string;
+  readonly media: (path: string) => string;
+  readonly render: (itemId: string) => string;
+  readonly item: (itemId: string) => string;
+  readonly commandOutput: (itemId: string) => string;
+  readonly history: (cursor: string) => string;
+}
+
 /** Where the guest page loads a file of the shared thread or of a waiting message. */
-export const guestAttachmentUrl = (shareId: string, attachmentId: string) =>
+const guestAttachmentUrl = (shareId: string, attachmentId: string) =>
   `${GUEST_ATTACHMENT_ROUTE}?${GUEST_SHARE_PARAM}=${encodeURIComponent(shareId)}&id=${encodeURIComponent(attachmentId)}`;
 
 /** Where the guest page loads an image file on the host that an agent message embeds. */
-export const guestMediaUrl = (shareId: string, path: string) =>
+const guestMediaUrl = (shareId: string, path: string) =>
   `${GUEST_MEDIA_ROUTE}?${GUEST_SHARE_PARAM}=${encodeURIComponent(shareId)}&path=${encodeURIComponent(path)}`;
+
+export const guestThreadRoutes = (shareId: string): SharedThreadRoutes => {
+  const param = `${GUEST_SHARE_PARAM}=${encodeURIComponent(shareId)}`;
+  return {
+    attachment: (attachmentId) => guestAttachmentUrl(shareId, attachmentId),
+    media: (path) => guestMediaUrl(shareId, path),
+    render: (itemId) => `${GUEST_RENDER_ROUTE}?${param}&item=${encodeURIComponent(itemId)}`,
+    item: (itemId) => `${GUEST_ITEM_ROUTE}?${param}&item=${encodeURIComponent(itemId)}`,
+    commandOutput: (itemId) =>
+      `${GUEST_COMMAND_OUTPUT_ROUTE}?${param}&item=${encodeURIComponent(itemId)}`,
+    history: (cursor) => `${GUEST_HISTORY_ROUTE}?${param}&cursor=${encodeURIComponent(cursor)}`,
+  };
+};
 
 /**
  * Why these files cannot go with one message, or null. The server checks the same limits; this
@@ -239,7 +280,7 @@ export function guestFilesProblem(
  * Image URLs for the thread's messages, which the timeline shows as previews. The map keeps its
  * identity while the rows do, because the timeline rebuilds its entries when it changes.
  */
-export function createGuestAttachmentUrls(shareId: string) {
+export function createSharedAttachmentUrls(attachmentUrl: (attachmentId: string) => string) {
   let previousItems: ReadonlyArray<OrchestrationV2ProjectedTurnItem> | null = null;
   let previous: ReadonlyMap<string, string> = new Map();
   return (items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>): ReadonlyMap<string, string> => {
@@ -249,7 +290,7 @@ export function createGuestAttachmentUrls(shareId: string) {
       items.flatMap(({ item }) =>
         item.type === "user_message"
           ? item.attachments.map(
-              (attachment) => [attachment.id, guestAttachmentUrl(shareId, attachment.id)] as const,
+              (attachment) => [attachment.id, attachmentUrl(attachment.id)] as const,
             )
           : [],
       ),

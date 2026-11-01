@@ -1,4 +1,3 @@
-import { GUEST_RENDER_ROUTE, GUEST_SHARE_PARAM } from "@t3tools/contracts";
 import {
   type HtmlRenderReference,
   HTML_RENDER_COLUMN_WIDTH,
@@ -20,13 +19,11 @@ import { observeResize } from "~/lib/observeResize";
  * and ask to open a web link; it cannot reach the guest's session.
  */
 export function GuestHtmlRender({
-  itemId,
+  renderUrl,
   reference,
-  shareId,
 }: {
-  readonly itemId: string;
+  readonly renderUrl: string;
   readonly reference: HtmlRenderReference;
-  readonly shareId: string;
 }) {
   const theme = useHtmlRenderTheme();
   const boxRef = useRef<HTMLDivElement>(null);
@@ -34,10 +31,7 @@ export function GuestHtmlRender({
   const [width, setWidth] = useState(HTML_RENDER_COLUMN_WIDTH);
   const [contentHeight, setContentHeight] = useState<number>();
   // The theme rides in the fragment for the first paint; later changes are posted.
-  const [src] = useState(
-    () =>
-      `${GUEST_RENDER_ROUTE}?${GUEST_SHARE_PARAM}=${encodeURIComponent(shareId)}&item=${encodeURIComponent(itemId)}${htmlRenderThemeFragment(theme)}`,
-  );
+  const [src] = useState(() => `${renderUrl}${htmlRenderThemeFragment(theme)}`);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the frame box and follows its width with a ResizeObserver before paint
   useLayoutEffect(() => {
     const box = boxRef.current;

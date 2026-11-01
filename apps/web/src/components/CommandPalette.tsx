@@ -73,6 +73,7 @@ import {
   PinOffIcon,
   SquarePenIcon,
   TextSearchIcon,
+  RadioTowerIcon,
   UserPlusIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
@@ -232,6 +233,7 @@ import { ProjectFilePicker } from "./files/ProjectFilePicker";
 import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { canShareWithGuestAtom } from "./chat/guestShareAvailability";
 import { openGuestShareDialog } from "./chat/guestShareDialogState";
+import { openRemoteControlSheet } from "./chat/RemoteControlControls";
 import { ProjectContentSearchDialog } from "./search/ProjectContentSearchDialog";
 import { settingsForThisPlatform, SETTINGS_SECTION_LABELS } from "./settings/settingsSearch";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -1380,6 +1382,21 @@ function OpenCommandPaletteDialog(props: {
       icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
       run: async () => {
         useRightPanelStore.getState().open(threadRef, "pull-requests");
+      },
+    });
+  }
+
+  if (activeThread !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:remote-control",
+      searchTerms: ["remote", "control", "phone", "mobile", "device", "link", "qr"],
+      title: "Remote control",
+      icon: <RadioTowerIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "thread.remoteControl",
+      run: async () => {
+        openRemoteControlSheet(threadRef);
       },
     });
   }

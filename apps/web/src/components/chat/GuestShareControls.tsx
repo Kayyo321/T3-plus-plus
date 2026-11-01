@@ -7,6 +7,7 @@ import {
   AuthOrchestrationOperateScope,
   type ChatAttachment,
   type GuestMessageId,
+  isRemoteControlShare,
   type ScopedThreadRef,
   type ThreadGuestShare,
 } from "@t3tools/contracts";
@@ -180,7 +181,8 @@ export function GuestShareIndicator({ threadRef }: { readonly threadRef: ScopedT
     label: "stop guest share",
   });
   const [closing, setClosing] = useState(false);
-  if (share === null) return null;
+  // Remote control's queue uses the same slot and has its own header control.
+  if (share === null || isRemoteControlShare(share)) return null;
   return (
     <div className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
       <UserIcon aria-hidden className="size-3.5" />
@@ -278,7 +280,7 @@ export function GuestPendingMessages({
         const busy = busyIds.has(message.id);
         return (
           <li key={message.id} className="flex flex-col items-end gap-1">
-            <GuestMessageName name={guestName} />
+            <GuestMessageName name={message.senderName ?? guestName} />
             <div
               className={cn(
                 "flex min-w-0 max-w-[80%] flex-col gap-2 rounded-2xl p-3 text-foreground",
