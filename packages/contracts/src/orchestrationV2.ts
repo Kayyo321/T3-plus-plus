@@ -3393,6 +3393,9 @@ const OrchestrationV2InternalCommand = Schema.Union([
     guestMessageId: GuestMessageId,
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
+    /** Set by remote control, where one share has several senders. */
+    senderName: Schema.optional(TrimmedNonEmptyString),
+    unreviewed: Schema.optional(Schema.Literal(true)),
   }),
   /** Moves a thread to a project rooted at the folder it already works in, so its cwd never changes. */
   Schema.Struct({

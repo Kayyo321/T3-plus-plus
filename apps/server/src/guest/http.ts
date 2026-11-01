@@ -1,4 +1,5 @@
 import {
+  type ChatAttachment,
   GUEST_ATTACHMENT_ROUTE,
   GUEST_COMMAND_OUTPUT_ROUTE,
   GUEST_HISTORY_ROUTE,
@@ -36,9 +37,9 @@ import { GuestShareAccessError, GuestShareService } from "./GuestShareService.ts
 
 // Cloudflare closes idle streams after about 100 seconds.
 const HEARTBEAT_INTERVAL = Duration.seconds(20);
-const NO_STORE = { "cache-control": "no-store" };
+export const NO_STORE = { "cache-control": "no-store" };
 // A file never runs as a page on this origin, whatever its bytes.
-const FILE_HEADERS = {
+export const FILE_HEADERS = {
   ...NO_STORE,
   "x-content-type-options": "nosniff",
   "content-security-policy": "default-src 'none'; sandbox",
@@ -53,8 +54,10 @@ const encodeStreamEvent = Schema.encodeEffect(
 const encodeOutputFrame = Schema.encodeEffect(
   Schema.fromJsonString(OrchestrationV2CommandOutputFrame),
 );
-const encodeItem = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2GetTurnItemResult));
-const encodeHistoryPage = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2ThreadHistoryPage));
+export const encodeItem = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2GetTurnItemResult));
+export const encodeHistoryPage = Schema.encodeEffect(
+  Schema.toCodecJson(OrchestrationV2ThreadHistoryPage),
+);
 
 const errorResponse = (error: GuestShareAccessError) =>
   HttpServerResponse.json(
@@ -95,7 +98,7 @@ const itemParam = Effect.map(HttpServerRequest.HttpServerRequest, (request) =>
 );
 
 /** Server-sent events with a heartbeat, never cached or buffered on the way. */
-const eventStreamResponse = <A>(
+export const eventStreamResponse = <A>(
   events: Stream.Stream<A>,
   encode: (event: A) => Effect.Effect<string, Schema.SchemaError>,
 ) => {
@@ -126,7 +129,7 @@ const eventStreamResponse = <A>(
 
 // Guest JSON bodies are a name or one message; anyone who can reach the tunnel can post them.
 const JSON_MAX_BODY_BYTES = 64 * 1024;
-const readJson = Effect.gen(function* () {
+export const readJson = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
   // A declared length over the cap is refused before reading; chunked bodies hit the reader cap.
   if (Number(request.headers["content-length"] ?? "0") > JSON_MAX_BODY_BYTES) {
@@ -333,6 +336,26 @@ const commandOutputRoute = HttpRouter.add(
 
 // Images of the four checked types load inline; anything else downloads as bytes, so a guest's
 // HTML or SVG never renders as a page on this origin.
+export const attachmentFileResponse = ({
+  path,
+  attachment,
+}: {
+  readonly path: string;
+  readonly attachment: ChatAttachment;
+}) =>
+  HttpServerResponse.file(path, {
+    headers: {
+      ...FILE_HEADERS,
+      ...(attachment.type === "image" &&
+      isProviderSendTurnSupportedImageMimeType(attachment.mimeType)
+        ? { "content-type": attachment.mimeType }
+        : {
+            "content-type": "application/octet-stream",
+            "content-disposition": downloadContentDisposition(attachment.name),
+          }),
+    },
+  });
+
 const attachmentRoute = HttpRouter.add(
   "GET",
   GUEST_ATTACHMENT_ROUTE,
@@ -342,20 +365,7 @@ const attachmentRoute = HttpRouter.add(
     if (!attachmentId) return yield* badRequest;
     const guestShares = yield* GuestShareService;
     return yield* guestShares.attachment(yield* sessionToken, attachmentId).pipe(
-      Effect.flatMap(({ path, attachment }) =>
-        HttpServerResponse.file(path, {
-          headers: {
-            ...FILE_HEADERS,
-            ...(attachment.type === "image" &&
-            isProviderSendTurnSupportedImageMimeType(attachment.mimeType)
-              ? { "content-type": attachment.mimeType }
-              : {
-                  "content-type": "application/octet-stream",
-                  "content-disposition": downloadContentDisposition(attachment.name),
-                }),
-          },
-        }),
-      ),
+      Effect.flatMap(attachmentFileResponse),
       Effect.catchTags({ GuestShareAccessError: errorResponse }),
       Effect.orElseSucceed(() => HttpServerResponse.empty({ status: 500, headers: NO_STORE })),
     );

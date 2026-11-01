@@ -64,6 +64,15 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [ORCHESTRATION_V2_WS_METHODS.forceStopThread]: AuthOrchestrationOperateScope,
   // A guest link hands thread access to someone outside, like a pairing link.
   [WS_METHODS.guestShareCreate]: AuthAccessWriteScope,
+  // Remote control does too, and its link and code are that access.
+  [WS_METHODS.remoteControlEnable]: AuthAccessWriteScope,
+  [WS_METHODS.remoteControlUpdate]: AuthAccessWriteScope,
+  [WS_METHODS.remoteControlRotateLink]: AuthAccessWriteScope,
+  [WS_METHODS.remoteControlRevealLink]: AuthAccessWriteScope,
+  [WS_METHODS.remoteControlResolvePairing]: AuthAccessWriteScope,
+  // Ending access is what a phone reaches for in a hurry, so it needs less than granting it.
+  [WS_METHODS.remoteControlDisable]: AuthOrchestrationOperateScope,
+  [WS_METHODS.remoteControlRevokeDevice]: AuthOrchestrationOperateScope,
   [WS_METHODS.peerLinksLink]: AuthAccessWriteScope,
   [WS_METHODS.peerLinksUnlink]: AuthAccessWriteScope,
   // A link lets every agent here reach the other environment: Settings' bar.

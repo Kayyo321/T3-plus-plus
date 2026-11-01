@@ -27,6 +27,18 @@ export const GUEST_MESSAGE_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 /** Total size of the files in a share's waiting messages, so a guest cannot fill the disk. */
 export const GUEST_PENDING_ATTACHMENT_BYTES_LIMIT = 20 * 1024 * 1024;
 
+// The name lands in the agent's attribution line, so it must stay one plain line, and the owner
+// reads it, so direction overrides cannot make it look like another name.
+const NAME_BREAKING_CHARACTER = /[\p{Cc}\p{Zl}\p{Zp}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+
+export const GuestDisplayName = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(GUEST_NAME_MAX_LENGTH),
+  Schema.makeFilter((name) => !NAME_BREAKING_CHARACTER.test(name), {
+    description: "a single line of text",
+  }),
+);
+export type GuestDisplayName = typeof GuestDisplayName.Type;
+
 export const ThreadGuestMessageStatus = Schema.Literals(["pending", "sent", "dismissed"]);
 export type ThreadGuestMessageStatus = typeof ThreadGuestMessageStatus.Type;
 
@@ -37,6 +49,10 @@ export const ThreadGuestMessage = Schema.Struct({
   submittedAt: IsoDateTime,
   /** The thread's attachments, deleted if the message is dismissed. Absent on older messages. */
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
+  /** Who sent it, when a share has more than one sender. Otherwise the share's guest. */
+  senderName: Schema.optional(GuestDisplayName),
+  /** Sent without the owner reviewing it, which the agent is told. */
+  unreviewed: Schema.optional(Schema.Literal(true)),
 });
 export type ThreadGuestMessage = typeof ThreadGuestMessage.Type;
 
@@ -51,6 +67,17 @@ export const ThreadGuestShare = Schema.Struct({
   messages: Schema.Array(ThreadGuestMessage),
 });
 export type ThreadGuestShare = typeof ThreadGuestShare.Type;
+
+/**
+ * Remote control keeps its message queue in the thread's guest share, under this host. No guest
+ * link points there: the guest routes require a share's host to be the live T3 Connect hostname.
+ */
+export const REMOTE_CONTROL_SHARE_HOST = "remote-control.invalid";
+/** The queue lives as long as its switch, which ends it explicitly. */
+export const REMOTE_CONTROL_SHARE_EXPIRES_AT = "9999-12-31T23:59:59.000Z";
+
+export const isRemoteControlShare = (share: Pick<ThreadGuestShare, "host"> | null | undefined) =>
+  share?.host === REMOTE_CONTROL_SHARE_HOST;
 
 export const pendingGuestMessageCount = (share: ThreadGuestShare | null | undefined): number =>
   share?.messages.filter((message) => message.status === "pending").length ?? 0;
@@ -70,6 +97,7 @@ const GUEST_SHARE_CREATE_MESSAGES = {
   thread_unavailable: "This thread cannot be shared.",
   read_failed: "Failed to read the shared thread.",
   changed: "The guest link changed while it was being created.",
+  remote_control_active: "Remote control is on for this thread. Turn it off first.",
 } as const;
 
 export class GuestShareCreateError extends Schema.TaggedError<GuestShareCreateError>()(
@@ -81,6 +109,7 @@ export class GuestShareCreateError extends Schema.TaggedError<GuestShareCreateEr
       "thread_unavailable",
       "read_failed",
       "changed",
+      "remote_control_active",
     ]),
   },
 ) {
@@ -89,18 +118,9 @@ export class GuestShareCreateError extends Schema.TaggedError<GuestShareCreateEr
   }
 }
 
-// The name lands in the agent's attribution line, so it must stay one plain line, and the owner
-// reads it, so direction overrides cannot make it look like another name.
-const NAME_BREAKING_CHARACTER = /[\p{Cc}\p{Zl}\p{Zp}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
-
 export const GuestRedeemRequest = Schema.Struct({
   credential: TrimmedNonEmptyString,
-  name: TrimmedNonEmptyString.check(
-    Schema.isMaxLength(GUEST_NAME_MAX_LENGTH),
-    Schema.makeFilter((name) => !NAME_BREAKING_CHARACTER.test(name), {
-      description: "a single line of text",
-    }),
-  ),
+  name: GuestDisplayName,
 });
 export type GuestRedeemRequest = typeof GuestRedeemRequest.Type;
 

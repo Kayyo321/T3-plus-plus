@@ -171,6 +171,19 @@ import {
   GuestShareCreateInput,
   GuestShareCreateResult,
 } from "./guestShare.ts";
+import {
+  RemoteControlEnableInput,
+  RemoteControlEnableResult,
+  RemoteControlError,
+  RemoteControlLink,
+  RemoteControlReachability,
+  RemoteControlResolvePairingInput,
+  RemoteControlRevokeDeviceInput,
+  RemoteControlSnapshot,
+  RemoteControlSwitch,
+  RemoteControlThreadInput,
+  RemoteControlUpdateInput,
+} from "./remoteControl.ts";
 import { PullRequestReviewGuideResult } from "./pullRequestReviewGuide.ts";
 import {
   PullRequestActionInput,
@@ -548,6 +561,15 @@ export const WS_METHODS = {
   auditList: "audit.list",
   auditSubscribe: "audit.subscribe",
   guestShareCreate: "guestShare.create",
+  remoteControlSubscribe: "remoteControl.subscribe",
+  remoteControlReachability: "remoteControl.reachability",
+  remoteControlEnable: "remoteControl.enable",
+  remoteControlUpdate: "remoteControl.update",
+  remoteControlDisable: "remoteControl.disable",
+  remoteControlRotateLink: "remoteControl.rotateLink",
+  remoteControlRevealLink: "remoteControl.revealLink",
+  remoteControlRevokeDevice: "remoteControl.revokeDevice",
+  remoteControlResolvePairing: "remoteControl.resolvePairing",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
 
@@ -1943,6 +1965,60 @@ const WsGuestShareCreateRpc = Rpc.make(WS_METHODS.guestShareCreate, {
   error: Schema.Union([GuestShareCreateError, EnvironmentAuthorizationError]),
 });
 
+const RemoteControlRpcError = Schema.Union([RemoteControlError, EnvironmentAuthorizationError]);
+
+const WsRemoteControlSubscribeRpc = Rpc.make(WS_METHODS.remoteControlSubscribe, {
+  payload: Schema.Struct({}),
+  success: RemoteControlSnapshot,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsRemoteControlReachabilityRpc = Rpc.make(WS_METHODS.remoteControlReachability, {
+  payload: Schema.Struct({}),
+  success: RemoteControlReachability,
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteControlEnableRpc = Rpc.make(WS_METHODS.remoteControlEnable, {
+  payload: RemoteControlEnableInput,
+  success: RemoteControlEnableResult,
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteControlUpdateRpc = Rpc.make(WS_METHODS.remoteControlUpdate, {
+  payload: RemoteControlUpdateInput,
+  success: RemoteControlSwitch,
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteControlDisableRpc = Rpc.make(WS_METHODS.remoteControlDisable, {
+  payload: RemoteControlThreadInput,
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteControlRotateLinkRpc = Rpc.make(WS_METHODS.remoteControlRotateLink, {
+  payload: RemoteControlThreadInput,
+  success: RemoteControlLink,
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteControlRevealLinkRpc = Rpc.make(WS_METHODS.remoteControlRevealLink, {
+  payload: RemoteControlThreadInput,
+  success: Schema.NullOr(RemoteControlLink),
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteControlRevokeDeviceRpc = Rpc.make(WS_METHODS.remoteControlRevokeDevice, {
+  payload: RemoteControlRevokeDeviceInput,
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteControlResolvePairingRpc = Rpc.make(WS_METHODS.remoteControlResolvePairing, {
+  payload: RemoteControlResolvePairingInput,
+  error: RemoteControlRpcError,
+});
+
 const WsSecretsAnswerRequestRpc = Rpc.make(WS_METHODS.secretsAnswerRequest, {
   payload: SecretRequestAnswerInput,
   error: Schema.Union([SecretRequestError, EnvironmentAuthorizationError]),
@@ -1989,6 +2065,15 @@ export const WsRpcGroup = RpcGroup.make(
   WsAuditListRpc,
   WsAuditSubscribeRpc,
   WsGuestShareCreateRpc,
+  WsRemoteControlSubscribeRpc,
+  WsRemoteControlReachabilityRpc,
+  WsRemoteControlEnableRpc,
+  WsRemoteControlUpdateRpc,
+  WsRemoteControlDisableRpc,
+  WsRemoteControlRotateLinkRpc,
+  WsRemoteControlRevealLinkRpc,
+  WsRemoteControlRevokeDeviceRpc,
+  WsRemoteControlResolvePairingRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

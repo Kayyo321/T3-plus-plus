@@ -65,6 +65,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "terminal.splitVertical",
   "terminal.new",
   "terminal.close",
+  "thread.remoteControl",
   "rightPanel.toggle",
   "rightPanel.new",
   "threadPanel.toggle",

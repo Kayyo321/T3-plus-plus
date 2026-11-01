@@ -1,5 +1,6 @@
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
+import * as RemoteControlService from "../remoteControl/RemoteControlService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
@@ -379,6 +380,16 @@ export const layerProduction = Layer.mergeAll(
   layerSecretRequestsProvided,
   GuestShareService.layer.pipe(
     Layer.provide(Layer.merge(layerOrchestratorProvided, layerCommandOutputHubProvided)),
+  ),
+  RemoteControlService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        layerOrchestratorProvided,
+        layerCommandOutputHubProvided,
+        layerThreadManagementProvided,
+        AuditTrail.layer,
+      ),
+    ),
   ),
   UsageLimitRecoveryWorker.layer.pipe(
     Layer.provide(

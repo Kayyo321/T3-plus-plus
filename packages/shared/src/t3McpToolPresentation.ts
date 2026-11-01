@@ -327,6 +327,26 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_worktree_list: tool(["List", "Listing", "Listed", "workspace branches"], "worktree-list"),
   t3_preview_list: tool(["List", "Listing", "Listed", "preview tabs"], "browser", "browser"),
   t3_preview_close: tool(["Close", "Closing", "Closed", "a preview tab"], "browser", "browser"),
+  t3_remote_control_on: tool(
+    ["Turn on", "Turning on", "Turned on", "remote control"],
+    "environment-update",
+  ),
+  t3_remote_control_off: tool(
+    ["Turn off", "Turning off", "Turned off", "remote control"],
+    "environment-update",
+  ),
+  t3_remote_control_rotate_link: tool(
+    ["Replace", "Replacing", "Replaced", "the remote control link"],
+    "environment-update",
+  ),
+  t3_remote_control_revoke_guest: tool(
+    ["Disconnect", "Disconnecting", "Disconnected", "a remote device"],
+    "environment-update",
+  ),
+  t3_remote_control_status: tool(
+    ["Check", "Checking", "Checked", "remote control"],
+    "environment-read",
+  ),
   t3_environment_read: tool(
     ["Read", "Reading", "Read", "environment preferences"],
     "environment-read",

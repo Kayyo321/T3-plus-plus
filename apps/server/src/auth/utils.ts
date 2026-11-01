@@ -165,6 +165,10 @@ function readRemoteAddressFromSource(source: unknown): string | undefined {
   return normalizeIpAddress(candidate.socket?.remoteAddress ?? candidate.remoteAddress);
 }
 
+/** The address of the direct peer, which behind a local proxy is that proxy. */
+export const requestPeerAddress = (request: HttpServerRequest.HttpServerRequest) =>
+  readRemoteAddressFromSource(request.source);
+
 export function deriveAuthClientMetadata(input: {
   readonly request: HttpServerRequest.HttpServerRequest;
   readonly presented?: AuthClientPresentationMetadata;
