@@ -70,7 +70,8 @@ export type T3McpToolSummaryAction =
   | "browser"
   | "device"
   | "html-preview"
-  | "html-render";
+  | "html-render"
+  | "document";
 
 export interface T3McpToolDefinition {
   readonly displayName: string;
@@ -166,6 +167,11 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   ),
   schedule_task: tool(["Schedule", "Scheduling", "Scheduled", "a task"], "schedule-create"),
   list_scheduled_tasks: tool(["List", "Listing", "Listed", "scheduled tasks"], "schedule-list"),
+  list_scheduled_task_runs: tool(["List", "Listing", "Listed", "a task's runs"], "schedule-list"),
+  report_scheduled_run: tool(
+    ["Report", "Reporting", "Reported", "a scheduled run"],
+    "schedule-update",
+  ),
   update_scheduled_task: tool(
     ["Update", "Updating", "Updated", "a scheduled task"],
     "schedule-update",
@@ -175,6 +181,17 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "schedule-delete",
   ),
   request_secret: tool(["Ask for", "Asking for", "Asked for", "a secret"], "secret-request"),
+  computer_status: tool(["Check", "Checking", "Checked", "computer use"], "browser", "browser"),
+  computer_screenshot: tool(
+    ["Screenshot", "Screenshotting", "Screenshotted", "the computer"],
+    "browser",
+    "browser",
+  ),
+  computer_act: tool(["Use", "Using", "Used", "the computer"], "browser", "browser"),
+  document_list: tool(["List", "Listing", "Listed", "documents"], "document"),
+  document_read: tool(["Read", "Reading", "Read", "a document"], "document"),
+  document_create: tool(["Create", "Creating", "Created", "a document"], "document"),
+  document_update: tool(["Update", "Updating", "Updated", "a document"], "document"),
   create_threads: tool(["Create", "Creating", "Created", "T3 threads"], "thread-create"),
   t3_thread_start: tool(["Start", "Starting", "Started", "a T3 thread"], "thread-create"),
   t3_thread_list: tool(["List", "Listing", "Listed", "T3 threads"], "thread-list"),

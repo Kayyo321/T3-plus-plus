@@ -83,6 +83,8 @@ import Migration0077 from "./Migrations/077_AuditTrail.ts";
 import Migration0078 from "./Migrations/078_RemoteControl.ts";
 import Migration0079 from "./Migrations/079_WorkspacesAndConversationFolders.ts";
 import Migration0080 from "./Migrations/080_BackgroundTasks.ts";
+import Migration0082 from "./Migrations/082_ConversationDocuments.ts";
+import Migration0083 from "./Migrations/083_ScheduledRunsAndComputerUse.ts";
 import Migration0084 from "./Migrations/084_OrchestratorAgent.ts";
 import Migration0085 from "./Migrations/085_CheckpointRefIndex.ts";
 
@@ -168,6 +170,8 @@ const migrationEntries = [
   [78, "RemoteControl", Migration0078],
   [79, "WorkspacesAndConversationFolders", Migration0079],
   [80, "BackgroundTasks", Migration0080],
+  [82, "ConversationDocuments", Migration0082],
+  [83, "ScheduledRunsAndComputerUse", Migration0083],
   [84, "OrchestratorAgent", Migration0084],
   [85, "CheckpointRefIndex", Migration0085],
 ] as const;

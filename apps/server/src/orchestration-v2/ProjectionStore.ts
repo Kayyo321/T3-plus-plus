@@ -1532,6 +1532,9 @@ export function threadShellFromProjection(
       ? {}
       : { capabilityMode: projection.thread.capabilityMode }),
     ...shellRewindBranch(projection.thread),
+    ...(projection.thread.scheduledTaskId === undefined
+      ? {}
+      : { scheduledTaskId: projection.thread.scheduledTaskId }),
     branch: projection.thread.branch,
     worktreePath: projection.thread.worktreePath,
     pullRequests: threadPullRequestsOf(projection.thread),
@@ -1817,6 +1820,9 @@ function shellFromState(input: {
       ? {}
       : { capabilityMode: input.state.thread.capabilityMode }),
     ...shellRewindBranch(input.state.thread),
+    ...(input.state.thread.scheduledTaskId === undefined
+      ? {}
+      : { scheduledTaskId: input.state.thread.scheduledTaskId }),
     branch: input.state.thread.branch,
     worktreePath: input.state.thread.worktreePath,
     pullRequests: threadPullRequestsOf(input.state.thread),

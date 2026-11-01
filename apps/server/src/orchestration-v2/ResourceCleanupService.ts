@@ -3,11 +3,14 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { resolveAttachmentRelativePath } from "../attachmentPaths.ts";
 import { parseAttachmentFileExtension, resolveAttachmentPathById } from "../attachmentStore.ts";
+import * as ComputerUseService from "../computerUse/ComputerUseService.ts";
 import * as ServerConfig from "../config.ts";
+import * as ConversationDocumentService from "../documents/ConversationDocumentService.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
@@ -46,18 +49,25 @@ export const layer = Layer.effect(
     const fileSystem = yield* FileSystem.FileSystem;
     const config = yield* ServerConfig.ServerConfig;
     const scheduledTasks = yield* ScheduledTaskService.ScheduledTaskService;
+    const documents = yield* Effect.serviceOption(
+      ConversationDocumentService.ConversationDocumentService,
+    );
+    const computerUse = yield* Effect.serviceOption(ComputerUseService.ComputerUseService);
     return {
       cleanupScheduledTasks: Effect.fn("ResourceCleanupService.cleanupScheduledTasks")(function (
         threadId: ThreadId,
       ) {
-        return scheduledTasks
-          .deleteForThread(threadId)
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new ResourceCleanupError({ operation: "scheduled-tasks", threadId, cause }),
-            ),
-          );
+        return scheduledTasks.deleteForThread(threadId).pipe(
+          Effect.andThen(
+            Option.isSome(documents) ? documents.value.deleteForThread(threadId) : Effect.void,
+          ),
+          Effect.andThen(
+            Option.isSome(computerUse) ? computerUse.value.deleteForThread(threadId) : Effect.void,
+          ),
+          Effect.mapError(
+            (cause) => new ResourceCleanupError({ operation: "scheduled-tasks", threadId, cause }),
+          ),
+        );
       }),
       cleanupTerminals: Effect.fn("ResourceCleanupService.cleanupTerminals")(function (
         threadId: string,

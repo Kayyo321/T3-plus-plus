@@ -140,6 +140,8 @@ const EMPTY_DRAFT: DraftState = {
   runAt: "",
   savedRunAt: "",
   weekdays: new Set([1, 2, 3, 4, 5]),
+  cronExpression: "0 9 * * 1-5",
+  cronTimeZone: "",
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
@@ -295,6 +297,7 @@ const ONCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
   if (schedule.type === "webhook") return "On webhook";
   if (schedule.type === "once") return `Once, ${ONCE_FORMATTER.format(new Date(schedule.runAt))}`;
+  if (schedule.type === "cron") return `Cron ${schedule.expression}`;
   if (schedule.type === "interval") {
     const minutes = schedule.everyMs / 60_000;
     return Number.isInteger(minutes)

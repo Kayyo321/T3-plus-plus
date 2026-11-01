@@ -139,6 +139,13 @@ export const actsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A,
   );
 
 /**
+ * Changes only what the calling conversation owns. It takes no thread control, so a chat
+ * thread, which has none, can reach it; the handler checks its own capability.
+ */
+export const writesOwnConversation = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
+  declare((params: P) => requireThreadCaller.pipe(Effect.flatMap(() => handle(params))), undefined);
+
+/**
  * Changes something that belongs to no thread, such as a pending upload or a
  * scheduled task. Work a linked environment started may not: none of it
  * carries the link's origin, so none of it is that link's.

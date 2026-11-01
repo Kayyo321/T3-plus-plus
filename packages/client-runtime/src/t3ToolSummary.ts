@@ -215,6 +215,9 @@ export function summarizeT3ToolCalls(
     case "schedule-list":
       label = phrase("Listed", "list", `scheduled tasks ${times}`);
       break;
+    case "document":
+      label = phrase("Worked on", "work on", `documents ${times}`);
+      break;
     case "schedule-update":
       label = phrase(
         "Updated",

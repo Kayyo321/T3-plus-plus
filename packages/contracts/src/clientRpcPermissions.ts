@@ -3,6 +3,7 @@ import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./gi
 import { GitGraphActInput } from "./gitGraph.ts";
 import {
   AuthAccessWriteScope,
+  AuthFilesystemWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
@@ -66,6 +67,19 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
 
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,
+  // Input to a screen: a view-only guest holds none of these scopes.
+  [WS_METHODS.computerUseStart]: AuthOrchestrationOperateScope,
+  [WS_METHODS.computerUseStop]: AuthOrchestrationOperateScope,
+  [WS_METHODS.computerUseTakeOver]: AuthOrchestrationOperateScope,
+  [WS_METHODS.computerUseResume]: AuthOrchestrationOperateScope,
+  [WS_METHODS.computerUseAnswerApproval]: AuthOrchestrationOperateScope,
+  [WS_METHODS.documentsCreate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.documentsUpdate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.documentsDelete]: AuthOrchestrationOperateScope,
+  [WS_METHODS.documentsRestore]: AuthOrchestrationOperateScope,
+  [WS_METHODS.documentsRestoreVersion]: AuthOrchestrationOperateScope,
+  // Writes a file on the host, as saving one in the file panel does.
+  [WS_METHODS.documentsMoveToProject]: AuthFilesystemWriteScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksSetEnabled]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,

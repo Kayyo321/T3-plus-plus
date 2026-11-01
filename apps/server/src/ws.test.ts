@@ -91,6 +91,8 @@ import * as NestedSessionService from "./orchestration-v2/NestedSessionService.t
 import * as ThreadBranchService from "./orchestration-v2/ThreadBranchService.ts";
 import * as ConversationFolderService from "./conversationFolders/ConversationFolderService.ts";
 import * as WorkspaceService from "./workspace/WorkspaceService.ts";
+import * as ComputerUseService from "./computerUse/ComputerUseService.ts";
+import * as ConversationDocumentService from "./documents/ConversationDocumentService.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import * as RemoteControlService from "./remoteControl/RemoteControlService.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
@@ -596,6 +598,8 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorkspaceService.WorkspaceService)({}),
   Layer.mock(ConversationFolderService.ConversationFolderService)({}),
   Layer.mock(RemoteControlService.RemoteControlService)({}),
+  Layer.mock(ConversationDocumentService.ConversationDocumentService)({}),
+  Layer.mock(ComputerUseService.ComputerUseService)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),
   Layer.mock(SecretResolver.SecretResolver)({}),

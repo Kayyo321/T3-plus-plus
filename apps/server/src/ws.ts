@@ -130,6 +130,8 @@ import * as NestedSessionService from "./orchestration-v2/NestedSessionService.t
 import * as ThreadBranchService from "./orchestration-v2/ThreadBranchService.ts";
 import * as ConversationFolderService from "./conversationFolders/ConversationFolderService.ts";
 import * as WorkspaceService from "./workspace/WorkspaceService.ts";
+import * as ComputerUseService from "./computerUse/ComputerUseService.ts";
+import * as ConversationDocumentService from "./documents/ConversationDocumentService.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
@@ -1107,6 +1109,8 @@ export const layerWsRpc = (
       };
       const workspaces = yield* WorkspaceService.WorkspaceService;
       const conversationFolders = yield* ConversationFolderService.ConversationFolderService;
+      const documents = yield* ConversationDocumentService.ConversationDocumentService;
+      const computerUse = yield* ComputerUseService.ComputerUseService;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
@@ -2028,9 +2032,29 @@ export const layerWsRpc = (
         [WS_METHODS.workspacesRemoveSecret]: (input) => workspaces.removeSecret(input),
         [WS_METHODS.conversationFoldersSubscribe]: (_input) => conversationFolders.subscribe,
         [WS_METHODS.conversationFoldersMutate]: (input) => conversationFolders.mutate(input),
+        [WS_METHODS.computerUseSupport]: (_input) => computerUse.support,
+        [WS_METHODS.computerUseSubscribe]: (input) => computerUse.subscribe(input.threadId),
+        [WS_METHODS.computerUseStart]: (input) => computerUse.start(input),
+        [WS_METHODS.computerUseStop]: (input) => computerUse.stop(input.threadId),
+        [WS_METHODS.computerUseTakeOver]: (input) => computerUse.takeOver(input.threadId),
+        [WS_METHODS.computerUseResume]: (input) => computerUse.resume(input.threadId),
+        [WS_METHODS.computerUseAnswerApproval]: (input) => computerUse.answerApproval(input),
+        [WS_METHODS.computerUseListSteps]: (input) => computerUse.listSteps(input),
+        [WS_METHODS.computerUseGetScreenshot]: (input) => computerUse.getScreenshot(input),
+        [WS_METHODS.documentsSubscribe]: (input) => documents.subscribe(input.threadId),
+        [WS_METHODS.documentsGet]: (input) => documents.get(input),
+        [WS_METHODS.documentsCreate]: (input) => documents.create(input),
+        [WS_METHODS.documentsUpdate]: (input) => documents.update(input),
+        [WS_METHODS.documentsDelete]: (input) => documents.remove(input),
+        [WS_METHODS.documentsRestore]: (input) => documents.restore(input),
+        [WS_METHODS.documentsListVersions]: (input) => documents.listVersions(input),
+        [WS_METHODS.documentsRestoreVersion]: (input) => documents.restoreVersion(input),
+        [WS_METHODS.documentsExport]: (input) => documents.exportMarkdown(input),
+        [WS_METHODS.documentsMoveToProject]: (input) => documents.moveToProject(input),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),
+        [WS_METHODS.scheduledTasksListRuns]: (input) => scheduledTasks.listRuns(input),
         [WS_METHODS.scheduledTasksSetEnabled]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
             Effect.andThen(scheduledTasks.setEnabled(input)),

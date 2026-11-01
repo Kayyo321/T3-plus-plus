@@ -1,4 +1,10 @@
-import { MIN_SCHEDULED_TASK_INTERVAL_MS, type ScheduledTaskSchedule } from "@t3tools/contracts";
+import {
+  MIN_SCHEDULED_TASK_INTERVAL_MS,
+  parseCronExpression,
+  type ScheduledTaskMissedRunPolicy,
+  type ScheduledTaskSchedule,
+} from "@t3tools/contracts";
+import { nextCronOccurrence } from "@t3tools/shared/cronSchedule";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
@@ -10,11 +16,20 @@ function parseTimeOfDay(value: string): { hour: number; minute: number } | null 
   return { hour: Number(match[1]), minute: Number(match[2]) };
 }
 
+const inZone = (from: DateTime.DateTime, timeZone: string | undefined): DateTime.Zoned => {
+  if (timeZone !== undefined) return DateTime.setZoneNamedUnsafe(from, timeZone);
+  return DateTime.isZoned(from) ? from : DateTime.setZone(from, DateTime.zoneMakeLocal());
+};
+
 export function nextScheduledRunAt(
   schedule: ScheduledTaskSchedule,
   from: DateTime.DateTime,
 ): DateTime.DateTime | null {
   if (schedule.type === "webhook") return null;
+  if (schedule.type === "cron") {
+    const cron = parseCronExpression(schedule.expression);
+    return cron === null ? null : nextCronOccurrence(cron, inZone(from, schedule.timeZone));
+  }
   if (schedule.type === "once") {
     const runAt = DateTime.make(schedule.runAt);
     return Option.isSome(runAt) &&
@@ -56,6 +71,9 @@ export function isSameSchedule(a: ScheduledTaskSchedule, b: ScheduledTaskSchedul
     return b.type === "interval" && a.everyMs === b.everyMs;
   }
   if (a.type === "webhook") return b.type === "webhook";
+  if (a.type === "cron") {
+    return b.type === "cron" && a.expression === b.expression && a.timeZone === b.timeZone;
+  }
   if (a.type === "once") return b.type === "once" && Date.parse(a.runAt) === Date.parse(b.runAt);
   if (b.type !== "fixed_time") return false;
   // Compare parsed times so padded-hour edits do not reschedule pending runs.
@@ -70,13 +88,36 @@ export function isSameSchedule(a: ScheduledTaskSchedule, b: ScheduledTaskSchedul
   );
 }
 
-const MISSED_FIXED_TIME_GRACE_MS = 10 * MINUTE_MS;
+const MISSED_RUN_GRACE_MS = 10 * MINUTE_MS;
 
-export function isMissedFixedTimeRun(
+export function isMissedRun(dueAt: DateTime.DateTime, now: DateTime.DateTime): boolean {
+  return DateTime.toEpochMillis(now) - DateTime.toEpochMillis(dueAt) > MISSED_RUN_GRACE_MS;
+}
+
+/** Tasks without a policy keep their old behaviour: clock times skip, intervals run late. */
+export function missedRunPolicy(
+  schedule: ScheduledTaskSchedule,
+  policy: ScheduledTaskMissedRunPolicy | undefined,
+): ScheduledTaskMissedRunPolicy {
+  if (policy !== undefined) return policy;
+  return schedule.type === "fixed_time" || schedule.type === "cron" ? "skip" : "run_once";
+}
+
+/**
+ * The next time a catch-up replays after the run due at `dueAt`: the following occurrence,
+ * moved up so at most `limit` stay owed. The newest occurrences are the ones kept.
+ */
+export function nextCatchUpRunAt(
   schedule: ScheduledTaskSchedule,
   dueAt: DateTime.DateTime,
   now: DateTime.DateTime,
-): boolean {
-  if (schedule.type !== "fixed_time") return false;
-  return DateTime.toEpochMillis(now) - DateTime.toEpochMillis(dueAt) > MISSED_FIXED_TIME_GRACE_MS;
+  limit: number,
+): DateTime.DateTime | null {
+  const owed: DateTime.DateTime[] = [];
+  let cursor = nextScheduledRunAt(schedule, dueAt);
+  while (cursor !== null && DateTime.toEpochMillis(cursor) <= DateTime.toEpochMillis(now)) {
+    owed.push(cursor);
+    cursor = nextScheduledRunAt(schedule, cursor);
+  }
+  return owed[Math.max(0, owed.length - limit)] ?? cursor;
 }

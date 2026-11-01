@@ -43,6 +43,8 @@ import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 import { ProjectSetupScriptRunner } from "../project/ProjectSetupScriptRunner.ts";
 import { PullRequestReviewGuideService } from "../pullRequest/PullRequestReviewGuideService.ts";
+import { ComputerUseService } from "../computerUse/ComputerUseService.ts";
+import { ConversationDocumentService } from "../documents/ConversationDocumentService.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import { SecretRequests } from "../secrets/SecretRequests.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -86,6 +88,8 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(RemoteDelegation)({}),
   Layer.mock(ConversationFolderService)({}),
   Layer.mock(WorkspaceService)({}),
+  Layer.mock(ComputerUseService)({}),
+  Layer.mock(ConversationDocumentService)({}),
   Layer.mock(ScheduledTaskService)({}),
   Layer.mock(SecretRequests)({}),
   ServerConfig.layerTest(process.cwd(), { prefix: "t3-agent-context-budget-" }),

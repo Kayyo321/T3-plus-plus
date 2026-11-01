@@ -190,6 +190,14 @@ export const isListedThreadLineage = (lineage: OrchestrationV2AppThreadLineage):
   lineage.sideChat !== true &&
   lineage.orchestrator !== true;
 
+/**
+ * What a *Scheduled* grouping collects: conversations a task started, not ones it posts into.
+ * @public
+ */
+export const isScheduledRunThread = (thread: {
+  readonly scheduledTaskId?: ScheduledTaskId | undefined;
+}): boolean => thread.scheduledTaskId !== undefined;
+
 export const isOrchestratorAgentThread = (thread: {
   readonly lineage: OrchestrationV2AppThreadLineage;
 }): boolean => thread.lineage.orchestrator === true;
@@ -486,6 +494,8 @@ export const OrchestrationV2AppThread = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   capabilityMode: Schema.optional(ThreadCapabilityMode),
+  /** The scheduled task this conversation is one run of. */
+  scheduledTaskId: Schema.optional(ScheduledTaskId),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
@@ -2130,6 +2140,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   capabilityMode: Schema.optional(ThreadCapabilityMode),
+  scheduledTaskId: Schema.optional(ScheduledTaskId),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
@@ -2990,6 +3001,8 @@ export const OrchestrationV2Command = Schema.Union([
     runtimeMode: RuntimeMode,
     interactionMode: ProviderInteractionMode,
     capabilityMode: Schema.optional(ThreadCapabilityMode),
+    /** Only the server sets this, for a conversation a scheduled task starts. */
+    scheduledTaskId: Schema.optional(ScheduledTaskId),
     branch: Schema.NullOr(TrimmedNonEmptyString),
     worktreePath: Schema.NullOr(TrimmedNonEmptyString),
     /** Only the server sets this; a client's thread.create never carries one. */
