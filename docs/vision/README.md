@@ -21,44 +21,44 @@ set says **conversation** in places where the codebase says **thread**; they are
 
 ## Documents
 
-| Document                                                | Covers                                                                          |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| [Orchestrator](./orchestrator.md)                       | A concurrent side-conversation with an agent that operates the editor and supervises stuck work |
-| [Remote control](./remote-control.md)                   | A per-conversation switch that shares a live view through a link, with real auth |
-| [Sessions and agents](./sessions-and-agents.md)         | Nested sessions vs sub-agents, background tasks, fork and rewind                |
-| [Teamwork](./teamwork.md)                               | A skill that runs work like a real team, with roles and review phases           |
-| [Layouts, workspaces, and folders](./layouts-workspaces-and-folders.md) | Saved layouts, split view, IDE mode, secret-holding workspaces, folders |
-| [Git and source control](./git-and-source-control.md)   | A full, animated commit graph with commit, rollback, merge, and PR actions      |
-| [Chat mode, scheduling, computer use](./modes-scheduling-computer-use.md) | Chat-only conversations, scheduled and repeating tasks, desktop control |
-| [UI direction](./ui-direction.md)                       | Minimal, modern, ASCII-flavored redesign, in the spirit of Claude Code Desktop  |
+| Document                                                                  | Covers                                                                                          |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Orchestrator](./orchestrator.md)                                         | A concurrent side-conversation with an agent that operates the editor and supervises stuck work |
+| [Remote control](./remote-control.md)                                     | A per-conversation switch that shares a live view through a link, with real auth                |
+| [Sessions and agents](./sessions-and-agents.md)                           | Nested sessions vs sub-agents, background tasks, fork and rewind                                |
+| [Teamwork](./teamwork.md)                                                 | A skill that runs work like a real team, with roles and review phases                           |
+| [Layouts, workspaces, and folders](./layouts-workspaces-and-folders.md)   | Saved layouts, split view, IDE mode, secret-holding workspaces, folders                         |
+| [Git and source control](./git-and-source-control.md)                     | A full, animated commit graph with commit, rollback, merge, and PR actions                      |
+| [Chat mode, scheduling, computer use](./modes-scheduling-computer-use.md) | Chat-only conversations, scheduled and repeating tasks, desktop control                         |
+| [UI direction](./ui-direction.md)                                         | Minimal, modern, ASCII-flavored redesign, in the spirit of Claude Code Desktop                  |
 
 ## Where things stand
 
-The repository already has foundations for several requested features. Status below was checked
-against the code and docs at the time of writing; re-verify before building.
+Status below was re-checked on 2026-11-01 against the code. "Shipped" means reachable in the web
+client; gaps are named in the row. Mobile and desktop were not run for this table.
 
-| Feature                          | State       | What exists / what is missing                                                                                                                                                  |
-| -------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Remote access to an environment  | Exists      | Direct, Tailscale, SSH, T3 Connect ([remote](../internals/remote.md)). Missing: a per-conversation switch.                                                                      |
-| Guest links                      | Partial     | One-person, 24h, approve-each-message links ([guest links](../user/guest-links.md)). Beta, needs T3 Connect, read-mostly. Remote control builds on and generalizes it.         |
-| MCP orchestration                | Partial     | Server MCP can create and steer threads and sub-agents ([orchestrator MCP](../orchestration-v2/orchestrator-mcp-server.md)). Missing: editor-wide reach, and the side-chat UI.  |
-| Outside agents over MCP          | Exists      | [Outside agents](../user/outside-agents.md).                                                                                                                                    |
-| Fork, handoff, lineage           | Exists      | [Thread lineage](../orchestration-v2/thread-lineage-and-context-transfer.md). Missing: rewind as a first-class action, and fork/rewind UI polish.                              |
-| Checkpoints and restore          | Exists      | Per-turn hidden git refs; restore returns the saved workspace.                                                                                                                  |
-| Source control and PRs           | Partial     | Diff pane, commit review, PRs on many hosts ([source control](../user/source-control.md)). Missing: graph view and the action surface.                                          |
-| Secret providers                 | Partial     | 1Password provider package exists. Missing: environments as a user concept that scope folders and secrets.                                                                      |
-| Background service               | Exists      | `t3 service` ([background service](../user/background-service.md)). Distinct from background *tasks* inside a conversation.                                                     |
-| Terminal                         | Exists      | [Terminal](../user/terminal.md). Basis for IDE mode.                                                                                                                            |
-| Nested sessions                  | New         | Sub-agents exist; first-class, user-visible nested sessions do not.                                                                                                             |
-| Teamwork                         | New         |                                                                                                                                                                                |
-| Split view                       | New         | Verify against the web layout code before building.                                                                                                                             |
-| Saved layouts                    | New         |                                                                                                                                                                                |
-| Conversation folders             | New         | Projects group threads today; user folders with subfolders are new.                                                                                                             |
-| Chat mode                        | New         |                                                                                                                                                                                |
-| Scheduled tasks                  | New         |                                                                                                                                                                                |
-| Computer use                     | New         |                                                                                                                                                                                |
-| IDE mode                         | New         |                                                                                                                                                                                |
-| UI overhaul and ASCII landing    | New         |                                                                                                                                                                                |
+| Feature                         | State   | What exists / what is missing                                                                                                                                                  |
+| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Remote access to an environment | Exists  | Direct, Tailscale, SSH, T3 Connect ([remote](../internals/remote.md)). Missing: a per-conversation switch.                                                                     |
+| Guest links                     | Partial | One-person, 24h, approve-each-message links ([guest links](../user/guest-links.md)). Beta, needs T3 Connect, read-mostly. Remote control builds on and generalizes it.         |
+| MCP orchestration               | Partial | Server MCP can create and steer threads and sub-agents ([orchestrator MCP](../orchestration-v2/orchestrator-mcp-server.md)). Missing: editor-wide reach, and the side-chat UI. |
+| Outside agents over MCP         | Exists  | [Outside agents](../user/outside-agents.md).                                                                                                                                   |
+| Fork, handoff, lineage          | Exists  | [Thread lineage](../orchestration-v2/thread-lineage-and-context-transfer.md). Missing: rewind as a first-class action, and fork/rewind UI polish.                              |
+| Checkpoints and restore         | Exists  | Per-turn hidden git refs; restore returns the saved workspace.                                                                                                                 |
+| Source control and PRs          | Partial | Diff pane, commit review, PRs on many hosts ([source control](../user/source-control.md)). Missing: graph view and the action surface.                                         |
+| Secret providers                | Partial | 1Password provider package exists. Missing: environments as a user concept that scope folders and secrets.                                                                     |
+| Background service              | Exists  | `t3 service` ([background service](../user/background-service.md)). Distinct from background _tasks_ inside a conversation.                                                    |
+| Terminal                        | Exists  | [Terminal](../user/terminal.md). Basis for IDE mode.                                                                                                                           |
+| Nested sessions                 | Partial | Services, MCP, and sidebar rows exist; not exercised in a real client.                                                                                                         |
+| Teamwork                        | Partial | Board, gates, budgets, and web panel work; members start by hand; no mobile board; real multi-provider run untested.                                                           |
+| Split view                      | Partial | Implemented; layout controls seen, split not exercised in a real client.                                                                                                       |
+| Saved layouts                   | Partial | Implemented; settings page exists, not exercised end to end.                                                                                                                   |
+| Conversation folders            | Partial | Implemented with nested rows; not exercised end to end.                                                                                                                        |
+| Chat mode                       | Partial | Enforced per adapter; web and mobile controls exist; mobile not run.                                                                                                           |
+| Scheduled tasks                 | Partial | Service and settings UI exist; web completion notifications are not subscribed.                                                                                                |
+| Computer use                    | Partial | Service and web panel exist; live backend untested; remote page does not show it yet.                                                                                          |
+| IDE mode                        | Partial | Implemented; not exercised in a real client.                                                                                                                                   |
+| UI overhaul and ASCII landing   | Partial | ASCII landing and density shipped; wider overhaul incomplete.                                                                                                                  |
 
 ## Product principles for the fork
 

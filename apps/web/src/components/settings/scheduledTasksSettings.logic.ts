@@ -6,6 +6,7 @@ import {
   type ProjectId,
   ScheduledTaskId,
   type ScheduledTask,
+  type ScheduledTaskSchedule,
   type ScheduledTaskUpsertSchedule,
   type ModelSelection,
   type RuntimeMode,
@@ -19,6 +20,13 @@ import {
   webhookFilterDraftsChanged,
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
+import {
+  scheduledTaskPolicyDraft,
+  type ScheduledTaskPolicyDraft,
+} from "@t3tools/client-runtime/scheduled-task-policy";
+import { nextCronOccurrence } from "@t3tools/shared/cronSchedule";
+import { parseScheduleText } from "@t3tools/shared/scheduleText";
+import * as DateTime from "effect/DateTime";
 
 import {
   resolveProjectSettings,
@@ -96,6 +104,124 @@ export interface DraftState {
   readonly filters: ReadonlyArray<WebhookFilterDraft>;
   /** The filter rows the form opened with. */
   readonly savedFilters: ReadonlyArray<WebhookFilterDraft>;
+  readonly policy: ScheduledTaskPolicyDraft;
+}
+
+export const DEFAULT_CRON_EXPRESSION = "0 9 * * 1-5";
+
+export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+const SCHEDULE_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+export function formatScheduleTime(value: Date | string): string {
+  return SCHEDULE_TIME_FORMATTER.format(new Date(value));
+}
+
+export function scheduleLabel(
+  schedule: ScheduledTaskSchedule | ScheduledTaskUpsertSchedule,
+): string {
+  if (schedule.type === "webhook") return "On webhook";
+  if (schedule.type === "once") return `Once, ${formatScheduleTime(schedule.runAt)}`;
+  if (schedule.type === "cron") {
+    return schedule.timeZone
+      ? `Cron ${schedule.expression} (${schedule.timeZone})`
+      : `Cron ${schedule.expression}`;
+  }
+  if (schedule.type === "interval") {
+    const minutes = schedule.everyMs / 60_000;
+    return Number.isInteger(minutes)
+      ? `Every ${minutes} min`
+      : `Every ${Math.round(schedule.everyMs / 1000)} sec`;
+  }
+  const weekdays = schedule.weekdays ?? [];
+  const days =
+    weekdays.length === 0
+      ? "Daily"
+      : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
+        ? "Weekdays"
+        : weekdays.map((day) => WEEKDAY_LABELS[day]).join(", ");
+  return `${days} at ${schedule.timeOfDay}`;
+}
+
+function isTimeZone(value: string): boolean {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: value }).resolvedOptions().timeZone !== "";
+  } catch {
+    return false;
+  }
+}
+
+/** A blank zone reads as this device's, the closest a client gets to the server's. */
+function nextCronRun(expression: string, timeZone: string, now: Date): Date | null {
+  const cron = parseCronExpression(expression);
+  if (cron === null || (timeZone !== "" && !isTimeZone(timeZone))) return null;
+  const from = DateTime.makeUnsafe(now.getTime());
+  const next = nextCronOccurrence(
+    cron,
+    timeZone === ""
+      ? DateTime.setZone(from, DateTime.zoneMakeLocal())
+      : DateTime.setZoneNamedUnsafe(from, timeZone),
+  );
+  return next === null ? null : new Date(DateTime.toEpochMillis(next));
+}
+
+export function nextCronRunFromDraft(draft: DraftState, now: Date): Date | null {
+  return nextCronRun(draft.cronExpression.trim(), draft.cronTimeZone.trim(), now);
+}
+
+function nextRunOf(schedule: ScheduledTaskUpsertSchedule, now: Date): Date | null {
+  if (schedule.type === "webhook") return null;
+  if (schedule.type === "once") return new Date(schedule.runAt);
+  if (schedule.type === "interval") return new Date(now.getTime() + schedule.everyMs);
+  if (schedule.type === "cron")
+    return nextCronRun(schedule.expression, schedule.timeZone ?? "", now);
+  const [hour, minute] = schedule.timeOfDay.split(":").map(Number);
+  const days = schedule.weekdays?.join(",") || "*";
+  return nextCronRun(`${minute} ${hour} * * ${days}`, "", now);
+}
+
+/** What a typed schedule means, or null when the text says nothing the parser can read. */
+export function interpretScheduleText(text: string, now: Date) {
+  const schedule = parseScheduleText(text, now);
+  return schedule === null
+    ? null
+    : { schedule, description: scheduleLabel(schedule), nextRun: nextRunOf(schedule, now) };
+}
+
+export function applyScheduleToDraft(
+  draft: DraftState,
+  schedule: ScheduledTaskUpsertSchedule,
+): DraftState {
+  if (schedule.type === "interval") {
+    return {
+      ...draft,
+      scheduleMode: "interval",
+      intervalMinutes: String(schedule.everyMs / 60_000),
+    };
+  }
+  if (schedule.type === "once") {
+    return {
+      ...draft,
+      scheduleMode: "once",
+      runAt: toDateTimeLocalValue(new Date(schedule.runAt)),
+      savedRunAt: schedule.runAt,
+    };
+  }
+  if (schedule.type === "cron") {
+    return { ...draft, scheduleMode: "cron", cronExpression: schedule.expression };
+  }
+  if (schedule.type === "fixed_time") {
+    return {
+      ...draft,
+      scheduleMode: "fixed",
+      timeOfDay: schedule.timeOfDay,
+      weekdays: new Set(schedule.weekdays ?? [0, 1, 2, 3, 4, 5, 6]),
+    };
+  }
+  return draft;
 }
 
 export const WEBHOOK_SIGNATURE_DEFAULTS = {
@@ -123,9 +249,14 @@ export function scheduleDraftErrors(draft: DraftState) {
     return [];
   }
   if (draft.scheduleMode === "cron") {
-    return parseCronExpression(draft.cronExpression) === null
-      ? [{ title: "Invalid cron expression", description: "Use minute hour day month weekday." }]
-      : [];
+    if (parseCronExpression(draft.cronExpression) === null)
+      return [
+        { title: "Invalid cron expression", description: "Use minute hour day month weekday." },
+      ];
+    const timeZone = draft.cronTimeZone.trim();
+    return timeZone === "" || isTimeZone(timeZone)
+      ? []
+      : [{ title: "Unknown time zone", description: "Use a name such as Europe/Paris, or blank." }];
   }
   if (draft.scheduleMode !== "webhook") return [];
   if (parseMaxDeliveryAge(draft.maxDeliveryAgeMinutes) === undefined)
@@ -308,6 +439,7 @@ export function taskToDraft(task: ScheduledTask): DraftState {
         : "",
     filters,
     savedFilters: filters,
+    policy: scheduledTaskPolicyDraft(task.policy),
   };
 }
 

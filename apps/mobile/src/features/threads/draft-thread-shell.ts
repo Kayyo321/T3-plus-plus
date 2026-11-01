@@ -6,6 +6,7 @@ import type {
   ModelSelection,
   RuntimeMode,
   ProviderInteractionMode,
+  ThreadCapabilityMode,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
@@ -16,6 +17,7 @@ export function draftThreadShell(input: {
   readonly modelSelection: ModelSelection;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
+  readonly capabilityMode?: ThreadCapabilityMode;
   readonly branch: string | null;
   readonly worktreePath: string | null;
   readonly createdAt: string;
@@ -29,6 +31,7 @@ export function draftThreadShell(input: {
     modelSelection: input.modelSelection,
     runtimeMode: input.runtimeMode,
     interactionMode: input.interactionMode,
+    ...(input.capabilityMode === undefined ? {} : { capabilityMode: input.capabilityMode }),
     branch: input.branch,
     pullRequests: [],
     worktreePath: input.worktreePath,

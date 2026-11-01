@@ -194,6 +194,8 @@ import { ComposerPopoverHost } from "./ComposerPopoverHost";
 import { ThreadFeed, type ThreadFeedHandle, type ThreadFeedHistoryControls } from "./ThreadFeed";
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
+import { ThreadComputerUseBanner } from "./ThreadComputerUseBanner";
+import { ThreadConversationBar } from "./ThreadConversationBar";
 import { useThreadQueuedCount } from "./ThreadQueueControl";
 import { ThreadBackgroundTasks } from "./ThreadBackgroundTasks";
 import { ThreadGuestShareBar } from "./ThreadGuestShareBar";
@@ -1519,6 +1521,23 @@ function ThreadDetailBody(props: ThreadDetailScreenProps) {
                     keyboardShouldPersistTaps="handled"
                     nestedScrollEnabled
                   >
+                    {props.selectedThreadDetailRef !== null ? (
+                      <>
+                        <ThreadComputerUseBanner
+                          environmentId={props.selectedThreadDetailRef.environmentId}
+                          threadId={props.selectedThreadDetailRef.threadId}
+                          connected={props.connectionStateLabel === "connected"}
+                        />
+                        <ThreadConversationBar
+                          environmentId={props.selectedThreadDetailRef.environmentId}
+                          threadId={props.selectedThreadDetailRef.threadId}
+                          mode={props.selectedThread.capabilityMode ?? "code"}
+                          driver={providerSubagentProvider?.driver}
+                          runActive={props.activeThreadBusy}
+                          canOperate={props.canOperateThread}
+                        />
+                      </>
+                    ) : null}
                     {props.queuedRunEdit !== null ? (
                       <Animated.View
                         className="shrink-0"

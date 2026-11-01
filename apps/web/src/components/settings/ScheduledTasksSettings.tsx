@@ -4,6 +4,7 @@ import { AsyncResult } from "effect/reactivity";
 import {
   Clock3Icon,
   CopyIcon,
+  HistoryIcon,
   InboxIcon,
   MoreHorizontalIcon,
   PencilIcon,
@@ -18,8 +19,8 @@ import type {
   OrchestrationV2ThreadLaunchWorkspaceStrategy,
   ProjectId,
   ScheduledTask,
+  ScheduledTaskHost,
   ScheduledTaskId,
-  ScheduledTaskSchedule,
   ScheduledTaskUpsertInput,
   ScheduledTaskWebhookDeliverySummary,
   ThreadId,
@@ -33,6 +34,11 @@ import {
   type WebhookFilterDraft,
 } from "@t3tools/client-runtime/scheduled-task-webhook";
 import {
+  parseScheduledTaskPolicyDraft,
+  scheduledTaskHostNotice,
+  scheduledTaskPolicyDraft,
+} from "@t3tools/client-runtime/scheduled-task-policy";
+import {
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
   MAX_WEBHOOK_FILTERS,
   MIN_SCHEDULED_TASK_INTERVAL_MS,
@@ -44,7 +50,6 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 
-import { formatRelativeTime } from "../../timestampFormat";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import { providerInstanceEntriesFor } from "../../providerInstances";
@@ -53,7 +58,6 @@ import { requestConfirmDialog } from "../../confirmDialog";
 import { webhookAddress } from "@t3tools/client-runtime/webhook-address";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
-import { useNowMinute } from "../../hooks/useNowMinute";
 import {
   useEnvironment,
   useEnvironmentHttpBaseUrl,
@@ -76,8 +80,24 @@ import { EnvironmentRow, useEnvironmentTransportLabel } from "./EnvironmentRow";
 import { SettingsGroup } from "./SettingsGroup";
 import { settingsScopeEnvironmentLabel, settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import {
+  CronScheduleFields,
+  Field,
+  ScheduleTextField,
+  ScheduledTaskPolicyFields,
+} from "./ScheduledTaskFields";
+import {
+  ScheduledRelativeLabel,
+  ScheduledRunLine,
+  ScheduledTaskRunHistoryDialog,
+} from "./ScheduledTaskRunHistory";
+import {
+  DEFAULT_CRON_EXPRESSION,
   WEBHOOK_SIGNATURE_DEFAULTS,
+  WEEKDAY_LABELS,
+  applyScheduleToDraft,
+  interpretScheduleText,
   scheduleDraftErrors,
+  scheduleLabel,
   toDateTimeLocalValue,
   webhookDeliveryLabel,
   defaultScheduledTaskProjectId,
@@ -120,7 +140,6 @@ import {
 } from "./settingsLayout";
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const WEEKDAY_SHORT = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
 
 const WORKSPACE_MODE_LABELS: Record<WorkspaceMode, string> = {
@@ -140,7 +159,7 @@ const EMPTY_DRAFT: DraftState = {
   runAt: "",
   savedRunAt: "",
   weekdays: new Set([1, 2, 3, 4, 5]),
-  cronExpression: "0 9 * * 1-5",
+  cronExpression: DEFAULT_CRON_EXPRESSION,
   cronTimeZone: "",
   projectId: "",
   threadId: "",
@@ -149,7 +168,7 @@ const EMPTY_DRAFT: DraftState = {
   startFromOrigin: true,
   existingWorktreePath: "",
   modelKey: "",
-  runtimeMode: "full-access",
+  runtimeMode: "approval-required",
   interactionMode: "default",
   baseModelSelection: null,
   signatureEnabled: false,
@@ -161,6 +180,7 @@ const EMPTY_DRAFT: DraftState = {
   coalesceWindowSeconds: "",
   filters: [],
   savedFilters: [],
+  policy: scheduledTaskPolicyDraft(undefined),
 };
 
 function WebhookFiltersField({
@@ -256,30 +276,6 @@ function WebhookFiltersField({
   );
 }
 
-function Field({
-  label,
-  hint,
-  htmlFor,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  htmlFor?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="flex items-baseline justify-between" htmlFor={htmlFor}>
-        <span>{label}</span>
-        {hint ? (
-          <span className="font-normal text-2xs text-muted-foreground/80">{hint}</span>
-        ) : null}
-      </Label>
-      {children}
-    </div>
-  );
-}
-
 function splitModelKey(value: string): ModelSelection | null {
   const index = value.indexOf(":");
   if (index <= 0 || index === value.length - 1) return null;
@@ -287,54 +283,6 @@ function splitModelKey(value: string): ModelSelection | null {
     instanceId: ProviderInstanceId.make(value.slice(0, index)),
     model: value.slice(index + 1),
   };
-}
-
-const ONCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
-  if (schedule.type === "webhook") return "On webhook";
-  if (schedule.type === "once") return `Once, ${ONCE_FORMATTER.format(new Date(schedule.runAt))}`;
-  if (schedule.type === "cron") return `Cron ${schedule.expression}`;
-  if (schedule.type === "interval") {
-    const minutes = schedule.everyMs / 60_000;
-    return Number.isInteger(minutes)
-      ? `Every ${minutes} min`
-      : `Every ${Math.round(schedule.everyMs / 1000)} sec`;
-  }
-  const weekdays = schedule.weekdays ?? [];
-  const days =
-    weekdays.length === 0
-      ? "Daily"
-      : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
-        ? "Weekdays"
-        : weekdays.map((day) => WEEKDAY_LABELS[day]).join(", ");
-  return `${days} at ${schedule.timeOfDay}`;
-}
-
-/** formatRelativeTime handles only the past; upcoming runs need future labels. */
-function relativeLabel(value: string | null, nowMs: number): string {
-  if (!value) return "Not scheduled";
-  const diffMs = new Date(value).getTime() - nowMs;
-  if (diffMs <= 0) {
-    const relative = formatRelativeTime(value, nowMs);
-    if (!relative) return "Not scheduled";
-    return relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
-  }
-  const minutes = Math.ceil(diffMs / 60_000);
-  if (minutes < 2) return "in under a minute";
-  if (minutes < 60) return `in ${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  return `in ${Math.round(hours / 24)}d`;
-}
-
-// Use the label's minute tick because the compiler caches render-time Date.now() on the timestamp.
-export function ScheduledRelativeLabel(props: { value: string | null }) {
-  const nowMinute = useNowMinute();
-  return relativeLabel(props.value, Date.parse(`${nowMinute}:00.000Z`));
 }
 
 function deliveryOutcomeVariant(outcome: string) {
@@ -358,6 +306,8 @@ function statusVariant(status: ScheduledTask["lastRunStatus"]) {
   if (status === "running") return "info";
   return "outline";
 }
+
+const interpretScheduleTextNow = (text: string) => interpretScheduleText(text, new Date());
 
 export function ScheduledTasksSettings(target: {
   readonly environmentId?: EnvironmentId;
@@ -520,6 +470,7 @@ function ScheduledTaskEnvironmentList({
     return {
       environment,
       connected: index >= 0,
+      host: data?.host,
       tasks: data?.tasks.filter((task) =>
         matchesScheduledTaskScope(scope, environment.environmentId, task.projectId),
       ),
@@ -554,7 +505,7 @@ function ScheduledTaskEnvironmentList({
 
   return (
     <SettingsGroup>
-      {populated.map(({ environment, tasks }) => {
+      {populated.map(({ environment, tasks, host }) => {
         const { primary, secondary } = settingsScopeEnvironmentLabels(environment, environments);
         return (
           <div key={environment.environmentId} className="divide-y divide-border/50">
@@ -573,6 +524,7 @@ function ScheduledTaskEnvironmentList({
                 {connectionStatusTitle(environment.connection)}
               </span>
             </EnvironmentRow>
+            <ScheduledTaskHostNotice host={host} />
             {tasks?.map((task) => (
               <ScheduledTaskRow
                 key={task.id}
@@ -617,6 +569,16 @@ function ScheduledTaskEnvironmentList({
         );
       })}
     </SettingsGroup>
+  );
+}
+
+function ScheduledTaskHostNotice({ host }: { readonly host: ScheduledTaskHost | undefined }) {
+  const notice = scheduledTaskHostNotice(host);
+  if (notice === null) return null;
+  return (
+    <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4" role="status">
+      {notice}
+    </p>
   );
 }
 
@@ -684,6 +646,7 @@ function ScheduledTaskEnvironmentSection({
         <SettingsRow title="Loading scheduled tasks…" role="status" />
       ) : (
         <>
+          <ScheduledTaskHostNotice host={tasksQuery.data?.host} />
           {taskId && !linkedTask ? (
             <SettingsRow
               title="Task unavailable"
@@ -726,6 +689,7 @@ function ScheduledTaskRow({
   );
   const [busy, setBusy] = useState(false);
   const [deliveriesOpen, setDeliveriesOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const isWebhook = task.schedule.type === "webhook";
   const toggle = useAtomCommand(serverEnvironment.setScheduledTaskEnabled, {
     label: "scheduled task enabled",
@@ -776,10 +740,18 @@ function ScheduledTaskRow({
               "Not scheduled"
             )}
           </span>
-          {task.lastRunStatus !== "never" ? (
-            <Badge variant={statusVariant(task.lastRunStatus)}>{task.lastRunStatus}</Badge>
-          ) : null}
-          {task.lastRunError ? <span className="text-destructive">{task.lastRunError}</span> : null}
+          {task.latestRun ? (
+            <ScheduledRunLine environmentId={environmentId} run={task.latestRun} />
+          ) : (
+            <>
+              {task.lastRunStatus !== "never" ? (
+                <Badge variant={statusVariant(task.lastRunStatus)}>{task.lastRunStatus}</Badge>
+              ) : null}
+              {task.lastRunError ? (
+                <span className="text-destructive">{task.lastRunError}</span>
+              ) : null}
+            </>
+          )}
         </div>
       }
       control={
@@ -796,7 +768,7 @@ function ScheduledTaskRow({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  disabled={busy || !canOperate}
+                  disabled={busy}
                   aria-label={`Actions for ${task.title}`}
                 />
               }
@@ -804,23 +776,27 @@ function ScheduledTaskRow({
               <MoreHorizontalIcon className="size-4" />
             </MenuTrigger>
             <MenuPopup align="end">
-              <MenuItem onClick={onEdit}>
+              <MenuItem disabled={!canOperate} onClick={onEdit}>
                 <PencilIcon />
                 Edit
               </MenuItem>
+              <MenuItem onClick={() => setHistoryOpen(true)}>
+                <HistoryIcon />
+                Run history
+              </MenuItem>
               {isWebhook ? (
-                <MenuItem onClick={() => setDeliveriesOpen(true)}>
+                <MenuItem disabled={!canOperate} onClick={() => setDeliveriesOpen(true)}>
                   <InboxIcon />
                   Deliveries
                 </MenuItem>
               ) : (
-                <MenuItem onClick={() => void act("run")}>
+                <MenuItem disabled={!canOperate} onClick={() => void act("run")}>
                   <PlayIcon />
                   Run now
                 </MenuItem>
               )}
               <MenuSeparator />
-              <MenuItem onClick={() => void act("delete")}>
+              <MenuItem disabled={!canOperate} onClick={() => void act("delete")}>
                 <Trash2Icon />
                 Delete
               </MenuItem>
@@ -831,6 +807,13 @@ function ScheduledTaskRow({
               environmentId={environmentId}
               task={task}
               onClose={() => setDeliveriesOpen(false)}
+            />
+          ) : null}
+          {historyOpen ? (
+            <ScheduledTaskRunHistoryDialog
+              environmentId={environmentId}
+              task={task}
+              onClose={() => setHistoryOpen(false)}
             />
           ) : null}
         </div>
@@ -1215,6 +1198,7 @@ function ScheduledTaskEditorForm({
           projectId: defaultScheduledTaskProjectId(scopedProjects, scope),
         },
   );
+  const [scheduleText, setScheduleText] = useState("");
   // Pinned first. The chosen project stays listed after it is archived.
   const projects = scopedProjects
     .filter(
@@ -1267,6 +1251,13 @@ function ScheduledTaskEditorForm({
     );
   };
 
+  const applyScheduleText = () => {
+    const understood = interpretScheduleText(scheduleText, new Date());
+    if (understood === null) return;
+    setDraft((current) => applyScheduleToDraft(current, understood.schedule));
+    setScheduleText("");
+  };
+
   const submit = async () => {
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
@@ -1287,14 +1278,33 @@ function ScheduledTaskEditorForm({
       reportFailure("Scheduled task is incomplete", "Add a title, prompt, project, and model.");
       return;
     }
-    const parsedFilters = parseWebhookFilterDrafts(draft.filters);
-    if (draft.scheduleMode === "webhook" && "error" in parsedFilters) {
+    // Text left unapplied is what the person last said, so saving must not ignore it.
+    const typedSchedule = scheduleText.trim() ? interpretScheduleTextNow(scheduleText) : null;
+    if (scheduleText.trim() && typedSchedule === null) {
+      reportFailure(
+        "Could not read the schedule",
+        "Reword it, or clear the text and use the controls.",
+      );
+      return;
+    }
+    const scheduleDraft = typedSchedule
+      ? applyScheduleToDraft(draft, typedSchedule.schedule)
+      : draft;
+    const parsedFilters = parseWebhookFilterDrafts(scheduleDraft.filters);
+    if (scheduleDraft.scheduleMode === "webhook" && "error" in parsedFilters) {
       reportFailure("Invalid filter", parsedFilters.error);
       return;
     }
-    const schedule = scheduleFromDraft(draft);
+    const schedule = scheduleFromDraft(scheduleDraft);
     if (schedule === null) {
-      for (const error of scheduleDraftErrors(draft)) reportFailure(error.title, error.description);
+      for (const error of scheduleDraftErrors(scheduleDraft)) {
+        reportFailure(error.title, error.description);
+      }
+      return;
+    }
+    const parsedPolicy = parseScheduledTaskPolicyDraft(draft.policy);
+    if ("error" in parsedPolicy) {
+      reportFailure("Invalid run policy", parsedPolicy.error);
       return;
     }
     if (
@@ -1353,6 +1363,7 @@ function ScheduledTaskEditorForm({
       modelSelection,
       runtimeMode: draft.runtimeMode,
       interactionMode: draft.interactionMode,
+      policy: parsedPolicy.policy,
       creationSource: "web",
     };
     // Lock before React renders, and keep successful creates locked until the form closes.
@@ -1375,8 +1386,8 @@ function ScheduledTaskEditorForm({
       <DialogHeader>
         <DialogTitle>{draft.editingId ? "Edit task" : "New task"}</DialogTitle>
         <DialogDescription>
-          Run a prompt automatically on an interval, at a fixed time, once at a set date, or when a
-          webhook is called.
+          Run a prompt automatically on an interval, at a fixed time, on a cron schedule, once at a
+          set date, or when a webhook is called.
         </DialogDescription>
       </DialogHeader>
 
@@ -1608,6 +1619,7 @@ function ScheduledTaskEditorForm({
                     mode === "fixed" ||
                     mode === "once" ||
                     mode === "interval" ||
+                    mode === "cron" ||
                     mode === "webhook"
                   )
                     setDraft((current) => {
@@ -1618,6 +1630,7 @@ function ScheduledTaskEditorForm({
                       return {
                         ...current,
                         scheduleMode: mode,
+                        cronExpression: current.cronExpression || DEFAULT_CRON_EXPRESSION,
                         // Keep the instant too, so an hour that repeats when clocks go back stays exact.
                         ...(suggested === null
                           ? {}
@@ -1638,9 +1651,15 @@ function ScheduledTaskEditorForm({
                   <Toggle value="once">Once</Toggle>
                 ) : null}
                 <Toggle value="interval">Every interval</Toggle>
+                <Toggle value="cron">Cron</Toggle>
                 <Toggle value="webhook">On webhook</Toggle>
               </ToggleGroup>
             </div>
+            <ScheduleTextField
+              value={scheduleText}
+              onChange={setScheduleText}
+              onApply={applyScheduleText}
+            />
 
             {draft.scheduleMode === "webhook" ? (
               <div className="space-y-4">
@@ -1814,6 +1833,11 @@ function ScheduledTaskEditorForm({
                   </div>
                 ) : null}
               </div>
+            ) : draft.scheduleMode === "cron" ? (
+              <CronScheduleFields
+                draft={draft}
+                onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+              />
             ) : draft.scheduleMode === "once" ? (
               <div className="flex items-center gap-2">
                 <Label htmlFor="scheduled-task-run-at">Run on</Label>
@@ -1884,6 +1908,16 @@ function ScheduledTaskEditorForm({
               </div>
             )}
           </div>
+
+          <ScheduledTaskPolicyFields
+            policy={draft.policy}
+            scheduleType={draft.scheduleMode === "fixed" ? "fixed_time" : draft.scheduleMode}
+            runtimeMode={draft.runtimeMode}
+            postsToConversation={draft.threadId !== ""}
+            onChange={(patch) =>
+              setDraft((current) => ({ ...current, policy: { ...current.policy, ...patch } }))
+            }
+          />
 
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0 space-y-1">

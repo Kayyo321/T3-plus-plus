@@ -890,6 +890,7 @@ export function NewTaskDraftScreen(props: {
     modelSelection: flow.selectedModel,
     runtimeMode: flow.runtimeMode,
     interactionMode: flow.interactionMode,
+    capabilityMode: flow.capabilityMode,
     branch: flow.selectedBranchName,
     worktreePath: flow.selectedWorktreePath,
     createdAt: creationMetadata.createdAt,

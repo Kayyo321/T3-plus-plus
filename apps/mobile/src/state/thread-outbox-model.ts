@@ -15,6 +15,7 @@ import {
   ProjectId,
   ProviderInteractionMode,
   RuntimeMode,
+  ThreadCapabilityMode,
   ThreadId,
   type ModelSelection as ModelSelectionType,
   type ProjectId as ProjectIdType,
@@ -43,6 +44,7 @@ const QueuedThreadCreationSchema = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   startFromOrigin: Schema.optional(Schema.Boolean),
   pullRequestReference: Schema.optional(Schema.String),
+  capabilityMode: Schema.optional(ThreadCapabilityMode),
 });
 
 export const QueuedThreadMessageSchema = Schema.Struct({
@@ -74,6 +76,7 @@ export interface QueuedThreadCreation {
   readonly worktreePath: string | null;
   readonly startFromOrigin?: boolean;
   readonly pullRequestReference?: string;
+  readonly capabilityMode?: ThreadCapabilityMode;
 }
 
 export interface QueuedThreadMessage {

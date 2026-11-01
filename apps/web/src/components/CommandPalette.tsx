@@ -60,6 +60,7 @@ import {
   BotIcon,
   BugIcon,
   EyeIcon,
+  CalendarClockIcon,
   ChartNoAxesColumnIcon,
   CheckIcon,
   ChevronRightIcon,
@@ -83,7 +84,10 @@ import {
   RadioTowerIcon,
   UserPlusIcon,
   GitForkIcon,
+  FileTextIcon,
+  UsersIcon,
 } from "lucide-react";
+import { toggleThreadCapabilityMode } from "~/lib/threadCapabilityMode";
 import { openThreadFind } from "./chat/threadFindStore";
 import {
   useDeferredValue,
@@ -123,6 +127,7 @@ import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { sourceControlEnvironment } from "../state/sourceControl";
 import { useAtomCommand } from "../state/use-atom-command";
+import { useCommandPaletteComputerUseItems } from "./CommandPaletteComputerUseItems";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { useScratchProject } from "../hooks/useScratchProject";
@@ -494,6 +499,9 @@ function OpenCommandPaletteDialog(props: {
   );
   const canShareActiveThreadWithGuest = useAtomValue(
     canShareWithGuestAtom(activeThread?.environmentId ?? ("" as EnvironmentId)),
+  );
+  const computerUseItems = useCommandPaletteComputerUseItems(
+    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
   const activeThreadReferenceCopyTarget =
     referenceThreadRef === null || (pathname === "/pull-requests" && !openPanelPullRequestUrl)
@@ -1534,6 +1542,35 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
+  actionItems.push(...computerUseItems);
+  if (activeThread !== null) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:open-documents",
+      searchTerms: ["documents", "notes", "draft", "markdown"],
+      title: "Open documents",
+      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      run: async () => useRightPanelStore.getState().open(threadRef, "documents"),
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:open-teamwork",
+      searchTerms: ["team", "teamwork", "roles", "review", "board"],
+      title: "Open team board",
+      icon: <UsersIcon className={ITEM_ICON_CLASS} />,
+      run: async () => useRightPanelStore.getState().open(threadRef, "teamwork"),
+    });
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-chat-mode",
+      searchTerms: ["chat mode", "code mode", "capability", "no tools"],
+      title: "Switch between Chat and Code",
+      icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
+      run: async () => toggleThreadCapabilityMode(threadRef),
+    });
+  }
+
   if (activeThread !== null) {
     const thread = activeThread;
     actionItems.push({
@@ -1739,6 +1776,16 @@ function OpenCommandPaletteDialog(props: {
     icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
     run: async () => {
       await navigate({ to: "/settings" });
+    },
+  });
+  actionItems.push({
+    kind: "action",
+    value: "action:scheduled-tasks",
+    searchTerms: ["scheduled tasks", "schedule", "automations", "cron", "repeat", "run history"],
+    title: "Scheduled tasks",
+    icon: <CalendarClockIcon className={ITEM_ICON_CLASS} />,
+    run: async () => {
+      await navigate({ to: "/settings/scheduled-tasks" });
     },
   });
 

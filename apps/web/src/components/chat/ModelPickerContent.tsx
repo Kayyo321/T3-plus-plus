@@ -359,6 +359,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   onRequestClose?: () => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
+  /** A warning on every row of a provider that can still be chosen. */
+  getInstanceNotice?: ((instanceId: ProviderInstanceId) => string | null) | undefined;
   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
   /** The owning popup moves focus here when it opens (its `initialFocus`). */
   searchInputRef: RefObject<HTMLInputElement | null>;
@@ -375,6 +377,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     modelOptionsByInstance,
     instanceEntries,
     getModelDisabledReason,
+    getInstanceNotice,
     onInstanceModelChange,
     onToggleModel,
     onRequestClose,
@@ -861,6 +864,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             onFocusSearch={focusSearchInput}
             instanceEntries={sidebarInstanceEntries}
             showFavorites
+            getInstanceNotice={
+              getInstanceNotice ? (entry) => getInstanceNotice(entry.instanceId) : undefined
+            }
             {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
             {...(lockedDisabledInstanceIds
               ? {
@@ -1059,6 +1065,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     unavailable={model.isUnavailable === true}
                     jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
                     disabledReason={disabledReason}
+                    notice={getInstanceNotice?.(model.instanceId) ?? null}
                     onToggleFavorite={toggleFavorite}
                   />
                 );

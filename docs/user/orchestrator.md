@@ -23,6 +23,10 @@ the provider's settings, or **Choose another**. It never moves to another provid
 that could spend money or send your work somewhere you did not choose. Your choice is kept on the
 machine that runs T3++, so every device shows the same one.
 
+Requests from another owner device fail with the same reason. A scheduled task bound to the
+orchestrator records **Needs input** and pauses its schedule. Fix the provider, then use **Run now**
+to retry, or enable the schedule again. It keeps the failed request in the run history.
+
 ## Decide what it may do
 
 Each area has a grant, set per machine: **Off** refuses everything, including reads. **Ask** lets it
@@ -65,7 +69,9 @@ Choose **Supervise this conversation** in the command palette to turn this on, a
 conversation run** to turn it off. Scheduled tasks, background tasks, and teamwork runs are supervised
 unless you turn it off, because nobody is watching them. It leaves alone any conversation you have open.
 
-Each run gets a few reviews, spaced apart, so the orchestrator and an agent cannot go back and forth
-forever; after that it tells you instead. Messaging a conversation's agent is allowed by default.
+Each run gets a limited number of nudges, with a cooldown between interventions. A review can read
+activity without spending a nudge, but every message, answer, or control action counts separately.
+After the cap it tells you instead. Choosing **Let this conversation run** blocks further interventions
+from reviews already queued. Messaging a conversation's agent is allowed by default.
 Answering for it, interrupting, restarting, stopping, and rewinding ask first. If its model is
 unavailable, supervision pauses and the panel says so.

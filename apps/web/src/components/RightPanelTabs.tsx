@@ -45,6 +45,9 @@ import {
   Files,
   Globe2,
   MessagesSquare,
+  FileTextIcon,
+  Monitor,
+  UsersIcon,
   Plus,
   TerminalSquare,
 } from "lucide-react";
@@ -615,6 +618,13 @@ function surfaceTitle(
       return surface.title ?? surface.target?.name ?? "Device";
     case "side-chat":
       return "Side chat";
+    case "computer-use":
+      return "Computer use";
+    case "documents":
+    case "document":
+      return "Documents";
+    case "teamwork":
+      return "Team";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -707,6 +717,13 @@ function SurfaceIcon({
       return <GitGraphIcon className="size-3 shrink-0" />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
+    case "computer-use":
+      return <Monitor className="size-3 shrink-0" />;
+    case "documents":
+    case "document":
+      return <FileTextIcon className="size-3 shrink-0" />;
+    case "teamwork":
+      return <UsersIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />

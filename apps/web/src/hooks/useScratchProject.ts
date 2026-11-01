@@ -1,5 +1,10 @@
 import { RegistryContext } from "@effect/atom-react";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  deriveLogicalProjectKeyFromSettings,
+  selectProjectGroupingSettings,
+} from "@t3tools/client-runtime/state/project-grouping";
+import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { availableScratchWorkspaceRoot } from "@t3tools/client-runtime/operations/projects";
 import {
   isAtomCommandInterrupted,
@@ -7,11 +12,17 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadCapabilityMode } from "@t3tools/contracts";
 import type { AtomRegistry } from "effect/reactivity";
 import { useContext } from "react";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import {
+  composerDraftHasUserContent,
+  type DraftId,
+  useComposerDraftStore,
+} from "~/composerDraftStore";
+import { readProject } from "~/state/entities";
 import {
   type EnvironmentPresentation,
   useEnvironments,
@@ -19,6 +30,7 @@ import {
 } from "~/state/environments";
 import { projectEnvironment } from "~/state/projects";
 import { type NewThreadHandler, useNewThreadHandler } from "./useHandleNewThread";
+import { getClientSettings } from "./useSettings";
 
 function reportScratchFailure(title: string, error: unknown) {
   toastManager.add(
@@ -77,18 +89,83 @@ export function createScratchProjectActions(input: {
     return null;
   };
 
-  const startScratchThread = async (environmentId: EnvironmentId) => {
-    const project = await openScratchProject(environmentId);
-    if (project) {
-      await input
-        .handleNewThread(scopeProjectRef(project.environmentId, project.id))
-        .catch((error: unknown) =>
-          reportScratchFailure("Could not start without a project", error),
-        );
+  // A reused empty draft keeps its last mode, so every start says which one it wants.
+  const openScratchDraft = async (project: EnvironmentProject, mode: ThreadCapabilityMode) => {
+    const opened = await input
+      .handleNewThread(scopeProjectRef(project.environmentId, project.id))
+      .catch((error: unknown) => {
+        reportScratchFailure("Could not start without a project", error);
+        return null;
+      });
+    if (opened) {
+      useComposerDraftStore
+        .getState()
+        .setDraftThreadContext(opened.draftId, { capabilityMode: mode });
     }
   };
 
-  return { scratchWorkspaceRootFor, scratchEnvironmentId, openScratchProject, startScratchThread };
+  const startScratchThread = async (
+    environmentId: EnvironmentId,
+    mode: ThreadCapabilityMode = "code",
+  ) => {
+    const project = await openScratchProject(environmentId);
+    if (project) await openScratchDraft(project, mode);
+  };
+
+  /**
+   * Chat needs no project, so a draft that picks it leaves the one it is in for Scratch, on the
+   * machine it is already on. With no Scratch to go to it stays put: Chat never requires a project.
+   */
+  const setDraftCapabilityMode = async (draftId: DraftId, mode: ThreadCapabilityMode) => {
+    const drafts = useComposerDraftStore.getState();
+    const session = drafts.getDraftSession(draftId);
+    if (!session) return;
+    const setInPlace = () =>
+      useComposerDraftStore.getState().setDraftThreadContext(draftId, { capabilityMode: mode });
+    const scratchHere = scratchWorkspaceRootFor(session.environmentId) !== null;
+    const environmentId = scratchHere
+      ? session.environmentId
+      : scratchEnvironmentId(session.environmentId);
+    const current = readProject(scopeProjectRef(session.environmentId, session.projectId));
+    if (
+      mode === "code" ||
+      environmentId === null ||
+      (current !== null &&
+        isScratchProject(current, scratchWorkspaceRootFor(current.environmentId)))
+    ) {
+      setInPlace();
+      return;
+    }
+    const project = await openScratchProject(environmentId, "Could not start a Chat conversation");
+    const latest = useComposerDraftStore.getState().getDraftSession(draftId);
+    if (!project || latest?.projectId !== session.projectId) {
+      setInPlace();
+      return;
+    }
+    if (!composerDraftHasUserContent(useComposerDraftStore.getState().getComposerDraft(draftId))) {
+      await openScratchDraft(project, mode);
+      return;
+    }
+    useComposerDraftStore
+      .getState()
+      .setLogicalProjectDraftThreadId(
+        deriveLogicalProjectKeyFromSettings(
+          project,
+          selectProjectGroupingSettings(getClientSettings()),
+        ),
+        scopeProjectRef(project.environmentId, project.id),
+        draftId,
+        { capabilityMode: mode, envMode: "local", branch: null, worktreePath: null },
+      );
+  };
+
+  return {
+    scratchWorkspaceRootFor,
+    scratchEnvironmentId,
+    openScratchProject,
+    startScratchThread,
+    setDraftCapabilityMode,
+  };
 }
 
 export function useScratchProject() {

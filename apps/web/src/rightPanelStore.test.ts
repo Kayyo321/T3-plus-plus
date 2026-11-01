@@ -134,6 +134,105 @@ describe("rightPanelStore", () => {
     );
   });
 
+  it("keeps one tab per document and reopens a closed one, even without a workspace", async () => {
+    const store = useRightPanelStore.getState();
+    store.open(refA, "documents");
+    store.openDocument(refA, "doc-1");
+    store.open(refA, "documents");
+    store.openDocument(refA, "doc-1");
+    const opened = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(opened.surfaces.map((surface) => surface.id)).toEqual(["documents", "document:doc-1"]);
+    expect(opened.activeSurfaceId).toBe("document:doc-1");
+
+    store.closeSurface(refA, "document:doc-1");
+    await reopenClosedView(useClosedViewStore.getState().entries[0]!, {
+      workspaceAvailable: false,
+      openPreview: () => {
+        throw new Error("A document tab must not create a browser session");
+      },
+    });
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      id: "document:doc-1",
+      kind: "document",
+      documentId: "doc-1",
+    });
+
+    store.reconcileFileSurfaces(refA, false);
+    expect(
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces.map(
+        (surface) => surface.kind,
+      ),
+    ).toEqual(["documents", "document"]);
+  });
+
+  it("keeps saved document tabs through a reload and drops malformed ones in migration", async () => {
+    useRightPanelStore.getState().openDocument(refA, "doc-1");
+    await reloadRightPanelStore();
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
+      "document:doc-1",
+    );
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "document:doc-1",
+          surfaces: [
+            { id: "documents", kind: "documents" },
+            { id: "document:doc-1", kind: "document", documentId: "doc-1" },
+            { id: "document:other", kind: "document", documentId: "doc-2" },
+            { id: "document:missing", kind: "document" },
+          ],
+        },
+      },
+    });
+    expect(
+      selectThreadRightPanelState(migrated.byThreadKey, refA).surfaces.map((surface) => surface.id),
+    ).toEqual(["documents", "document:doc-1"]);
+  });
+
+  it("keeps one step log per conversation, reopens it, and drops a malformed saved one", async () => {
+    const store = useRightPanelStore.getState();
+    const sideChat = ThreadId.make("thread-side");
+    store.openComputerUse(refA, refA.threadId);
+    store.openComputerUse(refA, sideChat);
+    store.openComputerUse(refA, refA.threadId);
+    const opened = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(opened.surfaces.map((surface) => surface.id)).toEqual([
+      `computer-use:${refA.threadId}`,
+      `computer-use:${sideChat}`,
+    ]);
+
+    store.closeSurface(refA, `computer-use:${sideChat}`);
+    await reopenClosedView(useClosedViewStore.getState().entries[0]!, {
+      workspaceAvailable: false,
+      openPreview: () => {
+        throw new Error("A step log must not create a browser session");
+      },
+    });
+    expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      id: `computer-use:${sideChat}`,
+      kind: "computer-use",
+      threadId: sideChat,
+    });
+
+    const migrated = migratePersistedRightPanelState({
+      byThreadKey: {
+        "env-1:thread-A": {
+          isOpen: true,
+          activeSurfaceId: "computer-use:thread-A",
+          surfaces: [
+            { id: "computer-use:thread-A", kind: "computer-use", threadId: "thread-A" },
+            { id: "computer-use:other", kind: "computer-use", threadId: "thread-B" },
+            { id: "computer-use:missing", kind: "computer-use" },
+          ],
+        },
+      },
+    });
+    expect(
+      selectThreadRightPanelState(migrated.byThreadKey, refA).surfaces.map((surface) => surface.id),
+    ).toEqual(["computer-use:thread-A"]);
+  });
+
   it("records single and bulk tab closes, newest first", () => {
     const store = useRightPanelStore.getState();
     const pr = pullRequestSurface({

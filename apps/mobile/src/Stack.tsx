@@ -73,6 +73,9 @@ import {
   FullscreenThreadRouteScreen,
   ThreadRouteScreen,
 } from "./features/threads/ThreadRouteScreen";
+import { ThreadComputerUseSheet } from "./features/threads/ThreadComputerUseSheet";
+import { ThreadDocumentScreen } from "./features/threads/ThreadDocumentScreen";
+import { ThreadDocumentsScreen } from "./features/threads/ThreadDocumentsScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
@@ -801,6 +804,21 @@ const RootStackConfig = createWorkspaceStackNavigator({
       screen: ThreadTerminalRouteScreen,
       linking: `${THREAD_LINKING_PREFIX}/terminal`,
       options: SOLID_HEADER_OPTIONS,
+    }),
+    ThreadDocuments: createNativeStackScreen({
+      screen: ThreadDocumentsScreen,
+      linking: `${THREAD_LINKING_PREFIX}/documents`,
+      options: { ...SOLID_HEADER_OPTIONS, title: "Documents" },
+    }),
+    ThreadDocument: createNativeStackScreen({
+      screen: ThreadDocumentScreen,
+      linking: `${THREAD_LINKING_PREFIX}/documents/:documentId`,
+      options: { ...SOLID_HEADER_OPTIONS, title: "Document" },
+    }),
+    ThreadComputerUse: createNativeStackScreen({
+      screen: ThreadComputerUseSheet,
+      linking: `${THREAD_LINKING_PREFIX}/computer-use`,
+      options: { ...SOLID_HEADER_OPTIONS, title: "Computer use" },
     }),
     ThreadInspectorFullscreen: createNativeStackScreen({
       screen: FullscreenThreadRouteScreen,

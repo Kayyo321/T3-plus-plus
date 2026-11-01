@@ -7,9 +7,12 @@ import {
   ProjectId,
 } from "@t3tools/contracts";
 import {
+  createDraft,
+  hasScheduledTaskDraftChanges,
   scheduledTaskDefaultModel,
   DEFAULT_SCHEDULE,
   scheduleDraftForTask,
+  scheduleDraftFromParsed,
   scheduleFromDraft,
 } from "./scheduledTaskDraft";
 
@@ -107,6 +110,66 @@ describe("scheduleFromDraft", () => {
       ).toBeNull();
     },
   );
+
+  it("round-trips a cron schedule and refuses an invalid expression", () => {
+    const schedule = { type: "cron", expression: "0 9 * * 1-5", timeZone: "Europe/Paris" } as const;
+    const draft = scheduleDraftForTask({ schedule });
+    expect(scheduleFromDraft(draft)).toEqual(schedule);
+    expect(scheduleFromDraft({ ...draft, cronTimeZone: " " })).toEqual({
+      type: "cron",
+      expression: schedule.expression,
+    });
+    expect(scheduleFromDraft({ ...draft, cronExpression: "0 9 * *" })).toBeNull();
+  });
+});
+
+describe("scheduleDraftFromParsed", () => {
+  const current = { ...DEFAULT_SCHEDULE, cronExpression: "0 0 * * *", replayKey: "{{body.id}}" };
+
+  it("moves the form to the parsed mode and keeps what the other modes hold", () => {
+    expect(
+      scheduleDraftFromParsed(current, {
+        type: "fixed_time",
+        timeOfDay: "17:30",
+        weekdays: [1, 3],
+      }),
+    ).toMatchObject({
+      mode: "fixed_time",
+      timeOfDay: "17:30",
+      weekdays: [1, 3],
+      cronExpression: "0 0 * * *",
+      replayKey: "{{body.id}}",
+    });
+    expect(
+      scheduleDraftFromParsed(current, { type: "interval", everyMs: 7_200_000 }),
+    ).toMatchObject({ mode: "interval", intervalMinutes: "120" });
+  });
+
+  it("opens a parsed cron or one-time schedule ready to save", () => {
+    const cron = { type: "cron", expression: "*/5 * * * 1" } as const;
+    expect(scheduleFromDraft(scheduleDraftFromParsed(current, cron))).toEqual(cron);
+    const runAt = "2026-11-02T09:00:00.000Z";
+    expect(scheduleFromDraft(scheduleDraftFromParsed(current, { type: "once", runAt }))).toEqual({
+      type: "once",
+      runAt,
+    });
+  });
+});
+
+describe("hasScheduledTaskDraftChanges", () => {
+  it("counts a cron edit as a change, so leaving asks before dropping it", () => {
+    const initial = createDraft(null, null);
+    const edit = (schedule: Partial<typeof DEFAULT_SCHEDULE>) => ({
+      ...initial,
+      schedule: { ...initial.schedule, ...schedule },
+    });
+    expect(hasScheduledTaskDraftChanges(initial, edit({ cronExpression: "0 9 * * *" }))).toBe(true);
+    expect(hasScheduledTaskDraftChanges(initial, edit({ cronTimeZone: "UTC" }))).toBe(true);
+  });
+});
+
+it("starts a new task with approvals on", () => {
+  expect(createDraft(null, null).runtimeMode).toBe("approval-required");
 });
 
 describe("scheduled task model defaults", () => {

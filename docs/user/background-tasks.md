@@ -5,10 +5,10 @@ A background task is work attached to a conversation that keeps running without 
 ## Start one
 
 - Type `/background` in the composer, with the command after it if you like.
-- Use **Run in background** in the command palette, or press `mod+alt+g`.
+- Use **Run in background** in the command palette, or press `mod+alt+u`.
 - An agent can start one with its `background_task_start` tool.
 
-Commands run in the conversation's folder with no input attached, so a command that stops to ask a question will fail rather than hang. Chat conversations cannot run commands.
+Commands use the conversation’s worktree, or its attached workspace’s working root, and receive that workspace’s credentials only in the child process. Known credentials are masked before output reaches the log or completion card. Commands run with no input attached, so a command that stops to ask a question will fail rather than hang. Chat conversations cannot run commands.
 
 ## Follow it
 

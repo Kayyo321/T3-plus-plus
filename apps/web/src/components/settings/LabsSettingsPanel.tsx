@@ -2,12 +2,16 @@ import { useAuth } from "@clerk/react";
 import { Link } from "@tanstack/react-router";
 
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
+import { serverEnvironment } from "~/state/server";
+import { useEnvironmentQuery } from "~/state/query";
 import { useT3ConnectAuthPrompt } from "../clerk/useT3ConnectAuthPrompt";
+import { computerUseVirtualDisplayReason } from "../computerUse/computerUse.logic";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { ScopedSwitch } from "./ScopedSwitch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { useSettingsScope } from "./SettingsScopeContext";
 import { LegacyFeaturesSection } from "./SettingsPanels";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
 
@@ -22,6 +26,7 @@ export function LabsSettingsPanel() {
         {hasCloudPublicConfig() ? <GuestLinksRowWithSignIn /> : <GuestLinksRow />}
         <LinkedEnvironmentsRow />
         <SimlockHostsRow />
+        <ComputerUseRow />
       </SettingsSection>
       <LegacyFeaturesSection />
     </SettingsPageContainer>
@@ -144,6 +149,37 @@ function LinkedEnvironmentsRow() {
             updateSettings({ linkedEnvironmentsEnabled: Boolean(checked) })
           }
           aria-label="Linked environments"
+        />
+      }
+    />
+  );
+}
+
+function ComputerUseRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const { target } = useSettingsScope();
+  const support = useEnvironmentQuery(
+    target
+      ? serverEnvironment.computerUseSupport({ environmentId: target.environmentId, input: {} })
+      : null,
+  );
+  const virtualDisplay = support.data?.virtualDisplay ?? null;
+  return (
+    <SettingsRow
+      serverScoped
+      {...searchableSetting("computer-use")}
+      settingKeys={["computerUseEnabled"]}
+      description="Let agents see and operate the app's built-in browser or a virtual display. Agents can only use it in a conversation where someone turns it on. It needs a new agent session to take effect."
+      {...(virtualDisplay === null || virtualDisplay.available
+        ? {}
+        : { status: computerUseVirtualDisplayReason(virtualDisplay) })}
+      control={
+        <ScopedSwitch
+          settingKeys={["computerUseEnabled"]}
+          checked={settings.computerUseEnabled}
+          onCheckedChange={(checked) => updateSettings({ computerUseEnabled: Boolean(checked) })}
+          aria-label="Computer use"
         />
       }
     />

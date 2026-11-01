@@ -34,6 +34,7 @@ import type {
   ScopedThreadRef,
   ServerProvider,
   ThreadId,
+  ThreadCapabilityMode,
 } from "@t3tools/contracts";
 import {
   EnvironmentRequestInvalidError,
@@ -118,6 +119,13 @@ import type { ThreadSyncPhase } from "../../threadSync";
 import { ComposerBanner } from "./ComposerBanner";
 import { ComposerSurface } from "./ComposerSurface";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./ComposerBannerStack";
+import {
+  type ChatModeNotice,
+  chatModeNotice,
+  chatModeSendBlockReason,
+  makeChatModelDisabledReason,
+  makeChatModelNotice,
+} from "./capabilityMode.logic";
 import {
   attachmentsToReleaseOnUploadCapabilityLoss,
   composerOtherFilesForPresentation,
@@ -230,7 +238,7 @@ import { observeResize } from "~/lib/observeResize";
 
 const isEnvironmentRequestInvalidError = Schema.is(EnvironmentRequestInvalidError);
 import { toastManager } from "../ui/toast";
-import { PlayIcon } from "lucide-react";
+import { PlayIcon, TriangleAlertIcon } from "lucide-react";
 import { proposedPlanTitle } from "@t3tools/shared/proposedPlanText";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import { type AppModelOption, getAppModelOptionsForInstance } from "../../modelSelection";
@@ -367,6 +375,7 @@ export interface ChatComposerProps {
   activeThreadId: ThreadId | null;
   activeThread: Thread | undefined;
   activeThreadShell: ThreadShell | null;
+  capabilityMode: ThreadCapabilityMode;
   promptHistoryMessages: ReadonlyArray<ChatMessage>;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
@@ -517,6 +526,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     routeKind,
     routeThreadRef,
     draftId,
+    capabilityMode,
     multipleModelSelections,
     supportsMultipleModels,
     onMultipleModelSelectionsChange: setMultipleModelSelections,
@@ -920,8 +930,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedProviderEntry?.snapshot,
     selectedModel,
   );
+  const chatNotice: ChatModeNotice = selectedProviderEntry
+    ? chatModeNotice({
+        mode: capabilityMode,
+        driver: selectedProviderEntry.driverKind,
+        providerName: selectedProviderEntry.displayName,
+      })
+    : { level: "none" };
+  const chatSendBlockReason = chatModeSendBlockReason({
+    mode: capabilityMode,
+    notice: chatNotice,
+    multipleModelSelections,
+  });
   const sendDisabledReason =
     externalSendDisabledReason ??
+    chatSendBlockReason ??
     (multipleModelSelections?.length === 0 ? "Select at least one model." : null) ??
     (activePendingProgress
       ? attachmentBlockReason
@@ -2307,6 +2330,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : composerControlsCollapsed
       ? 0
       : expandedControlsIconOnlyBlockCount;
+  const chatAwareModelDisabledReason = makeChatModelDisabledReason(
+    capabilityMode,
+    providerInstanceEntries,
+    getModelDisabledReason,
+  );
+  const chatModelNotice = makeChatModelNotice(capabilityMode, providerInstanceEntries);
+  const chatModeBannerMessage =
+    chatSendBlockReason ?? (chatNotice.level === "warning" ? chatNotice.message : null);
+  const chatModeBanner: ComposerBannerStackItem | null =
+    chatModeBannerMessage === null
+      ? null
+      : {
+          id: "chat-mode",
+          variant: chatSendBlockReason === null ? "warning" : "error",
+          icon: <TriangleAlertIcon />,
+          title: "Chat mode",
+          description: chatModeBannerMessage,
+        };
   const composerControls = (
     <ComposerControlsBar
       environmentId={environmentId}
@@ -2340,7 +2381,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onOpenProviderSetup={onOpenProviderSetup}
       providerCatalogPending={providerCatalogPending}
       isSendBusy={isSendBusy}
-      multipleModelsEnabled={routeKind === "draft" && supportsMultipleModels}
+      multipleModelsEnabled={
+        routeKind === "draft" && supportsMultipleModels && capabilityMode !== "chat"
+      }
       multipleModelSelections={multipleModelSelections}
       onMultipleModelSelectionsChange={setMultipleModelSelections}
       selectedModelSelection={selectedModelSelection}
@@ -2356,7 +2399,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       modelPickerOpen={isComposerModelPickerOpen}
       onModelPickerOpenChange={setIsComposerModelPickerOpen}
       modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
-      getModelDisabledReason={getModelDisabledReason}
+      getModelDisabledReason={chatAwareModelDisabledReason}
+      getInstanceNotice={chatModelNotice}
+      capabilityMode={capabilityMode}
+      capabilityModeRunActive={props.activeThreadShell?.runtime?.activeRunId != null}
+      canOperateThread={canOperateThread}
     />
   );
   // An open question owns the space above the composer. Only a machine problem,
@@ -2366,7 +2413,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         (item) =>
           item.group === "environment" && (item.variant === "error" || item.variant === "warning"),
       )
-    : props.bannerItems;
+    : chatModeBanner
+      ? [chatModeBanner, ...props.bannerItems]
+      : props.bannerItems;
 
   const insertComposerText = (
     text: string,

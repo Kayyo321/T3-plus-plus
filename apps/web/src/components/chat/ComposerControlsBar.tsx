@@ -4,6 +4,7 @@ import type { ProviderInstanceEntry } from "../../providerInstances";
 import { type AppModelOption } from "../../modelSelection";
 import { CircleAlertIcon } from "lucide-react";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import { ComposerCapabilityModeControl } from "./ComposerCapabilityModeControl";
 import { ComposerControl } from "./ComposerControl";
 import {
   ComposerFooterModeControls,
@@ -18,6 +19,7 @@ import {
   type ProviderInteractionMode,
   type RuntimeMode,
   type ServerProvider,
+  type ThreadCapabilityMode,
 } from "@t3tools/contracts";
 import type { EffortDisplay } from "@t3tools/contracts/settings";
 import { cn } from "~/lib/utils";
@@ -88,6 +90,10 @@ export function ComposerControlsBar(props: {
   onModelPickerOpenChange: (open: boolean) => void;
   modelPickerIconClassName: string | undefined;
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
+  getInstanceNotice: ((instanceId: ProviderInstanceId) => string | null) | undefined;
+  capabilityMode: ThreadCapabilityMode;
+  capabilityModeRunActive: boolean;
+  canOperateThread: boolean;
 }) {
   const {
     environmentId,
@@ -136,6 +142,7 @@ export function ComposerControlsBar(props: {
     onModelPickerOpenChange,
     modelPickerIconClassName,
     getModelDisabledReason,
+    getInstanceNotice,
   } = props;
   const accessMatchesDefault = compatibleRuntimeMode === defaultRuntimeMode;
   const {
@@ -248,6 +255,7 @@ export function ComposerControlsBar(props: {
         : {})}
       onOpenChange={onModelPickerOpenChange}
       getModelDisabledReason={getModelDisabledReason}
+      getInstanceNotice={getInstanceNotice}
       onOpenProviderSetup={onOpenProviderSetup}
     />
   );
@@ -268,6 +276,15 @@ export function ComposerControlsBar(props: {
     </ComposerControl>
   ) : (
     <>
+      <ComposerCapabilityModeControl
+        threadRef={routeKind === "server" ? routeThreadRef : null}
+        draftId={routeKind === "draft" ? draftId : null}
+        mode={props.capabilityMode}
+        runActive={props.capabilityModeRunActive}
+        canOperate={props.canOperateThread}
+        size={controlSize}
+        hidden={composerControlsHidden}
+      />
       {composerModelPicker}
 
       <>
