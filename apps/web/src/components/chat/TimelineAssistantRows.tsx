@@ -114,9 +114,13 @@ function AssistantForkButton({
             disabled={busy}
             onClick={() => {
               setBusy(true);
-              void onForkFromRun({ sourceThreadId: projectedItem.sourceThreadId, runId }).finally(
-                () => setBusy(false),
-              );
+              void onForkFromRun({
+                sourceThreadId: projectedItem.sourceThreadId,
+                runId,
+                ...(projectedItem.item.type === "assistant_message"
+                  ? { messageId: projectedItem.item.messageId }
+                  : {}),
+              }).finally(() => setBusy(false));
             }}
             aria-label="Fork from this response"
           />

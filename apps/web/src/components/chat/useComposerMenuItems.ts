@@ -65,6 +65,7 @@ export function useComposerMenuItems({
   threadPullRequests,
   planModeUiEnabled,
   sideChatAvailable,
+  runInBackgroundAvailable,
   sideChatDisabledReason,
   compactSlashCommandAvailable,
   selectedProvider,
@@ -84,6 +85,7 @@ export function useComposerMenuItems({
   readonly threadPullRequests: ReadonlyArray<ThreadPullRequestLink> | undefined;
   readonly planModeUiEnabled: boolean;
   readonly sideChatAvailable: boolean;
+  readonly runInBackgroundAvailable: boolean;
   readonly sideChatDisabledReason: string | null;
   readonly compactSlashCommandAvailable: boolean;
   readonly selectedProvider: ProviderDriverKind;
@@ -239,6 +241,17 @@ export function useComposerMenuItems({
                 command: "default",
                 label: "/default",
                 description: "Switch this thread back to normal build mode",
+              },
+            ] as const)
+          : []),
+        ...(runInBackgroundAvailable
+          ? ([
+              {
+                id: "slash:background",
+                type: "slash-command",
+                command: "background",
+                label: "/background",
+                description: "Run a command without blocking this thread",
               },
             ] as const)
           : []),

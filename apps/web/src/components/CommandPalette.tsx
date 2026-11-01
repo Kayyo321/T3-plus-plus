@@ -1,3 +1,7 @@
+import {
+  runThreadBranchCommand,
+  type ThreadBranchCommand,
+} from "../shortcuts/threadBranchCommands";
 import { threadPullRequestLinkMode } from "@t3tools/client-runtime/thread-pull-request-compatibility";
 import { visibleThreadPullRequests } from "@t3tools/shared/threadPullRequests";
 
@@ -74,6 +78,7 @@ import {
   SquarePenIcon,
   TextSearchIcon,
   UserPlusIcon,
+  GitForkIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
 import {
@@ -1337,6 +1342,48 @@ function OpenCommandPaletteDialog(props: {
         });
       }
     }
+  }
+
+  if (activeThread !== null) {
+    const branchAction = (
+      command: ThreadBranchCommand,
+      title: string,
+      description: string,
+      searchTerms: ReadonlyArray<string>,
+    ) => {
+      actionItems.push({
+        kind: "action",
+        value: `action:${command}`,
+        searchTerms: [...searchTerms],
+        title,
+        description,
+        icon: <GitForkIcon className={ITEM_ICON_CLASS} />,
+        shortcutCommand: command,
+        run: async () => runThreadBranchCommand(command),
+      });
+    };
+    branchAction("thread.rewind", "Rewind this thread", "Return to before your last message", [
+      "rewind",
+      "undo",
+      "restore",
+      "checkpoint",
+    ]);
+    branchAction("thread.fork", "Fork this thread", "Continue from here in a new conversation", [
+      "fork",
+      "branch",
+    ]);
+    branchAction(
+      "thread.newNestedSession",
+      "New nested session",
+      "A conversation of its own under this one",
+      ["nested", "child", "session"],
+    );
+    branchAction(
+      "thread.runInBackground",
+      "Run in background",
+      "Run a command attached to this thread",
+      ["background", "task", "command", "dev server", "watch"],
+    );
   }
 
   if (activeThreadReferenceCopyTarget !== null) {

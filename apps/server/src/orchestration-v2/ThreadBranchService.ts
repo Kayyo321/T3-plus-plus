@@ -20,17 +20,23 @@ import {
   type ThreadRewindTarget,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { isCheckpointRestoreIsolated } from "./CheckpointRestoreSafety.ts";
 import { CheckpointServiceV2 } from "./CheckpointService.ts";
-import { CommandPolicyV2, isActiveRun } from "./CommandPolicy.ts";
+import {
+  CommandPolicyCapabilityUnsupportedError,
+  CommandPolicyV2,
+  isActiveRun,
+} from "./CommandPolicy.ts";
 import { readForkHistoryItems } from "./ContextHandoffService.ts";
 import type { DispatchActor } from "./NestedSessionService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -389,11 +395,13 @@ const make = Effect.gen(function* () {
             return created.worktree;
           })
         : null;
+    // A branch can be archived and reopened again, so these must not replay an earlier receipt.
+    const reopenedAt = DateTime.toEpochMillis(yield* DateTime.now);
     if (thread.archivedAt !== null) {
       yield* orchestrator
         .dispatch({
           type: "thread.unarchive",
-          commandId: CommandId.make(`command:rewind-reopen:${input.threadId}`),
+          commandId: CommandId.make(`command:rewind-reopen:${input.threadId}:${reopenedAt}`),
           threadId: input.threadId,
         })
         .pipe(Effect.mapError(unexpected));
@@ -402,7 +410,9 @@ const make = Effect.gen(function* () {
       yield* orchestrator
         .dispatch({
           type: "thread.metadata.update",
-          commandId: CommandId.make(`command:rewind-reopen-workspace:${input.threadId}`),
+          commandId: CommandId.make(
+            `command:rewind-reopen-workspace:${input.threadId}:${reopenedAt}`,
+          ),
           threadId: input.threadId,
           worktreePath: worktree.path,
           branch: worktree.refName,
@@ -517,14 +527,20 @@ const make = Effect.gen(function* () {
   return ThreadBranchService.of({ previewRewind, rewind, reopenRewindBranch, previewFork });
 });
 
+const isCapabilityUnsupported = Schema.is(CommandPolicyCapabilityUnsupportedError);
+
 /** The orchestrator's refusals are already written for people; everything else is not. */
 const rewindDispatchError = (cause: unknown) => {
-  const tag =
-    typeof cause === "object" && cause !== null && "_tag" in cause ? cause._tag : undefined;
-  const detail = cause instanceof Error ? cause.message : "The rewind could not be started.";
-  if (tag === "CommandPolicyCapabilityUnsupportedError") {
+  const inner = cause instanceof Error ? cause.cause : undefined;
+  if (isCapabilityUnsupported(inner)) {
     return fail("provider-unsupported", "This agent cannot rewind its conversation.");
   }
+  const detail =
+    typeof inner === "string"
+      ? inner
+      : cause instanceof Error
+        ? cause.message
+        : "The rewind could not be started.";
   return fail(detail.includes("isolated worktree") ? "shared-workspace" : "failed", detail);
 };
 

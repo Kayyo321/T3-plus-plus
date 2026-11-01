@@ -110,7 +110,7 @@ function makeAdapter(input: {
           resumeThread: ({ providerThread }) => Effect.succeed(providerThread),
           startTurn: (turnInput) =>
             Effect.gen(function* () {
-              if (sessionInput.runtimePolicy.cwd !== undefined) {
+              if (cwd !== process.cwd()) {
                 NodeFS.writeFileSync(
                   NodePath.join(cwd, `turn-${turnInput.runOrdinal}.txt`),
                   "written by the agent",
@@ -401,6 +401,10 @@ describe("rewind", () => {
         creationSource: "web",
       });
       assert.lengthOf((yield* visibleMessages(fork)).slice(0, 6), 6);
+
+      const resumed = yield* sendTurn(tail, "resume");
+      const carried = resumed.contextHandoffs.find((handoff) => handoff.targetRunId !== null);
+      assert.include(carried?.summaryText, "Prompt three");
     }).pipe(
       Effect.provide(layerFor("rewind-conversation", ClaudeProviderCapabilitiesV2, rollbacks)),
     );
@@ -428,6 +432,18 @@ describe("rewind", () => {
       const branch = yield* orchestrator.getThreadProjection(tail);
       assert.equal(branch.thread.rewindTail?.snapshotRef, snapshot);
       assert.deepEqual(branch.thread.rewindTail?.discardedRunIds, []);
+
+      // An unreopened branch shares the worktree but has written nothing to it.
+      const again = yield* orchestrator.dispatch({
+        type: "checkpoint.rollback",
+        commandId: CommandId.make("rewind:files-again"),
+        threadId,
+        scopeId: after.checkpoints[0]!.scopeId,
+        checkpointId: (yield* checkpointFor(threadId, 2)).id,
+        restoreFiles: true,
+        filesOnly: true,
+      });
+      assert.isAbove(again.sequence, 0);
     }).pipe(Effect.provide(layerFor("rewind-files", ClaudeProviderCapabilitiesV2, rollbacks)));
   });
 

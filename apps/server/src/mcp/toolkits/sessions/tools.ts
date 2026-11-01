@@ -148,9 +148,10 @@ const ThreadForkPreviewTool = Tool.make("t3_thread_fork_preview", {
 const BackgroundTaskStartTool = Tool.make("background_task_start", {
   ...base,
   description:
-    "Run a shell command attached to this thread without blocking it: a test run, dev server, or watcher. Stdin is closed, so it cannot prompt. It outlives your turn. `resumeAgent` starts a turn here when it ends.",
+    "Run a shell command attached to this thread without blocking it: a test run, dev server, or watcher. Stdin is closed, so it cannot prompt. It outlives your turn. Or pass `childThreadId` to follow a nested session instead. `resumeAgent` starts a turn here when it ends.",
   parameters: Schema.Struct({
-    command: TrimmedNonEmptyString,
+    command: Schema.optional(TrimmedNonEmptyString),
+    childThreadId: Schema.optional(ThreadId),
     name: Schema.optional(TrimmedNonEmptyString),
     kind: Schema.optional(BackgroundTaskKind),
     resumeAgent: Schema.optional(Schema.Boolean),

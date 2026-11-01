@@ -13,6 +13,7 @@ import {
   type NodeId,
   type OrchestrationV2Command,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2ThreadForkSourcePoint,
   type PlanId,
   type ProjectId,
   type ProjectIconOverride,
@@ -220,6 +221,13 @@ export interface ForkThreadFromRunInput extends CommandMetadata {
   readonly sourceThreadId: ThreadId;
   readonly targetThreadId: ThreadId;
   readonly runId: RunId;
+  readonly title?: string;
+}
+
+export interface ForkThreadFromMessageInput extends CommandMetadata {
+  readonly sourceThreadId: ThreadId;
+  readonly targetThreadId: ThreadId;
+  readonly sourcePoint: OrchestrationV2ThreadForkSourcePoint;
   readonly title?: string;
 }
 
@@ -990,6 +998,21 @@ export const forkThreadFromRun = Effect.fn("EnvironmentCommands.forkThreadFromRu
     ...(input.title === undefined ? {} : { title: input.title }),
   });
 });
+
+export const forkThreadFromMessage = Effect.fn("EnvironmentCommands.forkThreadFromMessage")(
+  function* (input: ForkThreadFromMessageInput) {
+    return yield* dispatch({
+      type: "thread.fork",
+      commandId: yield* allocateCommandId(input),
+      createdBy: "user",
+      creationSource: input.creationSource ?? "web",
+      sourceThreadId: input.sourceThreadId,
+      targetThreadId: input.targetThreadId,
+      sourcePoint: input.sourcePoint,
+      ...(input.title === undefined ? {} : { title: input.title }),
+    });
+  },
+);
 
 /** Forks the thread's latest stable point into a hidden side chat; works while it runs. */
 export const forkSideChat = Effect.fn("EnvironmentCommands.forkSideChat")(function* (

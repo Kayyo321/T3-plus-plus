@@ -83,9 +83,21 @@ export function messageForkPoint(input: {
       item.messageId === message.id,
   );
   if (index === -1) return { refused: `Message ${message.id} has no timeline row.` };
+  const later = ordered.slice(message.role === "user" ? index : index + 1);
+  if (message.role === "assistant" && !later.some(isTurnWork)) {
+    return { run, throughTurnItemId: undefined };
+  }
   const through = message.role === "user" ? ordered[index - 1] : ordered[index];
-  return { run, throughTurnItemId: through === ordered.at(-1) ? undefined : through?.id };
+  return { run, throughTurnItemId: through?.id };
 }
+
+/** Checkpoints and notices follow a turn's last reply without being part of what it said. */
+const isTurnWork = (item: OrchestrationV2TurnItem) =>
+  item.type === "assistant_message" ||
+  item.type === "user_message" ||
+  item.type === "command_execution" ||
+  item.type === "file_change" ||
+  item.type === "dynamic_tool";
 
 export interface ThreadForkServiceV2Shape {
   readonly plan: (input: {

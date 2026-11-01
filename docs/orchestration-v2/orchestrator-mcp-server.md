@@ -192,7 +192,9 @@ provider selection model-visible without allowing a request that cannot run.
 
 ## Tool Surface
 
-The server exposes eleven orchestration tools.
+The sessions toolkit adds nested sessions, rewind, and background tasks; see
+[`toolkits/sessions`](../../apps/server/src/mcp/toolkits/sessions/tools.ts). The server exposes
+eleven orchestration tools.
 
 ### `orchestrator_capabilities`
 

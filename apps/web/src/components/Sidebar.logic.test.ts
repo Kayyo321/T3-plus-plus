@@ -9,6 +9,7 @@ import {
   shouldCreateNewThreadInCurrentProject,
   archiveSelectedThreadEntries,
   deleteSelectedThreadEntries,
+  filterSidebarV2VisibleThreads,
   getFallbackThreadIdAfterDelete,
   hasUnseenCompletion,
   resolveSidebarRowThreadId,
@@ -1742,5 +1743,35 @@ describe("shouldCreateNewThreadInCurrentProject", () => {
     expect(shouldCreateNewThreadInCurrentProject(false, 1, 3)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(false, 0, 0)).toBe(true);
     expect(shouldCreateNewThreadInCurrentProject(true, 2, 2)).toBe(true);
+  });
+});
+
+describe("nested sessions in the sidebar", () => {
+  const row = (id: string, parent: string | null, nested = false, archived = false) => ({
+    id: ThreadId.make(id),
+    environmentId: EnvironmentId.make("environment"),
+    projectId: "project",
+    archivedAt: archived ? "2026-11-01T00:00:00.000Z" : null,
+    lineage: {
+      parentThreadId: parent === null ? null : ThreadId.make(parent),
+      relationshipToParent: parent === null ? null : ("fork" as const),
+      rootThreadId: ThreadId.make("parent"),
+      ...(nested ? { nestedSession: true } : {}),
+    },
+  });
+
+  it("leaves a nested session to its parent's row, until the parent is gone", () => {
+    const visible = filterSidebarV2VisibleThreads(
+      [
+        row("parent", null),
+        row("child", "parent", true),
+        row("plain-fork", "parent"),
+        row("closed", null, false, true),
+        row("kept", "closed", true),
+      ],
+      null,
+      new Set(),
+    );
+    expect(visible.map((thread) => thread.id)).toEqual(["parent", "plain-fork", "kept"]);
   });
 });

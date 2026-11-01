@@ -74,10 +74,14 @@ vi.mock("../state/use-atom-query-runner", () => ({
           auth: { serverUpdateScope: "environment:maintain" },
         }),
 }));
-vi.mock("../state/threads", () => ({
+vi.mock("../state/threads", async () => ({
+  environmentThreadShells: {
+    quietThreadShellsAtom: (await import("effect/reactivity")).Atom.make([]),
+  },
   threadEnvironment: Object.fromEntries(
     [
       "archive",
+      "closeWithNestedSessions",
       "unarchive",
       "delete",
       "settle",

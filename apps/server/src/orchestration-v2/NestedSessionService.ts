@@ -369,11 +369,11 @@ const make = Effect.gen(function* () {
         ),
       );
 
-  const archive = (threadId: ThreadId, reason: string) =>
+  const archive = (threadId: ThreadId, closeId: string) =>
     threads
       .dispatch({
         type: "thread.archive",
-        commandId: CommandId.make(`command:close-parent:${reason}:${threadId}`),
+        commandId: CommandId.make(`command:close-parent:${closeId}:${threadId}`),
         threadId,
       })
       .pipe(
@@ -386,6 +386,7 @@ const make = Effect.gen(function* () {
     "NestedSessionService.closeParent",
   )(function* (input, actor) {
     const children = yield* listChildren(input.threadId);
+    const closeId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
     const archived: Array<ThreadId> = [];
     const stopped: Array<ThreadId> = [];
     if (input.children !== "keep") {
@@ -396,12 +397,12 @@ const make = Effect.gen(function* () {
           stopped.push(child.id);
         }
         if (input.children === "archive" && child.archivedAt === null) {
-          yield* archive(child.id, input.threadId);
+          yield* archive(child.id, closeId);
           archived.push(child.id);
         }
       }
     }
-    yield* archive(input.threadId, input.threadId);
+    yield* archive(input.threadId, closeId);
     yield* record(actor, {
       action: `nested-session.close-parent.${input.children}`,
       threadId: input.threadId,

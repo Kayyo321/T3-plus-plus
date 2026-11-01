@@ -4,6 +4,7 @@ import { findRevealRef } from "./markdownFindContext";
 import {
   type EnvironmentId,
   type MessageId,
+  type RunId,
   type ScheduledTaskId,
   type ServerProviderSkill,
   ThreadId,
@@ -28,6 +29,7 @@ import {
 import ChatMarkdown from "../ChatMarkdown";
 import {
   CalendarClockIcon,
+  GitForkIcon,
   ChevronDownIcon,
   DownloadIcon,
   EyeIcon,
@@ -272,6 +274,8 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
     "";
 
   const revertTurnCount = row.revertTurnCount;
+  const forkPoint = row.projectedItem;
+  const forkRunId = forkPoint?.item.runId ?? null;
   const promptLink = promptLinkFor(text);
   // Find reads the DOM, so a folded prompt stays mounted but hidden while find is open.
   const bodyMounted = expanded || ctx.findActive;
@@ -330,6 +334,13 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             <div className="flex items-center gap-0.5">
               {typeof revertTurnCount === "number" && (
                 <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
+              )}
+              {forkRunId === null || forkPoint === undefined ? null : (
+                <ForkUserMessageButton
+                  sourceThreadId={forkPoint.sourceThreadId}
+                  messageId={row.message.id}
+                  runId={forkRunId}
+                />
               )}
               <MessageCopyButton text={text} variant="ghost" />
               {promptLink !== null && (
@@ -448,6 +459,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const resolvedContext = resolveUserMessageContext({ ...row.message, text: userMessage.text });
   const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const revertTurnCount = row.revertTurnCount;
+  const forkPoint = row.projectedItem;
+  const forkRunId = forkPoint?.item.runId ?? null;
   const attachmentReferences = collectComposerContextReferences(resolvedContext.text).flatMap(
     (occurrence) => {
       const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
@@ -783,6 +796,13 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         {typeof revertTurnCount === "number" && (
           <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
         )}
+        {forkRunId === null || forkPoint === undefined ? null : (
+          <ForkUserMessageButton
+            sourceThreadId={forkPoint.sourceThreadId}
+            messageId={row.message.id}
+            runId={forkRunId}
+          />
+        )}
         {copyText && (
           <MessageCopyButton
             text={contextClipboardFragment ? copyText : plainText}
@@ -1053,6 +1073,38 @@ function UserMessageIntentMarker({
           ? "Originally queued, then promoted to steer the active turn"
           : "Steered the active turn"}
       </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+function ForkUserMessageButton({
+  sourceThreadId,
+  messageId,
+  runId,
+}: {
+  sourceThreadId: ThreadId;
+  messageId: MessageId;
+  runId: RunId;
+}) {
+  const ctx = use(TimelineRowCtx);
+  const onForkFromRun = ctx.onForkFromRun;
+  if (onForkFromRun === undefined) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            onClick={() => void onForkFromRun({ sourceThreadId, runId, messageId })}
+            aria-label="Fork from before this message"
+          />
+        }
+      >
+        <GitForkIcon className="size-3" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">Fork from before this message</TooltipPopup>
     </Tooltip>
   );
 }

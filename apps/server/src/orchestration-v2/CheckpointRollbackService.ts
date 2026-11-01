@@ -159,6 +159,11 @@ export const layer: Layer.Layer<
       const { keepTail } = input;
       if (keepTail === undefined) return [];
       if (mode === "conversation" && discarded.length === 0) return [];
+      // A replayed effect must not create the branch twice.
+      const existing = yield* projections
+        .getThread(keepTail.targetThreadId)
+        .pipe(Effect.catchTags({ ProjectionStoreThreadNotFoundError: () => Effect.succeed(null) }));
+      if (existing !== null) return [];
       const records = yield* projections.getThreadRecords(input.threadId, [
         "runs",
         "providerThreads",

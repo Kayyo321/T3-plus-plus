@@ -2,6 +2,7 @@ import {
   type EnvironmentId,
   type ProviderInstanceId,
   type ServerConfig,
+  type BackgroundTask,
   type ServerConfigStreamEvent,
   type ServerLifecycleWelcomePayload,
   type ServerLifecycleStreamReadyEvent,
@@ -52,6 +53,7 @@ import {
   type EnvironmentRpcInput,
 } from "../rpc/client.ts";
 import type { RpcSession } from "../rpc/session.ts";
+import { applyBackgroundTaskItem } from "./backgroundTasks.ts";
 import { followStreamInEnvironment } from "./runtime.ts";
 import {
   applyServerConfigProjection,
@@ -743,6 +745,8 @@ export function recordFetchedWorkspaceSnapshot(
   );
 }
 
+const EMPTY_BACKGROUND_TASKS: ReadonlyArray<BackgroundTask> = [];
+
 export function createServerEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<
     EnvironmentRegistry.EnvironmentRegistry | Persistence.EnvironmentCacheStore | R,
@@ -1293,6 +1297,28 @@ export function createServerEnvironmentAtoms<R, E>(
     scheduledTaskWebhookDelivery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:scheduled-task:webhook-delivery",
       tag: WS_METHODS.scheduledTasksGetWebhookDelivery,
+    }),
+    backgroundTasksLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:background-tasks:live",
+      tag: WS_METHODS.backgroundTaskSubscribe,
+      transform: (stream) =>
+        stream.pipe(Stream.scan(() => EMPTY_BACKGROUND_TASKS, applyBackgroundTaskItem)),
+    }),
+    startBackgroundTask: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:background-tasks:start",
+      tag: WS_METHODS.backgroundTaskStart,
+    }),
+    stopBackgroundTask: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:background-tasks:stop",
+      tag: WS_METHODS.backgroundTaskStop,
+    }),
+    removeBackgroundTask: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:background-tasks:remove",
+      tag: WS_METHODS.backgroundTaskRemove,
+    }),
+    readBackgroundTaskLog: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:background-tasks:read-log",
+      tag: WS_METHODS.backgroundTaskReadLog,
     }),
     scheduledTasksLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:scheduled-tasks:live",

@@ -242,8 +242,13 @@ type AppThreadLineage = {
   rootThreadId: ThreadId;
   // A side chat: a fork shown only inside its parent. The fork planner sets it from `thread.fork`.
   sideChat?: boolean;
+  // A nested session: a fork shown under its parent, which may inherit nothing.
+  nestedSession?: boolean;
 };
 ```
+
+A nested session is a flag rather than a third `relationshipToParent` so that older clients, whose
+schema has only two literals, keep decoding the thread and list it as a plain fork.
 
 Operational transfer details should live in `ContextTransfer`, not directly on `AppThread`, because a thread can participate in many transfers:
 
@@ -280,6 +285,16 @@ The first backend slice implements lazy same-provider fork resolution:
 
 This keeps the runtime aligned with the architecture while making portable context explicit and
 auditable through `ContextTransfer` and `ContextHandoff` records.
+
+## Rewind Branches
+
+A rewind's discarded tail is an archived fork carrying `rewindTail`. It is planned in the rollback
+effect and committed with the rolled-back runs, so a provider refusal leaves no branch behind.
+Forks normally show rolled-back rows of their source because they were forked before the rollback.
+A rewind branch instead names the runs it took, in `discardedRunIds`, so it does not revive turns an
+earlier rewind took. An unreopened branch has no runs of its own: forking one forks its source at
+the branch's run and keeps `rewindTail`. Its first dispatch is always portable when turns were
+rolled back, because the provider thread no longer holds them.
 
 ## Relationship To Provider Switching
 

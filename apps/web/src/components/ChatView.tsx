@@ -27,6 +27,12 @@ import { useThreadLifecycle } from "./chat/useThreadLifecycle";
 import { useRightPanelActions } from "./chat/useRightPanelActions";
 import { type TerminalLaunchContext, useChatTerminalActions } from "./chat/useChatTerminalActions";
 import { useComposerSend } from "./chat/useComposerSend";
+import {
+  BackgroundTaskDialogHost,
+  BackgroundTaskTray,
+  openBackgroundTaskDialog,
+} from "./chat/BackgroundTaskTray";
+import { ThreadBranchCommandsHost } from "./chat/ThreadBranchCommandsHost";
 import { useComposerResume } from "./chat/useComposerResume";
 import { useImplementPlanInNewThread } from "./chat/useProposedPlanSend";
 import { ThreadFind, ThreadFindCanvas } from "./chat/ThreadFindProvider";
@@ -264,6 +270,8 @@ import {
   DeviceSetupDialogHost,
   openBranchRestoreConfirm,
   PullRequestThreadDialogHost,
+  ForkPreviewHost,
+  NestedSessionDialogHost,
   RevertConfirmHost,
 } from "./chat/ChatOverlayHosts";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
@@ -2792,27 +2800,36 @@ export default function ChatView(props: ChatViewProps) {
                 ? "Available once the thread's worktree is set up."
                 : null;
   const openSideChatStable = useStableCallback(() => void sideChat.open());
-  const sendSideChatStable = useStableCallback((prompt: string) => sideChat.open(prompt));
-  const { onConfirmRevertStable, onForkFromRunStable, onRevertTimelineTurnStable } =
-    useTimelineRewind({
+  const runInBackgroundStable = useStableCallback((command?: string) => {
+    openBackgroundTaskDialog({
       environmentId,
-      routeThreadRef,
-      routeThreadKey,
-      currentRouteThreadKeyRef,
-      serverProjection,
-      activeThread,
-      timelineMessages,
-      phase,
-      isSendBusy,
-      isRevertingCheckpoint,
-      supportsConversationRollback,
-      activeEnvironmentUnavailable,
-      activeEnvironmentUnavailableLabel,
-      promptRef,
-      composerRef,
-      composerDraftTarget,
-      setThreadError,
+      threadId: routeThreadRef.threadId,
+      ...(command === undefined ? {} : { command }),
     });
+  });
+  const sendSideChatStable = useStableCallback((prompt: string) => sideChat.open(prompt));
+  const {
+    onConfirmForkStable,
+    onConfirmRevertStable,
+    onForkFromRunStable,
+    onRevertTimelineTurnStable,
+  } = useTimelineRewind({
+    environmentId,
+    routeThreadRef,
+    routeThreadKey,
+    currentRouteThreadKeyRef,
+    activeThread,
+    timelineMessages,
+    phase,
+    isSendBusy,
+    isRevertingCheckpoint,
+    activeEnvironmentUnavailable,
+    activeEnvironmentUnavailableLabel,
+    promptRef,
+    composerRef,
+    composerDraftTarget,
+    setThreadError,
+  });
   const onCompactContext = () => {
     if (compactDisabled) return;
     void sendStandaloneCommand("/compact", "Failed to compact context.");
@@ -3563,6 +3580,12 @@ export default function ChatView(props: ChatViewProps) {
                               onOpenParent={parentThreadLink?.open ?? null}
                             />
                           ) : null}
+                          {!isServerThread ? null : (
+                            <BackgroundTaskTray
+                              environmentId={environmentId}
+                              threadId={routeThreadRef.threadId}
+                            />
+                          )}
                           {!composerMounted ? null : (
                             <ChatComposer
                               canOperateThread={canOperateThread}
@@ -3626,6 +3649,7 @@ export default function ChatView(props: ChatViewProps) {
                               keepFullHistory={keepFullHistory}
                               onToggleKeepFullHistory={toggleKeepFullHistoryStable}
                               sideChatAvailable={sideChat.available}
+                              onRunInBackground={isServerThread ? runInBackgroundStable : undefined}
                               sideChatDisabledReason={sideChatDisabledReason}
                               onUsageLimitsCommand={
                                 usageLimitsOffered &&
@@ -3987,7 +4011,34 @@ export default function ChatView(props: ChatViewProps) {
         </ChatRightPanel>
       ) : null}
 
-      <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
+      <RevertConfirmHost
+        threadKey={routeThreadKey}
+        environmentId={environmentId}
+        threadId={routeThreadRef.threadId}
+        onConfirm={onConfirmRevertStable}
+      />
+      <ForkPreviewHost
+        threadKey={routeThreadKey}
+        environmentId={environmentId}
+        onConfirm={onConfirmForkStable}
+      />
+      <NestedSessionDialogHost
+        threadKey={routeThreadKey}
+        environmentId={environmentId}
+        threadId={routeThreadRef.threadId}
+      />
+      <BackgroundTaskDialogHost />
+      {isServerThread ? (
+        <ThreadBranchCommandsHost
+          threadKey={routeThreadKey}
+          threadId={routeThreadRef.threadId}
+          latestRunId={activeThread?.latestRun?.runId ?? null}
+          messages={timelineMessages}
+          onRewind={onRevertTimelineTurnStable}
+          onFork={onForkFromRunStable}
+          onRunInBackground={runInBackgroundStable}
+        />
+      ) : null}
       {embedded ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       <ExpandedImageDialogHost threadKey={routeThreadKey} />

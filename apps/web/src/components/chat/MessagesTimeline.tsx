@@ -273,6 +273,7 @@ interface MessagesTimelineProps {
   onForkFromRun?: (input: {
     readonly sourceThreadId: ThreadId;
     readonly runId: RunId;
+    readonly messageId?: MessageId | undefined;
   }) => Promise<void>;
   supportsConversationRollback: boolean;
   threadStartCheckpointReady?: boolean;

@@ -1,6 +1,7 @@
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { nestedSessionsByParent } from "@t3tools/client-runtime/state/thread-relationships";
 import { isShownUnderParent } from "@t3tools/client-runtime/state/threads";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
@@ -656,9 +657,12 @@ export function filterSidebarV2VisibleThreads<
   scopedProjectKeys: ReadonlySet<string> | null,
   delegatedUnderParent: ReadonlySet<string>,
 ): T[] {
+  const nested = nestedSessionsByParent(threads);
+  const nestedIds = new Set([...nested.values()].flat().map((thread) => thread.id));
   return threads.filter(
     (thread) =>
       thread.archivedAt === null &&
+      !nestedIds.has(thread.id) &&
       !isShownUnderParent(
         { environmentId: thread.environmentId, threadId: thread.id },
         thread.lineage,

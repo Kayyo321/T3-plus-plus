@@ -1,4 +1,6 @@
 import {
+  isListedThreadLineage,
+  isNestedSessionLineage,
   isOrchestrationV2WorkActive,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2ThreadShell,
@@ -31,6 +33,68 @@ export interface ThreadRelationshipWalkRow {
   readonly fromThreadId: ThreadId;
   readonly depth: number;
   readonly edge: ThreadRelationshipEdge;
+}
+
+/** Rows of a thread's lineage as a small tree, without subagents and side chats. */
+export interface ThreadLineageTreeRow {
+  readonly thread: OrchestrationV2ThreadShell;
+  readonly depth: number;
+}
+
+export function threadLineageTree(
+  threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+  rootThreadId: ThreadId,
+): ReadonlyArray<ThreadLineageTreeRow> {
+  const byParent = new Map<ThreadId, Array<OrchestrationV2ThreadShell>>();
+  const seen = new Set<ThreadId>();
+  for (const thread of threads) {
+    if (seen.has(thread.id)) continue;
+    seen.add(thread.id);
+    const parent = thread.lineage.parentThreadId;
+    if (parent === null || !isListedThreadLineage(thread.lineage)) continue;
+    byParent.set(parent, [...(byParent.get(parent) ?? []), thread]);
+  }
+  const rows: Array<ThreadLineageTreeRow> = [];
+  const visited = new Set<ThreadId>();
+  const visit = (threadId: ThreadId, depth: number) => {
+    if (visited.has(threadId)) return;
+    visited.add(threadId);
+    for (const child of byParent.get(threadId) ?? []) {
+      rows.push({ thread: child, depth });
+      visit(child.id, depth + 1);
+    }
+  };
+  const root = threads.find((thread) => thread.id === rootThreadId);
+  if (root !== undefined) rows.push({ thread: root, depth: 0 });
+  visit(rootThreadId, 1);
+  return rows;
+}
+
+/** Nested sessions by the parent they show under, when that parent is listed too. */
+export function nestedSessionsByParent<
+  Thread extends {
+    readonly id: ThreadId;
+    readonly archivedAt: unknown;
+    readonly lineage: OrchestrationV2ThreadShell["lineage"];
+  },
+>(threads: ReadonlyArray<Thread>): ReadonlyMap<ThreadId, ReadonlyArray<Thread>> {
+  const listed = new Set(
+    threads.filter((thread) => thread.archivedAt === null).map((thread) => thread.id),
+  );
+  const children = new Map<ThreadId, Array<Thread>>();
+  for (const thread of threads) {
+    const parent = thread.lineage.parentThreadId;
+    if (
+      thread.archivedAt !== null ||
+      parent === null ||
+      !isNestedSessionLineage(thread.lineage) ||
+      !listed.has(parent)
+    ) {
+      continue;
+    }
+    children.set(parent, [...(children.get(parent) ?? []), thread]);
+  }
+  return children;
 }
 
 export function resolveMergeBackTargetThreadId(

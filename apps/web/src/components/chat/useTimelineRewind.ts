@@ -1,12 +1,14 @@
-import type { EnvironmentThreadShell, ThreadStructure } from "@t3tools/client-runtime/state/shell";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { ComposerThreadTarget } from "../../composerDraftStore";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { SessionPhase } from "../../types";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import {
   AuthOrchestrationOperateScope,
+  CommandId,
   type EnvironmentId,
   type MessageId,
+  type OrchestrationV2ThreadForkSourcePoint,
   type ScopedThreadRef,
   type ThreadId,
   type RunId,
@@ -18,18 +20,17 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { readLocalApi } from "../../localApi";
-import { findRevertCheckpoint } from "../../session-logic";
 import { type ChatMessage } from "../../types";
-import { newThreadId } from "~/lib/utils";
+import { newThreadId, randomUUID } from "~/lib/utils";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { threadEnvironment } from "../../state/threads";
 import { waitForThreadShell } from "../../state/entities";
-import { openRevertConfirm } from "./ChatOverlayHosts";
+import { openForkPreview, openRevertConfirm } from "./ChatOverlayHosts";
+import type { RewindChoice } from "./RewindDialog";
 import { assetEnvironment } from "../../state/assets";
 import { readEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { rewindToMessage } from "./chatViewSend";
 import { makeThreadErrorSetter } from "../ChatView.logic";
@@ -38,13 +39,11 @@ interface TimelineRewindInput {
   readonly routeThreadRef: ScopedThreadRef;
   readonly routeThreadKey: string;
   readonly currentRouteThreadKeyRef: { readonly current: string | null };
-  readonly serverProjection: ThreadStructure | null;
   readonly activeThread: EnvironmentThreadShell | undefined;
   readonly timelineMessages: ReadonlyArray<ChatMessage>;
   readonly phase: SessionPhase;
   readonly isSendBusy: boolean;
   readonly isRevertingCheckpoint: boolean;
-  readonly supportsConversationRollback: boolean;
   readonly activeEnvironmentUnavailable: boolean;
   readonly activeEnvironmentUnavailableLabel: string | null;
   readonly promptRef: { current: string };
@@ -63,13 +62,11 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     routeThreadRef,
     routeThreadKey,
     currentRouteThreadKeyRef,
-    serverProjection,
     activeThread,
     timelineMessages,
     phase,
     isSendBusy,
     isRevertingCheckpoint,
-    supportsConversationRollback,
     activeEnvironmentUnavailable,
     activeEnvironmentUnavailableLabel,
     promptRef,
@@ -83,17 +80,15 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     refresh: true,
   });
 
-  const revertThreadCheckpoint = useOrchestrationCommand(threadEnvironment.revertCheckpoint, {
-    reportFailure: false,
-  });
-  const forkThreadFromRun = useAtomCommand(threadEnvironment.forkFromRun, {
+  const rewindThread = useAtomCommand(threadEnvironment.rewind, { reportFailure: false });
+  const forkThreadFromMessage = useAtomCommand(threadEnvironment.forkFromMessage, {
     reportFailure: false,
   });
 
   const onRevertToTurnCount = async (
     turnCount: number,
     messageId: MessageId,
-    restoreFiles?: boolean,
+    choice?: RewindChoice,
   ) => {
     const localApi = readLocalApi();
     if (
@@ -106,13 +101,6 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     const message = timelineMessages.find((message) => message.id === messageId);
     if (!message || message.role !== "user") return;
 
-    if (!supportsConversationRollback) {
-      setThreadError(
-        activeThread.id,
-        "This provider does not support reverting conversation history. Start a new thread instead.",
-      );
-      return;
-    }
     if (activeEnvironmentUnavailable && activeEnvironmentUnavailableLabel) {
       setThreadError(
         activeThread.id,
@@ -124,8 +112,29 @@ export function useTimelineRewind(input: TimelineRewindInput) {
       setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
       return;
     }
-    if (restoreFiles === undefined) {
+    if (choice === undefined) {
       openRevertConfirm(routeThreadKey, { turnCount, messageId });
+      return;
+    }
+    const rewindInput = {
+      threadId: activeThread.id,
+      target: { type: "message", messageId },
+      mode: choice.mode,
+      tailThreadId: newThreadId(),
+      ...(choice.outsideChanges === undefined ? {} : { outsideChanges: choice.outsideChanges }),
+    } as const;
+    if (choice.mode === "files") {
+      const result = await rewindThread({
+        environmentId,
+        input: { ...rewindInput, commandId: CommandId.make(randomUUID()) },
+      });
+      if (result._tag === "Failure") {
+        const error = squashAtomCommandFailure(result);
+        setThreadError(
+          activeThread.id,
+          error instanceof Error ? error.message : "Files could not be restored.",
+        );
+      }
       return;
     }
 
@@ -139,13 +148,10 @@ export function useTimelineRewind(input: TimelineRewindInput) {
       routeThreadRef,
       threadId: activeThread.id,
       turnCount,
-      restoreFiles,
-      // Keep the live checkpoint identity when command context refetches a bounded window.
-      checkpoint: findRevertCheckpoint(serverProjection?.checkpoints ?? [], turnCount),
       draftTarget: composerDraftTarget,
       composerHasPendingAttachments: composerRef.current?.hasPendingAttachments() === true,
       createAssetUrl: createAttachmentAssetUrl,
-      revertThreadCheckpoint,
+      rewind: (commandId) => rewindThread({ environmentId, input: { ...rewindInput, commandId } }),
     });
     useComposerDraftStore.setState((store) => {
       const remaining = new Set(store.rewindingThreadKeys);
@@ -166,24 +172,37 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     }
   };
   const onRevertToTurnCountStable = useStableCallback(onRevertToTurnCount);
-  const onConfirmRevert = (turnCount: number, messageId: MessageId, restoreFiles: boolean) => {
-    void onRevertToTurnCount(turnCount, messageId, restoreFiles);
+  const onConfirmRevert = (turnCount: number, messageId: MessageId, choice: RewindChoice) => {
+    void onRevertToTurnCount(turnCount, messageId, choice);
   };
   const onConfirmRevertStable = useStableCallback(onConfirmRevert);
 
   const onForkFromRun = async (input: {
     readonly sourceThreadId: ThreadId;
     readonly runId: RunId;
+    readonly messageId?: MessageId | undefined;
+  }) => {
+    openForkPreview(routeThreadKey, {
+      sourceThreadId: input.sourceThreadId,
+      sourcePoint:
+        input.messageId === undefined
+          ? { type: "run", runId: input.runId }
+          : { type: "message", messageId: input.messageId },
+    });
+  };
+  const onConfirmFork = async (input: {
+    readonly sourceThreadId: ThreadId;
+    readonly sourcePoint: OrchestrationV2ThreadForkSourcePoint;
   }) => {
     if (!activeThread || activeEnvironmentUnavailable) return;
     const targetThreadId = newThreadId();
     const targetThreadRef = scopeThreadRef(environmentId, targetThreadId);
-    const result = await forkThreadFromRun({
+    const result = await forkThreadFromMessage({
       environmentId,
       input: {
         sourceThreadId: input.sourceThreadId,
         targetThreadId,
-        runId: input.runId,
+        sourcePoint: input.sourcePoint,
         title: `${activeThread.title} fork`,
       },
     });
@@ -211,11 +230,15 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     });
   };
   const onForkFromRunStable = useStableCallback(onForkFromRun);
+  const onConfirmForkStable = useStableCallback((input: Parameters<typeof onConfirmFork>[0]) => {
+    void onConfirmFork(input);
+  });
   const onRevertTimelineTurn = (targetTurnCount: number, messageId: MessageId) => {
     void onRevertToTurnCountStable(targetTurnCount, messageId);
   };
   const onRevertTimelineTurnStable = useStableCallback(onRevertTimelineTurn);
   return {
+    onConfirmForkStable,
     onConfirmRevertStable,
     onForkFromRunStable,
     onRevertTimelineTurnStable,

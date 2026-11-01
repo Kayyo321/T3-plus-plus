@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import { ThreadId } from "@t3tools/contracts";
+import { type OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 import {
   deriveThreadRelationshipGraph,
   immediateThreadRelationships,
+  nestedSessionsByParent,
   orderWebThreadLineageRows,
   resolveMergeBackTargetThreadId,
+  threadLineageTree,
   threadRelationshipRowStatus,
 } from "./threadRelationships.ts";
 
@@ -437,5 +439,57 @@ describe("web thread lineage ordering", () => {
         },
       }),
     ).toEqual([dated, missingTransfer, undated]);
+  });
+});
+
+describe("nested sessions and lineage rows", () => {
+  const thread = (
+    id: string,
+    parent: string | null,
+    extra: {
+      readonly nested?: boolean;
+      readonly sideChat?: boolean;
+      readonly archived?: boolean;
+    } = {},
+  ) =>
+    ({
+      id: ThreadId.make(id),
+      archivedAt: extra.archived ? "2026-11-01T00:00:00.000Z" : null,
+      lineage: {
+        parentThreadId: parent === null ? null : ThreadId.make(parent),
+        relationshipToParent: parent === null ? null : "fork",
+        rootThreadId: ThreadId.make("root"),
+        ...(extra.nested ? { nestedSession: true } : {}),
+        ...(extra.sideChat ? { sideChat: true } : {}),
+      },
+    }) as unknown as OrchestrationV2ThreadShell;
+
+  it("groups nested sessions under listed parents and leaves orphans out", () => {
+    const grouped = nestedSessionsByParent([
+      thread("root", null),
+      thread("child", "root", { nested: true }),
+      thread("plain-fork", "root"),
+      thread("gone", null, { archived: true }),
+      thread("orphan", "gone", { nested: true }),
+    ]);
+    expect([...grouped.keys()]).toEqual(["root"]);
+    expect(grouped.get(ThreadId.make("root"))?.map(({ id }) => id)).toEqual(["child"]);
+  });
+
+  it("walks a family depth first and skips what only its parent shows", () => {
+    const rows = threadLineageTree(
+      [
+        thread("root", null),
+        thread("child", "root", { nested: true }),
+        thread("grandchild", "child"),
+        thread("side", "root", { sideChat: true }),
+      ],
+      ThreadId.make("root"),
+    );
+    expect(rows.map(({ thread: row, depth }) => [row.id, depth])).toEqual([
+      ["root", 0],
+      ["child", 1],
+      ["grandchild", 2],
+    ]);
   });
 });
