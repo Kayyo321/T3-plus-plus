@@ -58,6 +58,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { dropThreadOnPane } from "../../layouts/layoutActions";
+import { beginLayoutDrag } from "../../layouts/layoutDrag";
 
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useOpenPrLink } from "../../lib/openPullRequestLink";
@@ -966,6 +968,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       "bg-sidebar bg-linear-to-b from-sidebar-row-active to-sidebar-row-active text-sidebar-foreground opacity-100 shadow-lg",
   );
   const sortable = props.sortable;
+  const onSplitDragStart = (event: ReactPointerEvent<HTMLLIElement>) => {
+    const sidebar = event.currentTarget.closest('[data-slot="sidebar-container"]');
+    if (!sidebar) return;
+    beginLayoutDrag({
+      event: event.nativeEvent,
+      origin: sidebar,
+      payload: { kind: "thread", threadRef },
+      onDrop: (hover) => dropThreadOnPane(threadRef, hover.targetId, hover.zone),
+    });
+  };
   const sortableRootProps = sortable
     ? {
         ref: sortable.setNodeRef,
@@ -1195,6 +1207,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     return (
       <li
         data-thread-item={threadKey}
+        onPointerDownCapture={onSplitDragStart}
         {...sortableRootProps}
         {...(fileDropHandlers ?? {})}
         className={cn(
@@ -1391,6 +1404,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   return (
     <li
       data-thread-item={threadKey}
+      onPointerDownCapture={onSplitDragStart}
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(

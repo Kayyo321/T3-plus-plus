@@ -128,6 +128,10 @@ import {
   usePrimaryEnvironmentId,
 } from "../state/environments";
 import { useProjects, useServerConfigs, useThreadShells, waitForProject } from "../state/entities";
+import { DEFAULT_BUILT_IN_LAYOUT_ID } from "../layouts/layoutDocument";
+import { selectLayouts, useLayoutStore } from "../layouts/layoutStore";
+import { useSplitViewStore } from "../layouts/splitViewStore";
+import { buildLayoutPaletteItems } from "./layouts/CommandPaletteLayoutItems";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
   appendBrowsePathSegment,
@@ -147,7 +151,11 @@ import {
   useCommandPaletteMount,
   useCommandPaletteStore,
 } from "../commandPaletteStore";
-import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
+import {
+  PULL_REQUESTS_PANEL_REF,
+  selectThreadRightPanelState,
+  useRightPanelStore,
+} from "../rightPanelStore";
 import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   cn,
@@ -446,6 +454,17 @@ function OpenCommandPaletteDialog(props: {
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
   const paletteRouteTarget = useThreadRouteTarget();
+  const layoutThreadRef = activeThread
+    ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+    : activeDraftThread
+      ? scopeThreadRef(activeDraftThread.environmentId, activeDraftThread.threadId)
+      : null;
+  const savedLayouts = useLayoutStore((state) => state.saved);
+  const splitView = useSplitViewStore();
+  const appliedLayoutId = useRightPanelStore(
+    (state) =>
+      selectThreadRightPanelState(state.byThreadKey, layoutThreadRef).arrangement?.layoutId,
+  );
   const projects = useProjects();
   const referenceThreadRef =
     pathname === "/pull-requests"
@@ -1579,6 +1598,20 @@ function OpenCommandPaletteDialog(props: {
         queueWorkspaceFocusFromPalette(direction);
       },
     });
+  }
+
+  if (layoutThreadRef !== null) {
+    actionItems.push(
+      ...buildLayoutPaletteItems({
+        threadRef: layoutThreadRef,
+        thread: activeThread ?? null,
+        threads,
+        layouts: selectLayouts({ saved: savedLayouts }),
+        activeLayoutId: appliedLayoutId ?? DEFAULT_BUILT_IN_LAYOUT_ID,
+        split: splitView,
+        iconClassName: ITEM_ICON_CLASS,
+      }),
+    );
   }
 
   actionItems.push({

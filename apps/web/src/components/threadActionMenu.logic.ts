@@ -2,6 +2,7 @@ import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
 
 export type ThreadActionMenuId =
+  | "open-in-split"
   | "find"
   | "new-thread-on-branch"
   | "filter-by-project"
@@ -110,6 +111,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "copy-branch",
     "copy-thread",
     "copy-thread-id",
+    "open-in-split",
   ].includes(action);
 }
 
@@ -120,6 +122,7 @@ export function buildThreadActionMenuItems(
     ...(state.canFind
       ? [{ id: "find" as const, label: "Find in thread", icon: "text-search" }]
       : []),
+    { id: "open-in-split", label: "Open in split view", icon: "columns-2" },
     ...(state.branch
       ? [
           {

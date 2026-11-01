@@ -8,6 +8,8 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { useClosedViewStore } from "./closedViewStore";
+import { reconcileArrangement, type ThreadArrangement } from "./layouts/threadArrangement";
+import { decodeArrangement } from "./layouts/threadArrangementCodec";
 import { resolveStorage } from "./lib/storage";
 import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
@@ -95,6 +97,7 @@ export interface ThreadRightPanelState {
   dismissedDeviceSurfaceIds?: string[];
   maximized?: true;
   proactiveDiffTurnId?: RunId;
+  arrangement?: ThreadArrangement;
 }
 
 export interface ThreadPanelVisibility {
@@ -171,6 +174,17 @@ interface RightPanelStoreState {
   closeSurfacesToRight: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
   moveSurface: (ref: ScopedThreadRef, surfaceId: string, toIndex: number) => void;
+  /** Replaces the thread's arrangement; null returns it to the plain right panel, closed. */
+  applyArrangement: (
+    ref: ScopedThreadRef,
+    arrangement: ThreadArrangement | null,
+    opens?: ReadonlyArray<string>,
+  ) => void;
+  /** Geometry and tab moves on the live arrangement; null drops it for the plain right panel. */
+  updateArrangement: (
+    ref: ScopedThreadRef,
+    update: (arrangement: ThreadArrangement) => ThreadArrangement | null,
+  ) => void;
   reconcileBrowserSurfaces: (
     ref: ScopedThreadRef,
     tabIds: readonly string[],
@@ -219,6 +233,19 @@ const singletonSurface = (
       return { id: "device", kind };
   }
 };
+
+type SingletonKind = Parameters<typeof singletonSurface>[0];
+const SINGLETON_KINDS: ReadonlySet<string> = new Set<string>(
+  RIGHT_PANEL_KINDS.filter(
+    (kind) =>
+      kind !== "file" &&
+      kind !== "preview" &&
+      kind !== "terminal" &&
+      kind !== "pull-request" &&
+      kind !== "side-chat",
+  ),
+);
+export const isSingletonKind = (kind: string): kind is SingletonKind => SINGLETON_KINDS.has(kind);
 
 const browserSurface = (tabId: string | null): RightPanelSurface =>
   tabId
@@ -316,7 +343,8 @@ const updateThreadStateMap = (
     next.activeSurfaceId === null &&
     next.surfaces.length === 0 &&
     !next.dismissedDeviceSurfaceIds?.length &&
-    next.proactiveDiffTurnId === undefined
+    next.proactiveDiffTurnId === undefined &&
+    next.arrangement === undefined
   ) {
     if (!(threadKey in byThreadKey)) return byThreadKey;
     const { [threadKey]: _removed, ...rest } = byThreadKey;
@@ -342,6 +370,24 @@ const updateThreadPanelVisibilityMap = (
   return { ...byThreadKey, [threadKey]: next };
 };
 
+// An arranged panel keeps its empty groups on screen when its last tab closes; `close` hides it.
+const withReconciledArrangement = (
+  current: ThreadRightPanelState,
+  next: ThreadRightPanelState,
+): ThreadRightPanelState => {
+  if (next === current || next.arrangement === undefined) return next;
+  const arrangement = reconcileArrangement(
+    next.arrangement,
+    current.surfaces,
+    next.surfaces,
+    next.activeSurfaceId,
+  );
+  const lastTabClosed =
+    current.isOpen && !next.isOpen && current.surfaces.length > 0 && next.surfaces.length === 0;
+  if (arrangement === next.arrangement && !lastTabClosed) return next;
+  return { ...next, arrangement, isOpen: next.isOpen || lastTabClosed };
+};
+
 type RightPanelStoreData = Pick<
   RightPanelStoreState,
   "byThreadKey" | "threadPanelVisibilityByThreadKey"
@@ -353,7 +399,9 @@ const updateThread = (
   updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
 ): RightPanelStoreData => {
   const current = state.byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
-  const byThreadKey = updateThreadStateMap(state.byThreadKey, threadKey, updater);
+  const byThreadKey = updateThreadStateMap(state.byThreadKey, threadKey, (thread) =>
+    withReconciledArrangement(thread, updater(thread)),
+  );
   const next = byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
   let threadPanelVisibilityByThreadKey = state.threadPanelVisibilityByThreadKey;
 
@@ -456,6 +504,12 @@ const closeAction = (
   threadKey: string,
   updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
 ): Partial<RightPanelStoreState> => userAction(state, threadKey, updater, true);
+
+// A file tab carries its own explorer, unless a layout gave the explorer a place of its own.
+const withoutReplacedExplorer = (current: ThreadRightPanelState): RightPanelSurface[] =>
+  current.arrangement
+    ? current.surfaces
+    : current.surfaces.filter((surface) => surface.kind !== "files");
 
 function normalizeRevealLine(line: number | undefined): number | null {
   if (line === undefined || !Number.isFinite(line)) return null;
@@ -591,6 +645,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                       }
                     : {}),
                   ...(validThreadState?.maximized === true ? { maximized: true as const } : {}),
+                  ...decodeArrangement(validThreadState?.arrangement),
                 },
               ];
             }),
@@ -784,9 +839,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             const relativePath = /^[A-Za-z]:\/+$/.test(requestedPath)
               ? requestedPath
               : requestedPath.replace(/\/+$/, "") || requestedPath;
-            const withoutStandaloneExplorer = current.surfaces.filter(
-              (surface) => surface.kind !== "files",
-            );
+            const withoutStandaloneExplorer = withoutReplacedExplorer(current);
             const surfaceId = `file:${relativePath}` as const;
             const existing = withoutStandaloneExplorer.find(
               (surface): surface is Extract<RightPanelSurface, { kind: "file" }> =>
@@ -828,7 +881,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
                 const kept = keepSource ? [source] : [];
                 return existing ? kept : [...kept, target];
               }
-              return !existing && target.kind === "file" && surface.kind === "files"
+              return !existing &&
+                target.kind === "file" &&
+                surface.kind === "files" &&
+                current.arrangement === undefined
                 ? []
                 : [surface];
             });
@@ -837,15 +893,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       openAttachment: (ref, attachment) =>
         set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) => {
-            const withoutStandaloneExplorer = current.surfaces.filter(
-              (surface) => surface.kind !== "files",
-            );
-            return upsertSurface(
-              { ...current, surfaces: withoutStandaloneExplorer },
+          userAction(state, scopedThreadKey(ref), (current) =>
+            upsertSurface(
+              { ...current, surfaces: withoutReplacedExplorer(current) },
               attachmentSurface(attachment),
-            );
-          }),
+            ),
+          ),
         ),
       openTerminal: (ref, terminalId) =>
         set((state) =>
@@ -1002,6 +1055,41 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return { ...current, surfaces };
           }),
         ),
+      applyArrangement: (ref, arrangement, opens = []) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) => {
+            const { arrangement: _previous, maximized: _maximized, ...rest } = current;
+            if (arrangement === null) return { ...rest, isOpen: false };
+            const opened = opens
+              .filter(isSingletonKind)
+              .reduce<ThreadRightPanelState>(
+                (thread, kind) => upsertSurface(thread, singletonSurface(kind), false),
+                { ...rest, arrangement },
+              );
+            const pendingOpens = opens.filter(
+              (kind) =>
+                (kind === "terminal" || kind === "preview") &&
+                !opened.surfaces.some((surface) => surface.kind === kind),
+            );
+            return {
+              ...opened,
+              isOpen: true,
+              activeSurfaceId: opened.activeSurfaceId ?? opened.surfaces[0]?.id ?? null,
+              arrangement: pendingOpens.length > 0 ? { ...arrangement, pendingOpens } : arrangement,
+            };
+          }),
+        ),
+      updateArrangement: (ref, update) =>
+        set((state) =>
+          updateThread(state, scopedThreadKey(ref), (current) => {
+            if (!current.arrangement) return current;
+            const next = update(current.arrangement);
+            if (next === current.arrangement) return current;
+            if (next !== null) return { ...current, arrangement: next };
+            const { arrangement: _arrangement, ...rest } = current;
+            return rest;
+          }),
+        ),
       reconcileBrowserSurfaces: (ref, tabIds, hiddenTabIds) =>
         set((state) =>
           automaticUpdate(state, scopedThreadKey(ref), (current) => {
@@ -1092,7 +1180,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               (surface) => surface.id === current.activeSurfaceId,
             );
             if (current.isOpen && active?.kind === kind) {
-              return { ...current, isOpen: false };
+              if (!current.arrangement) return { ...current, isOpen: false };
+              // Other groups stay on screen, so toggling takes away only this tab.
+              const surfaces = current.surfaces.filter((surface) => surface.id !== active.id);
+              return { ...current, surfaces, activeSurfaceId: surfaces.at(-1)?.id ?? null };
             }
             if (kind === "preview") {
               const existing = current.surfaces.find((surface) => surface.kind === "preview");

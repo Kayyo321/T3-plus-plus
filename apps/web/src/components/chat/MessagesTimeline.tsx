@@ -3,6 +3,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
 import { AudioPreviewUnmountContext } from "../files/AudioPreview";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
+import { LinkedTimelineContext } from "./linkedTimeline";
 import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock } from "./WorkLog";
@@ -816,6 +817,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
           ...(alwaysRenderIndices.length === 0 ? {} : { indices: alwaysRenderIndices }),
           ...(alwaysRenderKeys.length === 0 ? {} : { keys: alwaysRenderKeys }),
         };
+  const linkedTimeline = use(LinkedTimelineContext);
+  const linkedTurnRef = useRef<number | null>(null);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
   const handleAnchorReady = (info: { anchorIndex: number | undefined }) => {
@@ -889,7 +892,22 @@ const ConversationTimeline = memo(function ConversationTimeline({
     setMinimapCurrentIndex((current) =>
       current === nextCurrentIndex ? current : nextCurrentIndex,
     );
+    if (linkedTimeline?.leads && nextCurrentIndex !== null) {
+      if (linkedTurnRef.current !== nextCurrentIndex) linkedTimeline.publish(nextCurrentIndex);
+      linkedTurnRef.current = nextCurrentIndex;
+    }
   });
+  const followLinkedTurn = useEffectEvent((turnOrdinal: number) => {
+    const rowIndex = minimapRowIndices[Math.min(turnOrdinal, minimapRowIndices.length - 1)];
+    if (rowIndex === undefined) return;
+    navigateTimeline();
+    void listRef.current?.scrollToIndex({ index: rowIndex, animated: false, viewOffset: 24 });
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes this list to the turn reached by the pane it is linked to
+  useEffect(
+    () => linkedTimeline?.subscribe((turnOrdinal) => followLinkedTurn(turnOrdinal)),
+    [linkedTimeline],
+  );
 
   const minimapRefreshFrameRef = useRef<number | null>(null);
   const scheduleMinimapRefresh = () => {

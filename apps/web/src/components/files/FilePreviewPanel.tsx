@@ -22,6 +22,7 @@ import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import {
   DEFAULT_TOKENIZE_MAX_LENGTH,
+  DIFFS_TAG_NAME,
   VirtualizedFile,
   getFiletypeFromFileName,
   type File as FileInstance,
@@ -109,6 +110,9 @@ import {
 import SourceFilePreview from "./ReadOnlySourcePreview";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
+import { EditReviewAnnotation, EditReviewBar } from "./EditReviewControls";
+import { markReviewLines, REVIEW_LINE_UNSAFE_CSS } from "./fileEditorReviewLines";
+import { useEditReview } from "./useEditReview";
 import { projectFileCacheKey } from "./fileContentRevision";
 import {
   filePreviewReadErrorMessage,
@@ -150,6 +154,14 @@ interface FilePreviewPanelProps {
   onPendingChange: (relativePath: string, pending: boolean) => void;
   selectedFilePending: boolean;
   workspaceMutationId: string | null;
+  editorMode?: FileEditorMode | null;
+}
+
+/** How a file tab behaves when a layout docks it as the editor. */
+export interface FileEditorMode {
+  /** Another panel shows the explorer, so this tab does not need its own. */
+  readonly explorerDocked: boolean;
+  readonly onSelectionAdded: () => void;
 }
 
 const MermaidFilePreview = lazy(() =>
@@ -652,6 +664,8 @@ interface EditableFileSurfaceProps {
   environmentId: EnvironmentId;
   cwd: string;
   relativePath: string;
+  threadRef: ScopedThreadRef;
+  editorMode: FileEditorMode | null;
   composerDraftTarget: ScopedThreadRef | DraftId;
   contents: string;
   resolvedTheme: "light" | "dark";
@@ -670,6 +684,8 @@ function EditableFileSurface({
   environmentId,
   cwd,
   relativePath,
+  threadRef,
+  editorMode,
   composerDraftTarget,
   contents,
   resolvedTheme,
@@ -703,6 +719,40 @@ function EditableFileSurface({
   const { ready: editable, onPostRender: onEditablePostRender } =
     useEditableAfterHighlight(externalFile);
   const editorRef = useRef<Editor<"file", FileCommentAnnotationGroup, undefined> | null>(null);
+  const replaceContents = (next: string) => {
+    setProjectFileQueryData(environmentId, cwd, relativePath, next);
+    changeFileSaveSession(saveTarget, next);
+  };
+  const review = useEditReview({
+    enabled: editorMode !== null,
+    environmentId,
+    threadRef,
+    cwd,
+    relativePath,
+    contents,
+    localContents: editedContents,
+    onChange: replaceContents,
+  });
+  const reviewAnnotations: FileCommentLineAnnotation[] = review.hunks.map((hunk) => ({
+    lineNumber: hunk.anchorLine,
+    metadata: { entries: [], reviewHunk: hunk },
+  }));
+  const reviewedLines = review.hunks.flatMap((hunk) => hunk.addedLines);
+  const reviewedLinesRef = useRef(reviewedLines);
+  const askAboutSelection = (startLine: number, endLine: number) => {
+    addReviewComment(
+      composerDraftTarget,
+      buildFileReviewComment({
+        id: nextFileCommentId(),
+        filePath: relativePath,
+        startLine,
+        endLine,
+        text: "",
+        contents: getProjectFileContents(environmentId, cwd, relativePath) ?? contents,
+      }),
+    );
+    editorMode?.onSelectionAdded();
+  };
   const editorOptions: EditorOptions<"file", FileCommentAnnotationGroup, undefined> = {
     onAttach: (editor) => {
       editorRef.current = editor;
@@ -710,6 +760,20 @@ function EditableFileSurface({
     onComplete: () => {
       editorRef.current = null;
     },
+    ...(editorMode === null
+      ? {}
+      : {
+          enabledSelectionAction: true,
+          renderSelectionAction: (context) =>
+            renderAskSelectionAction(() => {
+              const { start, end } = context.selection;
+              // A selection ending at column 0 stops short of that line.
+              const lastLine =
+                end.character === 0 && end.line > start.line ? end.line - 1 : end.line;
+              askAboutSelection(start.line + 1, lastLine + 1);
+              context.close();
+            }),
+        }),
   };
 
   const handleEditChange = ({
@@ -847,6 +911,7 @@ function EditableFileSurface({
   const handlePostRender: FilePostRender = (fileContainer, instance, phase) => {
     onPostRender(fileContainer, instance, phase);
     onEditablePostRender(instance.file, phase);
+    if (phase !== "unmount") markReviewLines(fileContainer, reviewedLinesRef.current);
 
     if (selectionFrameRef.current !== null) {
       cancelAnimationFrame(selectionFrameRef.current);
@@ -861,8 +926,22 @@ function EditableFileSurface({
     });
   };
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the reviewed lines to the post-render callback, which runs outside React when rows scroll into view
+  useEffect(() => {
+    reviewedLinesRef.current = reviewedLines;
+    const root = surfaceRef.current?.querySelector<HTMLElement>(DIFFS_TAG_NAME);
+    if (root) markReviewLines(root, reviewedLines);
+  }, [reviewedLines]);
+
   return (
     <EditProvider createEditor={createFileEditor}>
+      {review.hunks.length > 0 ? (
+        <EditReviewBar
+          hunkCount={review.hunks.length}
+          onAcceptAll={review.acceptAll}
+          onRevertAll={review.revertAll}
+        />
+      ) : null}
       <div ref={surfaceRef} className="flex min-h-0 flex-1">
         <Virtualizer
           className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
@@ -887,13 +966,20 @@ function EditableFileSurface({
               theme: resolveDiffThemeName(resolvedTheme),
               preferredHighlighter: PREFERRED_HIGHLIGHTER,
               themeType: resolvedTheme,
-              unsafeCSS: FILE_LINK_REVEAL_UNSAFE_CSS,
+              unsafeCSS: `${FILE_LINK_REVEAL_UNSAFE_CSS}${REVIEW_LINE_UNSAFE_CSS}`,
               onPostRender: handlePostRender,
             }}
             selectedLines={selectedRange}
-            lineAnnotations={lineAnnotations}
+            lineAnnotations={[...lineAnnotations, ...reviewAnnotations]}
             renderAnnotation={(annotation) => (
               <div className="py-1">
+                {annotation.metadata.reviewHunk ? (
+                  <EditReviewAnnotation
+                    hunk={annotation.metadata.reviewHunk}
+                    onAccept={review.accept}
+                    onRevert={review.revert}
+                  />
+                ) : null}
                 {annotation.metadata.entries.map((entry) => (
                   <DiffCommentAnnotation
                     key={entry.id}
@@ -915,6 +1001,17 @@ function EditableFileSurface({
   );
 }
 
+function renderAskSelectionAction(onAsk: () => void): HTMLElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Ask about this";
+  button.dataset.fileAskSelection = "true";
+  button.style.cssText =
+    "cursor:pointer;border:0;border-radius:6px;padding:2px 8px;font:inherit;font-size:12px;color:var(--primary-foreground);background:var(--primary)";
+  button.addEventListener("click", onAsk);
+  return button;
+}
+
 function RenderedMarkdownSurface({
   environmentId,
   cwd,
@@ -927,6 +1024,7 @@ function RenderedMarkdownSurface({
 }: Omit<
   EditableFileSurfaceProps,
   | "resolvedTheme"
+  | "editorMode"
   | "composerDraftTarget"
   | "revealLine"
   | "revealRequestId"
@@ -1004,6 +1102,7 @@ export default function FilePreviewPanel({
   onPendingChange,
   selectedFilePending,
   workspaceMutationId,
+  editorMode = null,
 }: FilePreviewPanelProps) {
   const relativePath =
     attachment === undefined ? resolveFilePreviewPath(requestedPath, cwd) : requestedPath;
@@ -1069,11 +1168,14 @@ export default function FilePreviewPanel({
   // Everything preview-related keys off previewPath; a folder has no preview.
   const previewPath = isFolder ? null : relativePath;
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
-  const showExplorer = shouldShowFileExplorer({
-    relativePath: previewPath,
-    explorerOpen,
-    attachmentOpen: attachment !== undefined,
-  });
+  const explorerDocked = editorMode?.explorerDocked === true && previewPath !== null;
+  const showExplorer =
+    !explorerDocked &&
+    shouldShowFileExplorer({
+      relativePath: previewPath,
+      explorerOpen,
+      attachmentOpen: attachment !== undefined,
+    });
   const [renderMarkdownPreferred, setRenderMarkdownPreferred] = useLocalStorage(
     RENDER_MARKDOWN_STORAGE_KEY,
     false,
@@ -1316,7 +1418,7 @@ export default function FilePreviewPanel({
               <Globe2 className="size-3.5" />
             </FileSurfaceAction>
           ) : null}
-          {!isHostFile && previewPath !== null ? (
+          {!isHostFile && previewPath !== null && !explorerDocked ? (
             <FileSurfaceAction
               label={explorerOpen ? "Hide file explorer" : "Show file explorer"}
               pressed={explorerOpen}
@@ -1513,6 +1615,8 @@ export default function FilePreviewPanel({
                   environmentId={environmentId}
                   cwd={cwd}
                   relativePath={relativePath}
+                  threadRef={threadRef}
+                  editorMode={editorMode}
                   composerDraftTarget={composerDraftTarget}
                   contents={file.data.contents}
                   resolvedTheme={resolvedTheme}
