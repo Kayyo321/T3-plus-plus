@@ -96,6 +96,7 @@ export function SplitWorkspace(props: { routeTarget: ThreadRouteTarget; backgrou
             expanded={isExpanded}
             focused={!split || pane.id === focusedPaneId}
             size={shownSizes[index] ?? 1}
+            atWindowEdge={nextPane === undefined}
             background={background}
             linked={linked}
           />
@@ -123,16 +124,17 @@ function SplitPaneFrame(props: {
   expanded: boolean;
   focused: boolean;
   size: number;
+  atWindowEdge: boolean;
   background: boolean;
   linked: boolean;
 }) {
-  const { pane, split, expanded, focused, size, background, linked } = props;
+  const { pane, split, expanded, focused, size, atWindowEdge, background, linked } = props;
   const paneId = pane.id;
   const takeFocus = () => {
     if (split && !focused) focusSplitPane(paneId);
   };
   if (split && !expanded) {
-    return <SplitPaneRail pane={pane} focused={focused} />;
+    return <SplitPaneRail pane={pane} focused={focused} atWindowEdge={atWindowEdge} />;
   }
   const style: CSSProperties = { flexGrow: size, flexBasis: 0 };
   const view =
@@ -156,7 +158,9 @@ function SplitPaneFrame(props: {
       onPointerDownCapture={takeFocus}
       onFocusCapture={takeFocus}
     >
-      {split ? <SplitPaneStrip pane={pane} focused={focused} linked={linked} /> : null}
+      {split ? (
+        <SplitPaneStrip pane={pane} focused={focused} linked={linked} atWindowEdge={atWindowEdge} />
+      ) : null}
       {/* Layout containment makes this the containing block for ChatView's fixed titlebar
           controls, so each pane keeps its own instead of stacking them at the window corner. */}
       <div className={cn("relative flex min-h-0 min-w-0 flex-1", split && "[contain:layout]")}>
@@ -185,8 +189,13 @@ function SplitDropHighlight(props: { paneId: string }) {
   );
 }
 
-function SplitPaneStrip(props: { pane: SplitPane; focused: boolean; linked: boolean }) {
-  const { pane, focused, linked } = props;
+function SplitPaneStrip(props: {
+  pane: SplitPane;
+  focused: boolean;
+  linked: boolean;
+  atWindowEdge: boolean;
+}) {
+  const { pane, focused, linked, atWindowEdge } = props;
   const ref = paneRef(pane);
   const shell = useQuietThreadShell(ref);
   const title =
@@ -197,6 +206,7 @@ function SplitPaneStrip(props: { pane: SplitPane; focused: boolean; linked: bool
       className={cn(
         "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-1 pl-2 text-xs",
         focused ? "bg-accent text-foreground" : "text-muted-foreground",
+        atWindowEdge && "wco:pr-(--workspace-native-controls-inset)",
       )}
     >
       <PaneRunDot shell={shell} />
@@ -252,7 +262,7 @@ function PaneRunDot(props: { shell: EnvironmentThreadShell | null }) {
   );
 }
 
-function SplitPaneRail(props: { pane: SplitPane; focused: boolean }) {
+function SplitPaneRail(props: { pane: SplitPane; focused: boolean; atWindowEdge: boolean }) {
   const { pane } = props;
   const shell = useQuietThreadShell(paneRef(pane));
   const title = shell?.title ?? "Conversation";
@@ -261,7 +271,10 @@ function SplitPaneRail(props: { pane: SplitPane; focused: boolean }) {
       data-split-pane={pane.id}
       data-split-drop-pane={pane.id}
       style={{ width: COLLAPSED_PANE_WIDTH_PX }}
-      className="flex min-h-0 shrink-0 flex-col items-center gap-2 border-r border-border py-1"
+      className={cn(
+        "flex min-h-0 shrink-0 flex-col items-center gap-2 border-r border-border py-1",
+        props.atWindowEdge && "wco:pt-(--workspace-topbar-height)",
+      )}
     >
       <Button
         variant="ghost"
