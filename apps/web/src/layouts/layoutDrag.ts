@@ -22,6 +22,7 @@ interface LayoutDragState {
 export const useLayoutDragStore = create<LayoutDragState>(() => ({ payload: null, hover: null }));
 
 const ACTIVATION_MARGIN_PX = 8;
+const DRAGGING_ATTRIBUTE = "data-layout-dragging";
 let dropHandled = false;
 
 /** True once after a layout drag handled the drop, so a list's own drag end can stand down. */
@@ -67,13 +68,16 @@ export function beginLayoutDrag(input: {
   if (input.event.button !== 0 || input.event.pointerType === "touch") return;
   const { payload, origin, onDrop } = input;
   let active = false;
+  dropHandled = false;
 
   const stop = () => {
     window.removeEventListener("pointermove", onMove, true);
     window.removeEventListener("pointerup", onUp, true);
     window.removeEventListener("pointercancel", stop, true);
     window.removeEventListener("keydown", onKeyDown, true);
-    if (active) useLayoutDragStore.setState({ payload: null, hover: null });
+    if (!active) return;
+    document.documentElement.removeAttribute(DRAGGING_ATTRIBUTE);
+    useLayoutDragStore.setState({ payload: null, hover: null });
   };
   const onMove = (event: PointerEvent) => {
     if (!active) {
@@ -85,6 +89,7 @@ export function beginLayoutDrag(input: {
         event.clientY > bounds.bottom + ACTIVATION_MARGIN_PX;
       if (!outside) return;
       active = true;
+      document.documentElement.setAttribute(DRAGGING_ATTRIBUTE, "");
       useLayoutDragStore.setState({ payload });
     }
     const hover = hitTest(payload, event.clientX, event.clientY);
