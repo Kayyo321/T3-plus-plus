@@ -3,11 +3,28 @@ import type { EnvironmentId, OrchestratorUiDirective, ScopedThreadRef } from "@t
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useEffectEvent } from "react";
 
+import { applyUiDirective, type UiDirective } from "../../layouts/uiDirectives";
 import { useQuietThreadShell } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { orchestratorEnvironment, useOrchestratorDock } from "../../state/orchestratorAgent";
 import { toastManager } from "../ui/toast";
 import OrchestratorPanel from "./OrchestratorPanel";
+
+const uiDirectiveFor = (
+  request: Exclude<OrchestratorUiDirective, { readonly type: "escalate" | "open-thread" }>,
+  environmentId: EnvironmentId,
+): UiDirective => {
+  switch (request.type) {
+    case "open-panel":
+      return { type: "panel.open", panel: request.panel };
+    case "close-panel":
+      return { type: "panel.close", panel: request.panel };
+    case "apply-layout":
+      return { type: "layout.apply", layout: request.name };
+    case "split-thread":
+      return { type: "split.open", environmentId, threadId: request.threadId };
+  }
+};
 
 /** Runs the requests the orchestrator sends to the owner's clients. */
 function DirectiveListener(props: { readonly environmentId: EnvironmentId }) {
@@ -27,6 +44,14 @@ function DirectiveListener(props: { readonly environmentId: EnvironmentId }) {
           params: { environmentId: props.environmentId, threadId: request.threadId },
         });
         return;
+    }
+    const result = applyUiDirective(uiDirectiveFor(request, props.environmentId));
+    if (!result.ok) {
+      toastManager.add({
+        type: "warning",
+        title: "The orchestrator could not do that",
+        description: result.reason,
+      });
     }
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a server stream asks this client to act once per directive
