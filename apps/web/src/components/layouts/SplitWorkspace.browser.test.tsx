@@ -57,6 +57,23 @@ const twoPanes: SplitPane[] = [
 ];
 
 describe("SplitWorkspace", () => {
+  it("renders an empty pane's picker without looping", async () => {
+    using _state = setup(
+      [
+        { id: "a", target: target("one") },
+        { id: "b", target: null },
+      ],
+      "a",
+    );
+    await using screen = await render(
+      <SplitWorkspace routeTarget={target("one")} background={false} />,
+      { container: wideContainer() },
+    );
+    await expect
+      .element(screen.getByText("Pick one here, or click any conversation in the sidebar."))
+      .toBeInTheDocument();
+  });
+
   it("gives the keyboard to the pane the pointer enters", async () => {
     using _state = setup(twoPanes, "a");
     await using screen = await render(

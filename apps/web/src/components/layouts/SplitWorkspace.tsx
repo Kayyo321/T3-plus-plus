@@ -344,13 +344,10 @@ function SplitPaneHandle(props: {
 /** What a new pane shows until it has a conversation: related threads first, then recent ones. */
 function SplitPanePicker(props: { paneId: string }) {
   const threads = useThreadShells();
-  const shownKeys = useSplitViewStore((state) =>
-    state.panes.map((pane) => paneTargetKey(pane.target)),
-  );
-  const anchor = useSplitViewStore((state) => {
-    const other = state.panes.find((pane) => pane.target?.kind === "server");
-    return other ? paneRef(other) : null;
-  });
+  const panes = useSplitViewStore((state) => state.panes);
+  const shownKeys = panes.map((pane) => paneTargetKey(pane.target));
+  const anchorPane = panes.find((pane) => pane.target?.kind === "server");
+  const anchor = anchorPane ? paneRef(anchorPane) : null;
   const anchorThread = threads.find(
     (thread) => thread.environmentId === anchor?.environmentId && thread.id === anchor?.threadId,
   );
