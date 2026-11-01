@@ -1254,16 +1254,11 @@ const make = Effect.gen(function* () {
       ),
       Stream.flattenIterable,
     );
-    const viewChanges = Stream.fromPubSub(changed).pipe(
-      Stream.filter((switchId) => switchId === device.switchId),
-      Stream.mapEffect(() => refreshedView(null)),
-      Stream.flattenIterable,
-    );
-
     // The watchers and counters belong to the stream's run, so a HEAD response touches nothing.
     return Stream.unwrap(
       Effect.gen(function* () {
         const end = yield* sessionEnd(device);
+        const switchChanges = yield* PubSub.subscribe(changed);
         yield* shared.holdSentRecord(key);
         yield* holdConnected(device);
         yield* Effect.forkScoped(
@@ -1277,6 +1272,11 @@ const make = Effect.gen(function* () {
         const stillOpen = yield* authorize(credential, "view").pipe(
           Effect.as(true),
           Effect.orElseSucceed(() => false),
+        );
+        const viewChanges = Stream.fromSubscription(switchChanges).pipe(
+          Stream.filter((switchId) => switchId === device.switchId),
+          Stream.mapEffect(() => refreshedView(null)),
+          Stream.flattenIterable,
         );
         const ending = Stream.fromEffect(end).pipe(
           Stream.map((reason): RemoteControlStreamEvent => ({ type: "ended", reason })),
@@ -1323,6 +1323,8 @@ const make = Effect.gen(function* () {
     return Stream.unwrap(
       Effect.gen(function* () {
         const end = yield* sessionEnd(device);
+        // A session ended before the watcher started must not leave output flowing.
+        yield* authorize(credential, "view");
         return yield* fromShared(shared.commandOutput(thread.id, itemId, end));
       }).pipe(Effect.orElseSucceed(() => Stream.empty)),
     );
@@ -1526,7 +1528,13 @@ const make = Effect.gen(function* () {
     }
   });
 
-  yield* Effect.forkScoped(sweep.pipe(Effect.repeat(Schedule.spaced(SWEEP_INTERVAL))));
+  yield* Effect.forkScoped(
+    sweep.pipe(
+      // One bad pass must not end expiry for the life of the server.
+      Effect.catchCause((cause) => Effect.logWarning("Remote control sweep failed", { cause })),
+      Effect.repeat(Schedule.spaced(SWEEP_INTERVAL)),
+    ),
+  );
 
   // Archiving ends the switch for good; unarchiving brings nothing back.
   yield* orchestrator.streamDomainEvents.pipe(
@@ -1540,8 +1548,13 @@ const make = Effect.gen(function* () {
     Effect.forkScoped,
   );
 
-  const changes = Stream.fromEffect(snapshot).pipe(
-    Stream.concat(Stream.fromPubSub(changed).pipe(Stream.mapEffect(() => snapshot))),
+  // Subscribed before the first read, so a change between them is never missed.
+  const changes = Stream.unwrap(
+    Effect.map(PubSub.subscribe(changed), (subscription) =>
+      Stream.fromEffect(snapshot).pipe(
+        Stream.concat(Stream.fromSubscription(subscription).pipe(Stream.mapEffect(() => snapshot))),
+      ),
+    ),
   );
 
   return RemoteControlService.of({
