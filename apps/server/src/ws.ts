@@ -122,6 +122,8 @@ import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts"
 import * as DocumentText from "./provider/DocumentText.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as AuditTrail from "./audit/AuditTrail.ts";
+import * as GitActions from "./git/graph/GitActions.ts";
+import * as GitGraphService from "./git/graph/GitGraphService.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
@@ -1313,6 +1315,8 @@ export const layerWsRpc = (
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const auditTrail = yield* AuditTrail.AuditTrail;
+      const gitGraph = yield* GitGraphService.GitGraphService;
+      const gitActions = yield* GitActions.GitActions;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
@@ -2184,6 +2188,13 @@ export const layerWsRpc = (
               Effect.as(commandOutputHub.subscribe(input)),
             ),
           ),
+        [WS_METHODS.gitGraphList]: (input) => gitGraph.list(input),
+        [WS_METHODS.gitGraphCommit]: (input) => gitGraph.commit(input),
+        [WS_METHODS.gitGraphChanges]: (input) => gitGraph.changes(input),
+        [WS_METHODS.gitGraphBlame]: (input) => gitGraph.blame(input),
+        [WS_METHODS.gitGraphPreview]: (input) => gitActions.preview(input),
+        [WS_METHODS.gitGraphAct]: (input) => gitActions.act(input, { actor: "user" }),
+        [WS_METHODS.gitGraphDraftMessage]: (input) => gitActions.draftMessage(input),
         [WS_METHODS.auditList]: (input) => auditTrail.list(input),
         [WS_METHODS.auditSubscribe]: (_input) => auditTrail.changes,
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>

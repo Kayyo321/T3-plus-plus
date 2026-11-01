@@ -1,4 +1,7 @@
 import * as AuditTrail from "../audit/AuditTrail.ts";
+import * as ConversationAttribution from "../git/graph/ConversationAttribution.ts";
+import * as GitActions from "../git/graph/GitActions.ts";
+import * as GitGraphService from "../git/graph/GitGraphService.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -368,10 +371,25 @@ export const layer = Layer.mergeAll(
   layerLegacyV1ThreadImporterProvided,
 );
 
+const layerGitGraphService = GitGraphService.layer.pipe(
+  Layer.provide(ConversationAttribution.layer),
+);
+
+const layerGitGraph = Layer.merge(
+  layerGitGraphService,
+  GitActions.layer.pipe(
+    Layer.provide(layerGitGraphService),
+    Layer.provide(AuditTrail.layer),
+    Layer.provide(layerOrchestratorProvided),
+    Layer.provide(layerProjectService),
+  ),
+);
+
 export const layerProduction = Layer.mergeAll(
   layer.pipe(Layer.provide(layerProjectService)),
   layerProjectService,
   AuditTrail.layer,
+  layerGitGraph,
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,

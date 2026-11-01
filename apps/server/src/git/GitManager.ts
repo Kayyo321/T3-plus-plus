@@ -151,6 +151,12 @@ export class GitManager extends Context.Service<
       input: GitRunStackedActionInput,
       options?: GitRunStackedActionOptions,
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
+    /** A suggestion from what is staged, in the project's commit style. */
+    readonly draftCommitMessage: (input: {
+      readonly cwd: string;
+      readonly threadId?: ThreadId | undefined;
+      readonly context: GitVcsDriver.GitPreparedCommitContext;
+    }) => Effect.Effect<string, GitManagerServiceError>;
     readonly subscribePullRequestStateChanges: Effect.Effect<
       Stream.Stream<ThreadPullRequestKey>,
       never,
@@ -2066,6 +2072,60 @@ export const make = Effect.gen(function* () {
       );
   });
 
+  const textGenerationSettingsFor = Effect.fnUntraced(function* (
+    operation: string,
+    input: { readonly cwd: string; readonly threadId?: ThreadId | undefined },
+  ) {
+    return yield* projectSettingsFor(input).pipe(
+      Effect.flatMap(({ settings, projectId }) =>
+        settings.sourceControlWriterModelSelection === null
+          ? Effect.succeed({
+              modelSelection: settings.textGenerationModelSelection,
+              style: settings.sourceControlWritingStyle,
+            })
+          : providerRegistry.getProviders.pipe(
+              Effect.map((providers) => ({
+                modelSelection: ServerSettings.resolveSourceControlWriterModelSelection(
+                  settings,
+                  providers,
+                  projectId,
+                ),
+                style: settings.sourceControlWritingStyle,
+              })),
+            ),
+      ),
+      Effect.mapError(
+        (cause) =>
+          new GitManagerError({
+            operation,
+            cwd: input.cwd,
+            detail: "Failed to get server settings.",
+            cause,
+          }),
+      ),
+    );
+  });
+
+  const draftCommitMessage: GitManager["Service"]["draftCommitMessage"] = Effect.fn(
+    "draftCommitMessage",
+  )(function* (input) {
+    const settings = yield* textGenerationSettingsFor("draftCommitMessage", input);
+    const policy = yield* resolveStylePolicy(input.cwd, settings);
+    const branch = yield* gitCore
+      .statusDetailsLocal(input.cwd)
+      .pipe(Effect.map((status) => status.branch));
+    const generated = yield* textGeneration.generateCommitMessage({
+      cwd: input.cwd,
+      branch,
+      stagedSummary: limitContext(input.context.stagedSummary, 8_000),
+      stagedPatch: limitContext(input.context.stagedPatch, 50_000),
+      ...(policy ? { policy } : {}),
+      modelSelection: settings.modelSelection,
+    });
+    const { subject, body } = sanitizeCommitMessage(generated);
+    return formatCommitMessage(subject, body);
+  });
+
   const resolveCommitAndBranchSuggestion = Effect.fn("resolveCommitAndBranchSuggestion")(
     function* (input: {
       cwd: string;
@@ -3085,34 +3145,7 @@ export const make = Effect.gen(function* () {
         let commitMessageForStep = input.commitMessage;
         let preResolvedCommitSuggestion: CommitAndBranchSuggestion | undefined = undefined;
 
-        const textGenerationSettings = yield* projectSettingsFor(input).pipe(
-          Effect.flatMap(({ settings, projectId }) =>
-            settings.sourceControlWriterModelSelection === null
-              ? Effect.succeed({
-                  modelSelection: settings.textGenerationModelSelection,
-                  style: settings.sourceControlWritingStyle,
-                })
-              : providerRegistry.getProviders.pipe(
-                  Effect.map((providers) => ({
-                    modelSelection: ServerSettings.resolveSourceControlWriterModelSelection(
-                      settings,
-                      providers,
-                      projectId,
-                    ),
-                    style: settings.sourceControlWritingStyle,
-                  })),
-                ),
-          ),
-          Effect.mapError(
-            (cause) =>
-              new GitManagerError({
-                operation: "runStackedAction",
-                cwd: input.cwd,
-                detail: "Failed to get server settings.",
-                cause,
-              }),
-          ),
-        );
+        const textGenerationSettings = yield* textGenerationSettingsFor("runStackedAction", input);
 
         if (input.featureBranch) {
           yield* Ref.set(currentPhase, Option.some("branch"));
@@ -3242,6 +3275,7 @@ export const make = Effect.gen(function* () {
     resolvePullRequest,
     preparePullRequestThread,
     runStackedAction,
+    draftCommitMessage,
     subscribePullRequestStateChanges: PubSub.subscribe(pullRequestStateChanges).pipe(
       Effect.map((subscription) => Stream.fromSubscription(subscription)),
     ),

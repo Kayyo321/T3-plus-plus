@@ -65,6 +65,7 @@ export class GitWorkflowService extends Context.Service<
       input: GitRunStackedActionInput,
       options?: GitManager.GitRunStackedActionOptions,
     ) => Effect.Effect<GitRunStackedActionResult, GitManagerServiceError>;
+    readonly draftCommitMessage: GitManager.GitManager["Service"]["draftCommitMessage"];
     readonly resolvePullRequest: (
       input: GitPullRequestRefInput,
     ) => Effect.Effect<GitResolvePullRequestResult, GitManagerServiceError>;
@@ -374,6 +375,10 @@ export const make = Effect.gen(function* () {
         Effect.andThen(git.pullCurrentBranch(cwd)),
       );
     }),
+    draftCommitMessage: routeGitManager(
+      "GitWorkflowService.draftCommitMessage",
+      gitManager.draftCommitMessage,
+    ),
     runStackedAction: Effect.fn("GitWorkflowService.runStackedAction")(function (input, options) {
       return ensureGit("GitWorkflowService.runStackedAction", input.cwd).pipe(
         Effect.flatMap((handle) =>

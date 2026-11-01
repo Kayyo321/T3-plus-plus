@@ -8,6 +8,23 @@ import {
 import { OrchestrationDispatchCommandError } from "./orchestrationDispatch.ts";
 import { AuditEntry, AuditListInput, AuditListResult, AuditTrailError } from "./audit.ts";
 import {
+  GitGraphActInput,
+  GitGraphActionResult,
+  GitGraphBlameInput,
+  GitGraphBlameResult,
+  GitGraphChanges,
+  GitGraphChangesInput,
+  GitGraphCommitDetail,
+  GitGraphCommitInput,
+  GitGraphDraftMessageInput,
+  GitGraphDraftMessageResult,
+  GitGraphListInput,
+  GitGraphPage,
+  GitGraphPreview,
+  GitGraphPreviewInput,
+  GitGraphServiceError,
+} from "./gitGraph.ts";
+import {
   McpAppCallToolInput,
   McpAppCallToolResult,
   McpAppReadResourceInput,
@@ -545,6 +562,13 @@ export const WS_METHODS = {
   scheduledTasksRunNow: "scheduledTasks.runNow",
   scheduledTasksRotateWebhookToken: "scheduledTasks.rotateWebhookToken",
   secretsAnswerRequest: "secrets.answerRequest",
+  gitGraphList: "gitGraph.list",
+  gitGraphCommit: "gitGraph.commit",
+  gitGraphChanges: "gitGraph.changes",
+  gitGraphBlame: "gitGraph.blame",
+  gitGraphPreview: "gitGraph.preview",
+  gitGraphAct: "gitGraph.act",
+  gitGraphDraftMessage: "gitGraph.draftMessage",
   auditList: "audit.list",
   auditSubscribe: "audit.subscribe",
   guestShareCreate: "guestShare.create",
@@ -1884,6 +1908,50 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const GitGraphRpcError = Schema.Union([GitGraphServiceError, EnvironmentAuthorizationError]);
+
+const WsGitGraphListRpc = Rpc.make(WS_METHODS.gitGraphList, {
+  payload: GitGraphListInput,
+  success: GitGraphPage,
+  error: GitGraphRpcError,
+});
+
+const WsGitGraphCommitRpc = Rpc.make(WS_METHODS.gitGraphCommit, {
+  payload: GitGraphCommitInput,
+  success: GitGraphCommitDetail,
+  error: GitGraphRpcError,
+});
+
+const WsGitGraphChangesRpc = Rpc.make(WS_METHODS.gitGraphChanges, {
+  payload: GitGraphChangesInput,
+  success: GitGraphChanges,
+  error: GitGraphRpcError,
+});
+
+const WsGitGraphBlameRpc = Rpc.make(WS_METHODS.gitGraphBlame, {
+  payload: GitGraphBlameInput,
+  success: GitGraphBlameResult,
+  error: GitGraphRpcError,
+});
+
+const WsGitGraphPreviewRpc = Rpc.make(WS_METHODS.gitGraphPreview, {
+  payload: GitGraphPreviewInput,
+  success: GitGraphPreview,
+  error: GitGraphRpcError,
+});
+
+const WsGitGraphActRpc = Rpc.make(WS_METHODS.gitGraphAct, {
+  payload: GitGraphActInput,
+  success: GitGraphActionResult,
+  error: GitGraphRpcError,
+});
+
+const WsGitGraphDraftMessageRpc = Rpc.make(WS_METHODS.gitGraphDraftMessage, {
+  payload: GitGraphDraftMessageInput,
+  success: GitGraphDraftMessageResult,
+  error: GitGraphRpcError,
+});
+
 const WsAuditListRpc = Rpc.make(WS_METHODS.auditList, {
   payload: AuditListInput,
   success: AuditListResult,
@@ -1986,6 +2054,13 @@ export class RpcScopeAuthorization extends RpcMiddleware.Service<RpcScopeAuthori
 ) {}
 
 export const WsRpcGroup = RpcGroup.make(
+  WsGitGraphListRpc,
+  WsGitGraphCommitRpc,
+  WsGitGraphChangesRpc,
+  WsGitGraphBlameRpc,
+  WsGitGraphPreviewRpc,
+  WsGitGraphActRpc,
+  WsGitGraphDraftMessageRpc,
   WsAuditListRpc,
   WsAuditSubscribeRpc,
   WsGuestShareCreateRpc,
