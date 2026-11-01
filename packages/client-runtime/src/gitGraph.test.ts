@@ -162,11 +162,11 @@ describe("gitGraphArrivals", () => {
 
 describe("gitGraphBranchRole", () => {
   it("reads a branch's role from its name, on remotes too", () => {
-    expect(gitGraphBranchRole("team/parser")).toBe("review");
-    expect(gitGraphBranchRole("origin/builder/lexer")).toBe("review");
-    expect(gitGraphBranchRole("t3/abc123")).toBe("agent");
-    expect(gitGraphBranchRole("feature/team/parser")).toBeNull();
-    expect(gitGraphBranchRole("main")).toBeNull();
+    expect(gitGraphBranchRole({ kind: "branch", name: "team/parser" })).toBe("review");
+    expect(gitGraphBranchRole({ kind: "remote", name: "origin/builder/lexer" })).toBe("review");
+    expect(gitGraphBranchRole({ kind: "head", name: "t3/abc123" })).toBe("agent");
+    expect(gitGraphBranchRole({ kind: "branch", name: "feature/team/parser" })).toBeNull();
+    expect(gitGraphBranchRole({ kind: "tag", name: "team/v1" })).toBeNull();
   });
 });
 

@@ -5,7 +5,12 @@ import {
   type GitGraphNodeShape,
   gitGraphSegments,
 } from "@t3tools/client-runtime/git-graph";
-import type { GitGraphCommitRisk, GitGraphRow, GitGraphRowRef } from "@t3tools/contracts";
+import type {
+  GitGraphBranch,
+  GitGraphCommitRisk,
+  GitGraphRow,
+  GitGraphRowRef,
+} from "@t3tools/contracts";
 import { BotIcon, MessageSquareIcon, ShieldAlertIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -103,9 +108,14 @@ const REF_PREFIX: Readonly<Record<GitGraphRowRef["kind"], string>> = {
   tag: "#",
 };
 
-function RowRef(props: { readonly gitRef: GitGraphRowRef; readonly color: number }) {
-  const { gitRef, color } = props;
-  const role = gitRef.kind === "tag" ? null : gitGraphBranchRole(gitRef.name);
+function RowRef(props: {
+  readonly gitRef: GitGraphRowRef;
+  readonly color: number;
+  readonly tracking: GitGraphBranch | undefined;
+}) {
+  const { gitRef, color, tracking } = props;
+  const role = gitGraphBranchRole(gitRef);
+  const drifted = tracking !== undefined && (tracking.ahead > 0 || tracking.behind > 0);
   return (
     <span
       className="inline-flex max-w-32 shrink-0 items-center gap-1 truncate border-s-2 ps-1 font-mono text-3xs leading-4 text-foreground"
@@ -115,6 +125,11 @@ function RowRef(props: { readonly gitRef: GitGraphRowRef; readonly color: number
       {REF_PREFIX[gitRef.kind] ? <span aria-hidden>{REF_PREFIX[gitRef.kind]}</span> : null}
       <span className="truncate">{gitRef.name}</span>
       {role === null ? null : <span className="text-muted-foreground">{role}</span>}
+      {drifted ? (
+        <span className="text-muted-foreground">
+          ↑{tracking.ahead} ↓{tracking.behind}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -136,9 +151,21 @@ export const GitGraphRowView = memo(function GitGraphRowView(props: {
   readonly rewound: boolean;
   readonly worktree: string | null;
   readonly risk: GitGraphCommitRisk | undefined;
+  readonly branches: ReadonlyMap<string, GitGraphBranch>;
   readonly onSelect: (row: GitGraphRow) => void;
 }) {
-  const { row, laneCount, headSha, selected, arrived, rewound, worktree, risk, onSelect } = props;
+  const {
+    row,
+    laneCount,
+    headSha,
+    selected,
+    arrived,
+    rewound,
+    worktree,
+    risk,
+    branches,
+    onSelect,
+  } = props;
   const shape = gitGraphNodeShape(row, headSha);
   return (
     <button
@@ -155,7 +182,12 @@ export const GitGraphRowView = memo(function GitGraphRowView(props: {
     >
       <RowLanes row={row} laneCount={laneCount} shape={shape} />
       {row.refs.map((gitRef) => (
-        <RowRef key={`${gitRef.kind}:${gitRef.name}`} gitRef={gitRef} color={row.color} />
+        <RowRef
+          key={`${gitRef.kind}:${gitRef.name}`}
+          gitRef={gitRef}
+          color={row.color}
+          tracking={gitRef.kind === "remote" ? undefined : branches.get(gitRef.name)}
+        />
       ))}
       {worktree === null ? null : (
         <span

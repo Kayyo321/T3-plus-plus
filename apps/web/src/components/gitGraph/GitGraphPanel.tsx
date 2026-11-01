@@ -95,6 +95,9 @@ export default function GitGraphPanel(props: {
       .filter((worktree) => !worktree.isCurrent && worktree.sha !== null)
       .map((worktree) => [worktree.sha!, worktree.path] as const),
   );
+  const branchByName = new Map(
+    (summary?.branches ?? []).map((branch) => [branch.name, branch] as const),
+  );
   const riskByCommit = new Map((summary?.risks ?? []).map((risk) => [risk.sha, risk] as const));
 
   const reportResult = (result: GitGraphActionResult) => {
@@ -186,6 +189,7 @@ export default function GitGraphPanel(props: {
         rewound={graph.rewound}
         worktree={worktreeByCommit.get(item.sha) ?? null}
         risk={riskByCommit.get(item.sha)}
+        branches={branchByName}
         onSelect={(row) => {
           const next = gitGraphRowKey(row);
           setSelectedKey((current) => (current === next ? null : next));

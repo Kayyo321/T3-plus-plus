@@ -6,6 +6,7 @@ import {
   type GitGraphOperation,
   type GitGraphPage,
   type GitGraphRow,
+  type GitGraphRowRef,
   type GitGraphSummary,
 } from "@t3tools/contracts";
 
@@ -182,10 +183,11 @@ export function gitGraphArrivals(
 }
 
 /** Team builders and agent worktrees work on branches named for the role. */
-export function gitGraphBranchRole(name: string): "review" | "agent" | null {
-  const shortName = name.replace(/^[^/]+\/(?=(?:team|teamwork|builder|t3)\/)/u, "");
-  if (/^(?:team|teamwork|builder)\//u.test(shortName)) return "review";
-  return shortName.startsWith("t3/") ? "agent" : null;
+export function gitGraphBranchRole(ref: GitGraphRowRef): "review" | "agent" | null {
+  if (ref.kind === "tag") return null;
+  const branch = ref.kind === "remote" ? ref.name.replace(/^[^/]+\//u, "") : ref.name;
+  if (/^(?:team|teamwork|builder)\//u.test(branch)) return "review";
+  return branch.startsWith("t3/") ? "agent" : null;
 }
 
 /** `author:ada path:src/app.ts fix parser`: named filters, and the rest searches messages. */

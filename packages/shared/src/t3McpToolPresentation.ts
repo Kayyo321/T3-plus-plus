@@ -44,6 +44,8 @@ export type T3McpToolSummaryAction =
   | "worktree-handoff"
   | "worktree-list"
   | "worktree-status"
+  | "git-read"
+  | "git-change"
   | "project-list"
   | "project-read"
   | "project-create"
@@ -325,6 +327,25 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_thread_organize: tool(["Organize", "Organizing", "Organized", "a thread"], "thread-organize"),
   t3_thread_update: tool(["Update", "Updating", "Updated", "T3 thread metadata"], "thread-update"),
   t3_worktree_list: tool(["List", "Listing", "Listed", "workspace branches"], "worktree-list"),
+  t3_git_graph: tool(["Read", "Reading", "Read", "commit history"], "git-read"),
+  t3_git_commit_info: tool(["Read", "Reading", "Read", "a commit"], "git-read"),
+  t3_git_changes: tool(["Read", "Reading", "Read", "uncommitted changes"], "git-read"),
+  t3_git_blame: tool(["Blame", "Blaming", "Blamed", "a line"], "git-read"),
+  t3_git_preview: tool(["Preview", "Previewing", "Previewed", "a Git action"], "git-read"),
+  t3_git_stage: tool(["Stage", "Staging", "Staged", "changes"], "git-change"),
+  t3_git_commit: tool(["Commit", "Committing", "Committed", "staged changes"], "git-change"),
+  t3_git_branch: tool(["Change", "Changing", "Changed", "a branch"], "git-change"),
+  t3_git_integrate: tool(["Merge", "Merging", "Merged", "changes"], "git-change"),
+  t3_git_operation: tool(["Finish", "Finishing", "Finished", "a Git operation"], "git-change"),
+  t3_git_stash: tool(["Stash", "Stashing", "Stashed", "changes"], "git-change"),
+  t3_git_recovery: tool(["Restore", "Restoring", "Restored", "a recovery point"], "git-change"),
+  t3_git_rewrite: tool(["Rewrite", "Rewriting", "Rewrote", "history"], "git-change"),
+  t3_git_discard: tool(["Discard", "Discarding", "Discarded", "a branch or stash"], "git-change"),
+  t3_git_sync: tool(["Sync", "Syncing", "Synced", "with a remote"], "git-change"),
+  t3_git_create_pull_request: tool(
+    ["Create", "Creating", "Created", "a pull request"],
+    "git-change",
+  ),
   t3_preview_list: tool(["List", "Listing", "Listed", "preview tabs"], "browser", "browser"),
   t3_preview_close: tool(["Close", "Closing", "Closed", "a preview tab"], "browser", "browser"),
   t3_environment_read: tool(
