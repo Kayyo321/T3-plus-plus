@@ -47,6 +47,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
   AuthFilesystemReadScope,
+  DEFAULT_TEAM_SHEET_ID,
   type DesktopWslState,
   type EnvironmentId,
   type FilesystemBrowseResult,
@@ -86,7 +87,6 @@ import {
   UserPlusIcon,
   GitForkIcon,
   FileTextIcon,
-  UsersIcon,
 } from "lucide-react";
 import { toggleThreadCapabilityMode } from "~/lib/threadCapabilityMode";
 import { openThreadFind } from "./chat/threadFindStore";
@@ -273,6 +273,9 @@ import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
 import { buildSidebarProjectPickerEntries } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { TeamworkIcon } from "./Icons";
+import { useTeamSheetActions } from "./chat/TeamworkToggle";
+import { openTeamSheetEditor } from "./teamwork/openTeamSheetEditor";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
@@ -505,6 +508,24 @@ function OpenCommandPaletteDialog(props: {
   const computerUseItems = useCommandPaletteComputerUseItems(
     activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
   );
+  const teamworkThread =
+    activeThread && (activeThread.capabilityMode ?? "code") === "code" ? activeThread : null;
+  const teamworkThreadSheet = useEnvironmentQuery(
+    teamworkThread
+      ? serverEnvironment.threadTeamSheet({
+          environmentId: teamworkThread.environmentId,
+          input: { threadId: teamworkThread.id },
+        })
+      : null,
+  );
+  const teamworkEnvironmentId = activeThread?.environmentId ?? ("" as EnvironmentId);
+  const canSetTeamSheet = useAtomValue(
+    serverEnvironment.setThreadTeamSheet.permissionAtom(teamworkEnvironmentId),
+  );
+  const canCreateTeamSheet = useAtomValue(
+    serverEnvironment.createTeamSheet.permissionAtom(teamworkEnvironmentId),
+  );
+  const { createSheet: createTeamSheet } = useTeamSheetActions();
   const activeThreadReferenceCopyTarget =
     referenceThreadRef === null || (pathname === "/pull-requests" && !openPanelPullRequestUrl)
       ? null
@@ -1579,14 +1600,38 @@ function OpenCommandPaletteDialog(props: {
       icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
       run: async () => useRightPanelStore.getState().open(threadRef, "documents"),
     });
-    actionItems.push({
-      kind: "action",
-      value: "action:open-teamwork",
-      searchTerms: ["team", "teamwork", "roles", "review", "board"],
-      title: "Open team board",
-      icon: <UsersIcon className={ITEM_ICON_CLASS} />,
-      run: async () => useRightPanelStore.getState().open(threadRef, "teamwork"),
-    });
+    if (teamworkThread !== null) {
+      actionItems.push({
+        kind: "action",
+        value: "action:open-teamwork",
+        searchTerms: ["team", "teamwork", "roles", "review", "board"],
+        title: "Open team board",
+        icon: <TeamworkIcon className={ITEM_ICON_CLASS} />,
+        run: async () => useRightPanelStore.getState().open(threadRef, "teamwork"),
+      });
+      actionItems.push({
+        kind: "action",
+        value: "action:edit-team-sheet",
+        searchTerms: ["team", "teamwork", "sheet", "flow", "edit"],
+        title: "Edit team sheet",
+        icon: <TeamworkIcon className={ITEM_ICON_CLASS} />,
+        run: async () =>
+          openTeamSheetEditor(
+            threadRef,
+            teamworkThreadSheet.data?.sheetId ?? DEFAULT_TEAM_SHEET_ID,
+          ),
+      });
+      if (canSetTeamSheet && canCreateTeamSheet) {
+        actionItems.push({
+          kind: "action",
+          value: "action:new-team-sheet",
+          searchTerms: ["team", "teamwork", "sheet", "flow", "create", "new"],
+          title: "New team sheet",
+          icon: <TeamworkIcon className={ITEM_ICON_CLASS} />,
+          run: async () => createTeamSheet(threadRef),
+        });
+      }
+    }
     actionItems.push({
       kind: "action",
       value: "action:toggle-chat-mode",
