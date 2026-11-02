@@ -241,6 +241,31 @@ export const OrchestratorNeedsAttention = Schema.Struct({
   reason: TrimmedNonEmptyString,
 });
 
+/** The reply that says there is nothing to tell the owner. */
+export const ORCHESTRATOR_SILENT_REPLY = "(silent)";
+/** A line holding only this splits the orchestrator's reply into separate messages. */
+export const ORCHESTRATOR_MESSAGE_BREAK = "---";
+
+export const OrchestratorReactionEmoji = TrimmedNonEmptyString.check(Schema.isMaxLength(16));
+
+export const OrchestratorReaction = Schema.Struct({
+  emoji: OrchestratorReactionEmoji,
+  by: Schema.Literals(["owner", "orchestrator"]),
+});
+export type OrchestratorReaction = typeof OrchestratorReaction.Type;
+
+export const OrchestratorReactInput = Schema.Struct({
+  /** The turn item id of the message, as clients see it. */
+  messageId: TrimmedNonEmptyString,
+  emoji: OrchestratorReactionEmoji,
+  /** The start of the message, so the orchestrator can tell what was reacted to. */
+  excerpt: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+});
+export type OrchestratorReactInput = typeof OrchestratorReactInput.Type;
+
+export const OrchestratorMarkReadInput = Schema.Struct({ through: IsoDateTime });
+export type OrchestratorMarkReadInput = typeof OrchestratorMarkReadInput.Type;
+
 export const OrchestratorSnapshot = Schema.Struct({
   brain: Schema.NullOr(ModelSelection),
   needsAttention: Schema.optional(Schema.NullOr(OrchestratorNeedsAttention)),
@@ -250,6 +275,8 @@ export const OrchestratorSnapshot = Schema.Struct({
   thresholds: SupervisionThresholds,
   supervision: SupervisionState,
   pendingApprovals: ForwardCompatibleArray(OrchestratorApproval),
+  reactions: Schema.optional(Schema.Record(Schema.String, Schema.Array(OrchestratorReaction))),
+  ownerReadAt: Schema.optional(Schema.NullOr(IsoDateTime)),
 });
 export type OrchestratorSnapshot = typeof OrchestratorSnapshot.Type;
 

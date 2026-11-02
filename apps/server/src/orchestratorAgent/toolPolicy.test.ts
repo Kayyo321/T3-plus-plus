@@ -3,10 +3,12 @@ import {
   DEFAULT_ORCHESTRATOR_GRANTS,
   orchestratorBrainAvailability,
   type ProviderInstanceId,
+  RunId,
   type ServerProvider,
+  ThreadId,
 } from "@t3tools/contracts";
 
-import { grantDecision, ORCHESTRATOR_TOOL_POLICY } from "./toolPolicy.ts";
+import { grantDecision, ORCHESTRATOR_TOOL_POLICY, startedThreadsFrom } from "./toolPolicy.ts";
 
 const policy = (name: string) => {
   const entry = ORCHESTRATOR_TOOL_POLICY[name];
@@ -21,6 +23,7 @@ describe("grantDecision", () => {
     assert.equal(grantDecision(grants, policy("t3_thread_organize")), "run");
     assert.equal(grantDecision(grants, policy("t3_thread_transfer")), "ask");
     assert.equal(grantDecision(grants, policy("t3_project_delete")), "ask");
+    assert.equal(grantDecision(grants, policy("orchestrator_react")), "run");
   });
 
   it("refuses reads when the domain is off", () => {
@@ -99,5 +102,73 @@ describe("orchestratorBrainAvailability", () => {
 
   it("stays unconfigured until a model is chosen", () => {
     assert.equal(orchestratorBrainAvailability(null, [ready]).status, "unconfigured");
+  });
+});
+
+describe("startedThreadsFrom", () => {
+  const work = ThreadId.make("work");
+  const run = RunId.make("run-1");
+  it.each([
+    [
+      "a launch",
+      "t3_thread_launch",
+      {},
+      { threadId: work, runId: run },
+      [{ threadId: work, runId: run }],
+    ],
+    [
+      "an idle launch",
+      "t3_thread_launch",
+      {},
+      { threadId: work, runId: null },
+      [{ threadId: work, runId: null }],
+    ],
+    [
+      "each thread of create_threads",
+      "create_threads",
+      {},
+      {
+        threads: [
+          { threadId: work, runId: run, status: "starting" },
+          { threadId: ThreadId.make("b"), runId: null },
+        ],
+      },
+      [
+        { threadId: work, runId: run },
+        { threadId: ThreadId.make("b"), runId: null },
+      ],
+    ],
+    [
+      "a delegate's child thread",
+      "delegate_task",
+      { task: "x" },
+      { taskId: "node-1", childThreadId: work, childRunId: run },
+      [{ threadId: work, runId: run }],
+    ],
+    [
+      "a delegate that runs elsewhere",
+      "delegate_task",
+      {},
+      { taskId: "node-1", childThreadId: null, childRunId: null },
+      [],
+    ],
+    [
+      "a send to a thread, named by its params",
+      "t3_thread_send",
+      { threadId: work, message: "hi" },
+      { threadId: work, runId: run, messageId: "m" },
+      [{ threadId: work, runId: run }],
+    ],
+    ["a send that returns no thread", "t3_thread_send", { threadId: work }, { error: "gone" }, []],
+    [
+      "a failed or unrelated tool",
+      "t3_thread_read",
+      { threadId: work },
+      { threadId: work, runId: run },
+      [],
+    ],
+    ["a launch with an unreadable result", "t3_thread_launch", {}, { runId: run }, []],
+  ])("%s", (_name, tool, params, result, expected) => {
+    assert.deepStrictEqual(startedThreadsFrom(tool, params, result), expected);
   });
 });

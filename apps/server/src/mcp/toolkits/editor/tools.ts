@@ -1,5 +1,6 @@
 import {
   OrchestratorMcpFailure,
+  OrchestratorReactionEmoji,
   OrchestratorUiDirective,
   SupervisionThreadMode,
   SupervisionThreadState,
@@ -29,6 +30,14 @@ const EditorUiTool = Tool.make("editor_ui", {
     "Act on the owner's open app: open or close a panel, apply a saved layout, open a conversation, or split one beside the current view. Reports how many clients received it; zero means no client is open.",
   parameters: Schema.Struct({ directive: OrchestratorUiDirective }),
   success: Schema.Struct({ clients: Schema.Number }),
+});
+
+const OrchestratorReactTool = Tool.make("orchestrator_react", {
+  ...shared,
+  description:
+    "React to the owner's latest message with one emoji, as a quick acknowledgement instead of a message. The same emoji again removes it; a different one replaces yours.",
+  parameters: Schema.Struct({ emoji: OrchestratorReactionEmoji }),
+  success: Schema.Struct({ emoji: OrchestratorReactionEmoji, reacted: Schema.Boolean }),
 });
 
 const SupervisionStatusTool = Tool.make("supervision_status", {
@@ -65,6 +74,7 @@ const SupervisionWatchTool = Tool.make("supervision_watch", {
 
 export const EditorToolkit = Toolkit.make(
   EditorUiTool,
+  OrchestratorReactTool,
   SupervisionStatusTool,
   SupervisionDecideTool,
   SupervisionWatchTool,

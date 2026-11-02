@@ -1661,16 +1661,19 @@ export const layer: Layer.Layer<
           key: `mcp_app_${entry.itemId.replace(/[^\w.-]/g, "_")}`,
           text: entry.text,
         }));
-        const message = isOrchestratorAgentThread(input.appThread)
-          ? {
-              ...input.message,
-              text: `${orchestratorPromptPreamble(
-                Option.isSome(orchestratorTurnContext)
-                  ? yield* orchestratorTurnContext.value.focusFor(input.run.threadId)
-                  : undefined,
-              )}${input.message.text}`,
-            }
-          : input.message;
+        let message = input.message;
+        if (isOrchestratorAgentThread(input.appThread)) {
+          const focus = Option.isSome(orchestratorTurnContext)
+            ? yield* orchestratorTurnContext.value.focusFor(input.run.threadId)
+            : undefined;
+          const notes = Option.isSome(orchestratorTurnContext)
+            ? yield* orchestratorTurnContext.value.takeNotes(input.run.threadId)
+            : [];
+          message = {
+            ...input.message,
+            text: `${orchestratorPromptPreamble(focus, notes)}${input.message.text}`,
+          };
+        }
         const turnInput = {
           appThread: input.appThread,
           threadId: input.run.threadId,

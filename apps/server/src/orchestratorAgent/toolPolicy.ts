@@ -1,9 +1,13 @@
-import type {
-  OrchestratorDomain,
-  OrchestratorGrants,
-  OrchestratorSupervisionAction,
-  OrchestratorToolEffect,
+import {
+  type OrchestratorDomain,
+  type OrchestratorGrants,
+  type OrchestratorSupervisionAction,
+  type OrchestratorToolEffect,
+  RunId,
+  ThreadId,
 } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 export interface OrchestratorToolPolicy {
   readonly domain: OrchestratorDomain;
@@ -23,6 +27,7 @@ const tool = (
  */
 export const ORCHESTRATOR_TOOL_POLICY: Readonly<Record<string, OrchestratorToolPolicy>> = {
   orchestrator_capabilities: tool("conversations", "read"),
+  orchestrator_react: tool("conversations", "write"),
   create_threads: tool("conversations", "write"),
   html_preview: tool("conversations", "read"),
   t3_attachment_discard: tool("conversations", "write"),
@@ -143,6 +148,59 @@ export const ORCHESTRATOR_TOOL_POLICY: Readonly<Record<string, OrchestratorToolP
   list_scheduled_tasks: tool("tasks", "read"),
   run_scheduled_task_now: tool("tasks", "write"),
   schedule_task: tool("tasks", "write"),
+};
+
+const ThreadAndRun = Schema.Struct({ threadId: ThreadId, runId: Schema.NullOr(RunId) });
+const decodeLaunchResult = Schema.decodeUnknownOption(ThreadAndRun);
+const decodeCreateResult = Schema.decodeUnknownOption(
+  Schema.Struct({ threads: Schema.Array(ThreadAndRun) }),
+);
+const decodeDelegateResult = Schema.decodeUnknownOption(
+  Schema.Struct({ childThreadId: Schema.NullOr(ThreadId), childRunId: Schema.NullOr(RunId) }),
+);
+const decodeSendParams = Schema.decodeUnknownOption(Schema.Struct({ threadId: ThreadId }));
+const decodeSendResult = Schema.decodeUnknownOption(Schema.Struct({ runId: Schema.NullOr(RunId) }));
+
+export interface StartedThread {
+  readonly threadId: ThreadId;
+  readonly runId: RunId | null;
+}
+
+/**
+ * The threads a successful governed call started or messaged, with the run each now has. A
+ * delegate that runs in another environment has no local child thread, so it adds nothing.
+ */
+export const startedThreadsFrom = (
+  tool: string,
+  params: unknown,
+  result: unknown,
+): ReadonlyArray<StartedThread> => {
+  switch (tool) {
+    case "t3_thread_launch":
+      return Option.toArray(decodeLaunchResult(result));
+    case "create_threads":
+      return Option.match(decodeCreateResult(result), {
+        onNone: () => [],
+        onSome: (created) => created.threads,
+      });
+    case "delegate_task":
+      return Option.match(decodeDelegateResult(result), {
+        onNone: () => [],
+        onSome: (delegated) =>
+          delegated.childThreadId === null
+            ? []
+            : [{ threadId: delegated.childThreadId, runId: delegated.childRunId }],
+      });
+    case "t3_thread_send": {
+      const target = Option.getOrNull(decodeSendParams(params));
+      const sent = Option.getOrNull(decodeSendResult(result));
+      return target === null || sent === null
+        ? []
+        : [{ threadId: target.threadId, runId: sent.runId }];
+    }
+    default:
+      return [];
+  }
 };
 
 export type GrantDecision = "run" | "ask" | "deny";

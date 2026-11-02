@@ -403,6 +403,7 @@ const make = Effect.gen(function* () {
   });
 
   const tick: SupervisionMonitor["Service"]["tick"] = Effect.gen(function* () {
+    yield* agent.checkFollowed;
     const automatic = yield* unattended;
     const candidates = new Set([...states.keys(), ...automatic]);
     const watched = [...candidates]
