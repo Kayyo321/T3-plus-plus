@@ -14,6 +14,8 @@ import {
   isRemoteControlShare,
   lowerRemoteControlLevel,
   MessageId,
+  OrchestratorReactInput,
+  type OrchestratorSnapshot,
   type OrchestrationV2AppThread,
   type OrchestrationV2Command,
   type OrchestrationV2CommandOutputFrame,
@@ -23,6 +25,7 @@ import {
   type OrchestrationV2ThreadStreamItem,
   REMOTE_CONTROL_CODE_DIGITS,
   REMOTE_CONTROL_DEFAULT_ACCESS_LEVEL,
+  REMOTE_CONTROL_DEVICE_ACCESS_INFO,
   REMOTE_CONTROL_INACTIVITY_TTL_MS,
   REMOTE_CONTROL_LEVEL_INFO,
   REMOTE_CONTROL_LINK_TTL_MS,
@@ -30,6 +33,7 @@ import {
   REMOTE_CONTROL_MAX_FAILED_ATTEMPTS,
   REMOTE_CONTROL_PAGE_PATH,
   REMOTE_CONTROL_PAIRING_TTL_MS,
+  REMOTE_CONTROL_PERMISSION_INFO,
   REMOTE_CONTROL_SESSION_TTL_MS,
   REMOTE_CONTROL_SHARE_EXPIRES_AT,
   REMOTE_CONTROL_SHARE_HOST,
@@ -55,6 +59,15 @@ import {
   type RemoteControlResolvePairingInput,
   type RemoteControlRespondRequest,
   type RemoteControlRevokeDeviceInput,
+  type RemoteControlModelRequest,
+  type RemoteControlOrchestratorEvent,
+  type RemoteControlOrchestratorReactRequest,
+  type RemoteControlOrchestratorSendRequest,
+  type RemoteControlOrchestratorState,
+  type RemoteControlPermission,
+  type RemoteControlProviders,
+  type RemoteControlRenameRequest,
+  type RemoteControlSetDeviceAccessInput,
   type RemoteControlSnapshot,
   type RemoteControlStreamEvent,
   type RemoteControlSwitch,
@@ -63,6 +76,8 @@ import {
   type RemoteControlUpdateInput,
   type RemoteControlView,
   remoteControlLevelAllows,
+  remoteControlLevelPermissions,
+  type ServerProvider,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -76,6 +91,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
@@ -97,6 +113,7 @@ import { GUEST_FAILURE } from "../orchestration-v2/GuestShareDecider.ts";
 import * as ThreadMessageIntake from "../orchestration-v2/ThreadMessageIntake.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import { subscribeOrchestrationV2Thread } from "../orchestration-v2/threadSubscription.ts";
+import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -164,10 +181,47 @@ const iso = (millis: number) => DateTime.formatIso(DateTime.makeUnsafe(millis));
 const linkStatusOf = (row: StoredSwitch, now: number): RemoteControlLinkStatus =>
   row.linkState !== "ready" ? row.linkState : now >= row.linkExpiresAt ? "expired" : "ready";
 
-const idleExpiryOf = (device: Pick<StoredDevice, "lastSeenAt" | "expiresAt">) =>
-  Math.min(device.lastSeenAt + REMOTE_CONTROL_INACTIVITY_TTL_MS, device.expiresAt);
+const decodeOrchestratorReact = Schema.decodeUnknownEffect(OrchestratorReactInput);
+
+const NEVER = Number.MAX_SAFE_INTEGER;
+// Browsers cap a cookie at 400 days. A forever session renews it each time the page opens.
+const MAX_COOKIE_MS = 400 * 24 * 60 * 60 * 1000;
+// Timers overflow past about 24 days, and this also picks up a limit the owner changed.
+const MAX_EXPIRY_WAIT_MS = 60 * 60 * 1000;
+
+/** Only the standard term ends on idling: time the owner chose is not undone by a phone sleeping. */
+const idleExpiryOf = (device: Pick<StoredDevice, "access" | "lastSeenAt" | "expiresAt">) =>
+  device.access === "forever"
+    ? NEVER
+    : device.access === "session"
+      ? Math.min(device.lastSeenAt + REMOTE_CONTROL_INACTIVITY_TTL_MS, device.expiresAt)
+      : device.expiresAt;
 
 const isLiveDevice = (device: StoredDevice, now: number) => now < idleExpiryOf(device);
+
+const isoOrNever = (millis: number) => (millis === NEVER ? null : iso(millis));
+
+/** Device limits as the wire carries them. Null means the session never ends that way. */
+const deviceExpiry = (device: StoredDevice) => ({
+  idleExpiresAt: isoOrNever(idleExpiryOf(device)),
+  expiresAt: device.access === "forever" ? null : iso(device.expiresAt),
+});
+
+/** Lets a phone offer the same picker. Accounts, paths, and usage stay on this machine. */
+const providerForDevice = (provider: ServerProvider): ServerProvider => {
+  const {
+    runtimePaths: _paths,
+    workspaceSnapshots: _workspaces,
+    usageLimits: _usage,
+    ...rest
+  } = provider;
+  return {
+    ...rest,
+    auth: { status: provider.auth.status },
+    slashCommands: [],
+    skills: [],
+  };
+};
 
 /** Backoff after each failure, doubling, so guesses cannot be sent as fast as the network allows. */
 const backoffMs = (failedAttempts: number) =>
@@ -206,6 +260,9 @@ export class RemoteControlService extends Context.Service<
       input: RemoteControlRevokeDeviceInput,
       actor?: RemoteControlActor,
     ) => Effect.Effect<void, RemoteControlError>;
+    readonly setDeviceAccess: (
+      input: RemoteControlSetDeviceAccessInput,
+    ) => Effect.Effect<void, RemoteControlError>;
     readonly resolvePairing: (
       input: RemoteControlResolvePairingInput,
     ) => Effect.Effect<void, RemoteControlError>;
@@ -230,6 +287,10 @@ export class RemoteControlService extends Context.Service<
       credential: RemoteDeviceCredential,
       required?: RemoteControlAccessLevel,
     ) => Effect.Effect<void, RemoteControlAccessError>;
+    /** How long this device's cookie should last from now. */
+    readonly sessionLifetimeMs: (
+      credential: RemoteDeviceCredential,
+    ) => Effect.Effect<number, RemoteControlAccessError>;
     readonly signOut: (
       credential: RemoteDeviceCredential,
     ) => Effect.Effect<void, RemoteControlAccessError>;
@@ -298,6 +359,31 @@ export class RemoteControlService extends Context.Service<
       credential: RemoteDeviceCredential,
       request: RemoteControlModeRequest,
     ) => Effect.Effect<void, RemoteControlAccessError>;
+    readonly setModel: (
+      credential: RemoteDeviceCredential,
+      request: RemoteControlModelRequest,
+    ) => Effect.Effect<void, RemoteControlAccessError>;
+    readonly rename: (
+      credential: RemoteDeviceCredential,
+      request: RemoteControlRenameRequest,
+    ) => Effect.Effect<void, RemoteControlAccessError>;
+    readonly providers: (
+      credential: RemoteDeviceCredential,
+    ) => Effect.Effect<RemoteControlProviders, RemoteControlAccessError>;
+    readonly orchestratorStream: (
+      credential: RemoteDeviceCredential,
+    ) => Effect.Effect<Stream.Stream<RemoteControlOrchestratorEvent>, RemoteControlAccessError>;
+    readonly orchestratorSend: (
+      credential: RemoteDeviceCredential,
+      request: RemoteControlOrchestratorSendRequest,
+    ) => Effect.Effect<void, RemoteControlAccessError>;
+    readonly orchestratorReact: (
+      credential: RemoteDeviceCredential,
+      request: RemoteControlOrchestratorReactRequest,
+    ) => Effect.Effect<void, RemoteControlAccessError>;
+    readonly orchestratorStop: (
+      credential: RemoteDeviceCredential,
+    ) => Effect.Effect<void, RemoteControlAccessError>;
   }
 >()("t3pp/remoteControl/RemoteControlService") {}
 
@@ -311,6 +397,7 @@ const make = Effect.gen(function* () {
   const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
   const managedEndpoint = yield* CloudManagedEndpointRuntime;
   const remoteRelay = yield* RemoteRelayTunnel;
+  const orchestratorAgent = yield* OrchestratorAgent.OrchestratorAgent;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const audit = yield* AuditTrail.AuditTrail;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
@@ -458,8 +545,8 @@ const make = Effect.gen(function* () {
     id: RemoteControlDeviceId.make(device.id),
     label: GuestDisplayName.make(device.label),
     pairedAt: iso(device.pairedAt),
-    idleExpiresAt: iso(idleExpiryOf(device)),
-    expiresAt: iso(device.expiresAt),
+    access: device.access,
+    ...deviceExpiry(device),
     connected: connectedStreams.has(device.id),
     lastAction: device.lastAction,
     lastActionAt: device.lastActionAt === null ? null : iso(device.lastActionAt),
@@ -484,6 +571,7 @@ const make = Effect.gen(function* () {
     accessLevel: row.accessLevel,
     pairingMode: row.pairingMode,
     ownerReview: row.ownerReview,
+    permissions: row.permissions,
     linkStatus: linkStatusOf(row, now),
     linkExpiresAt: iso(row.linkExpiresAt),
     createdAt: iso(row.createdAt),
@@ -594,7 +682,18 @@ const make = Effect.gen(function* () {
     const accessLevel = input.accessLevel ?? row.accessLevel;
     const pairingMode = input.pairingMode ?? row.pairingMode;
     const ownerReview = input.ownerReview ?? row.ownerReview;
-    if (needsRaiseConfirmation(row.accessLevel, accessLevel, input.confirmRaise)) {
+    const permissions =
+      input.permissions ??
+      (accessLevel === row.accessLevel
+        ? row.permissions
+        : remoteControlLevelPermissions(accessLevel));
+    const added = permissions.filter((permission) => !row.permissions.includes(permission));
+    // Picking Full is already confirmed as a raise; anything added by hand needs its own yes.
+    const addedByHand = input.permissions === undefined ? [] : added;
+    if (
+      needsRaiseConfirmation(row.accessLevel, accessLevel, input.confirmRaise) ||
+      (addedByHand.length > 0 && input.confirmRaise !== true)
+    ) {
       yield* recordAudit({
         actor,
         action: "level.raise",
@@ -604,7 +703,23 @@ const make = Effect.gen(function* () {
       });
       return yield* refused("raise_needs_confirmation");
     }
-    yield* store.updateSettings({ switchId: row.switchId, accessLevel, pairingMode, ownerReview });
+    yield* store.updateSettings({
+      switchId: row.switchId,
+      accessLevel,
+      pairingMode,
+      ownerReview,
+      permissions,
+    });
+    if (added.length > 0 || permissions.length !== row.permissions.length) {
+      yield* recordAudit({
+        actor,
+        action: "permissions.changed",
+        threadId: row.threadId,
+        result:
+          permissions.map((item) => REMOTE_CONTROL_PERMISSION_INFO[item].label).join(", ") ||
+          "none",
+      });
+    }
     if (accessLevel !== row.accessLevel) {
       yield* recordAudit({
         actor,
@@ -676,6 +791,7 @@ const make = Effect.gen(function* () {
           accessLevel,
           pairingMode: input.pairingMode ?? "approve",
           ownerReview: input.ownerReview ?? false,
+          permissions: input.permissions ?? remoteControlLevelPermissions(accessLevel),
           linkGeneration: 1,
           linkState: "ready",
           linkExpiresAt: now + REMOTE_CONTROL_LINK_TTL_MS,
@@ -794,6 +910,46 @@ const make = Effect.gen(function* () {
       request,
     });
     yield* publishChange(device.switchId);
+  });
+
+  const setDeviceAccess: RemoteControlService["Service"]["setDeviceAccess"] = Effect.fn(
+    "RemoteControlService.setDeviceAccess",
+  )(function* (input) {
+    yield* serialized(
+      Effect.gen(function* () {
+        const row = yield* switchFor(input.threadId);
+        const device = yield* store.deviceById(input.deviceId);
+        if (device === null || device.switchId !== row.switchId) {
+          return yield* refused("not_found");
+        }
+        // A plain HTTP session can be copied off the network, so it never outlives the standard.
+        if (input.access !== "session" && device.boundPeer !== null) {
+          return yield* refused("needs_encrypted");
+        }
+        if (input.access !== "session" && input.confirmRaise !== true) {
+          return yield* refused("raise_needs_confirmation");
+        }
+        const now = yield* nowMillis;
+        const { durationMs, label } = REMOTE_CONTROL_DEVICE_ACCESS_INFO[input.access];
+        yield* store.setDeviceAccess({
+          id: device.id,
+          access: input.access,
+          expiresAt:
+            input.access === "forever"
+              ? NEVER
+              : now + (durationMs ?? REMOTE_CONTROL_SESSION_TTL_MS),
+          lastSeenAt: now,
+        });
+        yield* recordAudit({
+          actor: OWNER,
+          action: "device.access",
+          threadId: row.threadId,
+          target: { kind: "device", id: device.id, label: device.label },
+          result: label,
+        });
+        yield* publishChange(row.switchId);
+      }),
+    );
   });
 
   const revokeDevice: RemoteControlService["Service"]["revokeDevice"] = Effect.fn(
@@ -998,6 +1154,7 @@ const make = Effect.gen(function* () {
             boundPeer: transport.encrypted ? null : transport.peer,
             pairedAt: now,
             lastSeenAt: now,
+            access: "session",
             expiresAt: now + REMOTE_CONTROL_SESSION_TTL_MS,
             lastAction: action,
             lastActionAt: now,
@@ -1140,6 +1297,25 @@ const make = Effect.gen(function* () {
     return { device, row, thread, level, transport: credential.transport };
   });
 
+  /** A level check, then the owner's own choice. Every permission needs an encrypted route. */
+  const authorizePermission = Effect.fn("RemoteControlService.authorizePermission")(function* (
+    credential: RemoteDeviceCredential,
+    permission: RemoteControlPermission,
+  ) {
+    const authorized = yield* authorize(credential, "view");
+    const allowed = authorized.row.permissions.includes(permission);
+    if (!allowed || !credential.transport.encrypted) {
+      yield* recordAudit({
+        actor: asGuest(authorized.device.label),
+        action: `${permission}.refused`,
+        outcome: "denied",
+        threadId: authorized.row.threadId,
+      });
+      return yield* access(allowed ? "unencrypted" : "forbidden");
+    }
+    return authorized;
+  });
+
   /** Records what a device just did, in the trail and where the owner sees it. */
   const noteAction = Effect.fn("RemoteControlService.noteAction")(function* (
     device: StoredDevice,
@@ -1176,6 +1352,16 @@ const make = Effect.gen(function* () {
     yield* endDevice(device, row.threadId, "signed_out", "signed out on the device");
   });
 
+  const sessionLifetimeMs: RemoteControlService["Service"]["sessionLifetimeMs"] = Effect.fn(
+    "RemoteControlService.sessionLifetimeMs",
+  )(function* (credential) {
+    const { device } = yield* authorize(credential, "view");
+    const now = yield* nowMillis;
+    return device.access === "forever"
+      ? MAX_COOKIE_MS
+      : Math.min(device.expiresAt - now, MAX_COOKIE_MS);
+  });
+
   const viewOf = Effect.fn("RemoteControlService.viewOf")(function* (
     deviceId: string,
     switchId: string,
@@ -1200,8 +1386,11 @@ const make = Effect.gen(function* () {
       grantedLevel: row.accessLevel,
       encrypted: transport.encrypted,
       ownerReview: row.ownerReview,
-      idleExpiresAt: iso(idleExpiryOf(device)),
-      expiresAt: iso(device.expiresAt),
+      permissions: transport.encrypted ? row.permissions : [],
+      grantedPermissions: row.permissions,
+      ...deviceExpiry(device),
+      capabilityMode: thread.capabilityMode ?? "code",
+      modelSelection: thread.modelSelection,
       messages: queue,
       model: guestThreadModel(thread.modelSelection, providers),
       otherDevices: peers
@@ -1229,13 +1418,20 @@ const make = Effect.gen(function* () {
   /** Resolves when the device's session ends, however it ends. */
   const sessionEnd = Effect.fn("RemoteControlService.sessionEnd")(function* (device: StoredDevice) {
     const ended = yield* watchDevice(device);
-    const remaining = Math.max(0, device.expiresAt - (yield* nowMillis));
-    return Deferred.await(ended).pipe(
-      Effect.timeoutOrElse({
-        duration: Duration.millis(remaining),
-        orElse: () => Effect.succeed<RemoteControlEndReason>("expired"),
-      }),
-    );
+    // Read each time: the owner can change this device's limit while its page stays open.
+    const expiry: Effect.Effect<RemoteControlEndReason> = Effect.gen(function* () {
+      while (true) {
+        const current = yield* store.deviceById(device.id);
+        if (current === null) return "expired" as const;
+        const remaining =
+          current.access === "forever"
+            ? MAX_EXPIRY_WAIT_MS
+            : current.expiresAt - (yield* nowMillis);
+        if (remaining <= 0) return "expired" as const;
+        yield* Effect.sleep(Duration.millis(Math.min(remaining, MAX_EXPIRY_WAIT_MS)));
+      }
+    });
+    return Effect.raceFirst(Deferred.await(ended), expiry);
   });
 
   const stream: RemoteControlService["Service"]["stream"] = Effect.fn(
@@ -1534,7 +1730,7 @@ const make = Effect.gen(function* () {
 
   const stop: RemoteControlService["Service"]["stop"] = Effect.fn("RemoteControlService.stop")(
     function* (credential) {
-      const { device, thread } = yield* authorize(credential, "full");
+      const { device, thread } = yield* authorizePermission(credential, "stop");
       yield* orchestrator
         .dispatch({
           type: "thread.stop",
@@ -1549,34 +1745,189 @@ const make = Effect.gen(function* () {
   const setMode: RemoteControlService["Service"]["setMode"] = Effect.fn(
     "RemoteControlService.setMode",
   )(function* (credential, request) {
-    const { device, thread } = yield* authorize(credential, "full");
-    if (request.interactionMode === undefined && request.runtimeMode === undefined) {
-      return yield* access("rejected");
+    const changingRun = request.interactionMode !== undefined || request.runtimeMode !== undefined;
+    if (!changingRun && request.capabilityMode === undefined) return yield* access("rejected");
+    const { device, thread } = yield* authorizePermission(
+      credential,
+      changingRun ? "mode" : "threadMode",
+    );
+    if (changingRun && request.capabilityMode !== undefined) {
+      yield* authorizePermission(credential, "threadMode");
     }
+    const dispatch = (command: OrchestrationV2Command) =>
+      orchestrator.dispatch(command).pipe(Effect.mapError(() => access("rejected")));
     if (request.interactionMode !== undefined) {
-      yield* orchestrator
-        .dispatch({
-          type: "thread.interaction-mode.set",
-          commandId: yield* commandId("interaction-mode"),
-          threadId: thread.id,
-          interactionMode: request.interactionMode,
-        })
-        .pipe(Effect.mapError(() => access("rejected")));
+      yield* dispatch({
+        type: "thread.interaction-mode.set",
+        commandId: yield* commandId("interaction-mode"),
+        threadId: thread.id,
+        interactionMode: request.interactionMode,
+      });
     }
     if (request.runtimeMode !== undefined) {
-      yield* orchestrator
-        .dispatch({
-          type: "thread.runtime-mode.set",
-          commandId: yield* commandId("runtime-mode"),
-          threadId: thread.id,
-          runtimeMode: request.runtimeMode,
-        })
-        .pipe(Effect.mapError(() => access("rejected")));
+      yield* dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: yield* commandId("runtime-mode"),
+        threadId: thread.id,
+        runtimeMode: request.runtimeMode,
+      });
+    }
+    if (request.capabilityMode !== undefined) {
+      yield* dispatch({
+        type: "thread.capability-mode.set",
+        commandId: yield* commandId("capability-mode"),
+        threadId: thread.id,
+        capabilityMode: request.capabilityMode,
+      });
     }
     yield* noteAction(device, thread.id, {
       action: "mode.changed",
       label: "Changed the mode",
-      result: [request.interactionMode, request.runtimeMode].filter(Boolean).join(", "),
+      result: [request.interactionMode, request.runtimeMode, request.capabilityMode]
+        .filter(Boolean)
+        .join(", "),
+    });
+  });
+
+  const providers: RemoteControlService["Service"]["providers"] = Effect.fn(
+    "RemoteControlService.providers",
+  )(function* (credential) {
+    yield* authorizePermission(credential, "model");
+    const all = yield* providerRegistry.getProviders;
+    return { providers: all.filter((item) => item.enabled).map(providerForDevice) };
+  });
+
+  const setModel: RemoteControlService["Service"]["setModel"] = Effect.fn(
+    "RemoteControlService.setModel",
+  )(function* (credential, request) {
+    const { device, thread } = yield* authorizePermission(credential, "model");
+    const { modelSelection } = request;
+    const offered = (yield* providerRegistry.getProviders).some(
+      (provider) => provider.enabled && provider.instanceId === modelSelection.instanceId,
+    );
+    if (!offered) return yield* access("rejected");
+    yield* orchestrator
+      .dispatch({
+        type: "thread.model-selection.set",
+        commandId: yield* commandId("model-selection"),
+        threadId: thread.id,
+        modelSelection,
+      })
+      .pipe(Effect.mapError(() => access("rejected")));
+    yield* noteAction(device, thread.id, {
+      action: "model.changed",
+      label: "Changed the model",
+      result: modelSelection.model,
+    });
+  });
+
+  const rename: RemoteControlService["Service"]["rename"] = Effect.fn(
+    "RemoteControlService.rename",
+  )(function* (credential, request) {
+    const { device, thread } = yield* authorizePermission(credential, "rename");
+    yield* orchestrator
+      .dispatch({
+        type: "thread.metadata.update",
+        commandId: yield* commandId("rename"),
+        threadId: thread.id,
+        title: request.title,
+      })
+      .pipe(Effect.mapError(() => access("rejected")));
+    yield* noteAction(device, thread.id, { action: "thread.renamed", label: "Renamed this" });
+  });
+
+  const orchestratorStateOf = (snapshot: OrchestratorSnapshot): RemoteControlOrchestratorState => ({
+    threadId: snapshot.threadId,
+    hasBrain: snapshot.brain !== null,
+    availability: snapshot.availability,
+    reactions: snapshot.reactions ?? {},
+    ownerReadAt: snapshot.ownerReadAt ?? null,
+    pendingApprovals: snapshot.pendingApprovals.length,
+  });
+
+  const orchestratorStream: RemoteControlService["Service"]["orchestratorStream"] = Effect.fn(
+    "RemoteControlService.orchestratorStream",
+  )(function* (credential) {
+    const { device } = yield* authorizePermission(credential, "orchestrator");
+    const first = yield* orchestratorAgent.snapshot.pipe(
+      Effect.mapError(() => access("unavailable")),
+    );
+    const items =
+      first.threadId === null
+        ? Stream.empty
+        : yield* subscribeOrchestrationV2Thread({
+            threadId: first.threadId,
+            acceptBoundedSnapshot: true,
+          }).pipe(
+            Effect.provideContext(threadServices),
+            Effect.mapError(() => access("unavailable")),
+          );
+    const states = orchestratorAgent.changes.pipe(
+      Stream.catchCause(() => Stream.empty),
+      Stream.map((snapshot): RemoteControlOrchestratorEvent => ({
+        type: "state",
+        state: orchestratorStateOf(snapshot),
+      })),
+    );
+    const thread = items.pipe(
+      Stream.catchCause(() => Stream.empty),
+      Stream.map((item): RemoteControlOrchestratorEvent => ({ type: "thread", item })),
+    );
+    return Stream.unwrap(
+      Effect.gen(function* () {
+        const end = yield* sessionEnd(device);
+        const switchChanges = yield* PubSub.subscribe(changed);
+        // Turning the permission off closes a page that is already open.
+        const revoked = Stream.fromSubscription(switchChanges).pipe(
+          Stream.filter((switchId) => switchId === device.switchId),
+          Stream.mapEffect(() =>
+            authorizePermission(credential, "orchestrator").pipe(
+              Effect.as(false),
+              Effect.orElseSucceed(() => true),
+            ),
+          ),
+          Stream.filter(Boolean),
+        );
+        const closing = Stream.merge(Stream.fromEffect(end), revoked).pipe(
+          Stream.take(1),
+          Stream.drain,
+        );
+        return Stream.merge(Stream.merge(states, thread), closing, { haltStrategy: "either" });
+      }),
+    );
+  });
+
+  const orchestratorSend: RemoteControlService["Service"]["orchestratorSend"] = Effect.fn(
+    "RemoteControlService.orchestratorSend",
+  )(function* (credential, request) {
+    const { device, thread } = yield* authorizePermission(credential, "orchestrator");
+    yield* orchestratorAgent
+      .send({ commandId: yield* commandId("orchestrator"), text: request.text })
+      .pipe(Effect.mapError(() => access("rejected")));
+    yield* noteAction(device, thread.id, {
+      action: "orchestrator.messaged",
+      label: "Messaged the orchestrator",
+    });
+  });
+
+  const orchestratorReact: RemoteControlService["Service"]["orchestratorReact"] = Effect.fn(
+    "RemoteControlService.orchestratorReact",
+  )(function* (credential, request) {
+    yield* authorizePermission(credential, "orchestrator");
+    const input = yield* decodeOrchestratorReact(request).pipe(
+      Effect.mapError(() => access("rejected")),
+    );
+    yield* orchestratorAgent.react(input).pipe(Effect.mapError(() => access("rejected")));
+  });
+
+  const orchestratorStop: RemoteControlService["Service"]["orchestratorStop"] = Effect.fn(
+    "RemoteControlService.orchestratorStop",
+  )(function* (credential) {
+    const { device, thread } = yield* authorizePermission(credential, "orchestrator");
+    yield* orchestratorAgent.interrupt.pipe(Effect.mapError(() => access("rejected")));
+    yield* noteAction(device, thread.id, {
+      action: "orchestrator.stopped",
+      label: "Stopped the orchestrator",
     });
   });
 
@@ -1654,11 +2005,13 @@ const make = Effect.gen(function* () {
     rotateLink,
     revealLink,
     revokeDevice,
+    setDeviceAccess,
     resolvePairing,
     startPairing,
     pairingStatus,
     submitCode,
     session,
+    sessionLifetimeMs,
     signOut,
     stream,
     item,
@@ -1671,6 +2024,13 @@ const make = Effect.gen(function* () {
     respond,
     stop,
     setMode,
+    setModel,
+    rename,
+    providers,
+    orchestratorStream,
+    orchestratorSend,
+    orchestratorReact,
+    orchestratorStop,
     computerStream,
     computerScreenshot,
     answerComputerApproval,

@@ -14,10 +14,12 @@ import {
   REMOTE_CONTROL_PAIRING_TTL_MS,
   REMOTE_CONTROL_SESSION_TTL_MS,
   type RemoteControlAccessLevel,
+  type RemoteControlDeviceAccess,
   type RemoteControlEndReason,
   type RemoteControlStreamEvent,
   RuntimeRequestId,
   type ServerDirectEndpoint,
+  type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -38,6 +40,7 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
 import * as ServerConfig from "../config.ts";
 import * as DirectEndpoints from "../environment/DirectEndpoints.ts";
+import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import { RemoteRelayTunnel } from "./RemoteRelayTunnel.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as CommandOutputHub from "../orchestration-v2/CommandOutputHub.ts";
@@ -81,6 +84,14 @@ const layerEndpoints = Layer.succeed(DirectEndpoints.DirectEndpoints, {
   resolve: () => Ref.get(endpoints),
 });
 const layerRemoteRelay = Layer.mock(RemoteRelayTunnel)({ publicUrl: Effect.succeed(null) });
+const orchestratorMessages: Array<string> = [];
+const layerOrchestratorAgent = Layer.mock(OrchestratorAgent.OrchestratorAgent)({
+  send: (input) =>
+    Effect.sync(() => {
+      orchestratorMessages.push(input.text);
+      return { threadId: ThreadId.make("thread:orchestrator") };
+    }),
+});
 const connectHost = Ref.makeUnsafe<string | null>(null);
 const layerConnect = Layer.mock(CloudManagedEndpointRuntime)({
   inspectConnector: Effect.map(Ref.get(connectHost), (hostname) => ({
@@ -90,7 +101,22 @@ const layerConnect = Layer.mock(CloudManagedEndpointRuntime)({
   })),
 });
 const layerProviders = Layer.mock(ProviderRegistry.ProviderRegistry)({
-  getProviders: Effect.succeed([]),
+  getProviders: Effect.succeed([
+    {
+      instanceId,
+      driver: ProviderDriverKind.make("codex"),
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated", email: "owner@example.com" },
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      runtimePaths: { homePath: "/home/owner/.codex", shadowHomePath: null },
+      models: [],
+      slashCommands: [],
+      skills: [],
+    } satisfies ServerProvider,
+  ]),
 });
 const layerConfig = ServerConfig.layerTest(process.cwd(), { prefix: "t3-remote-control-" });
 
@@ -138,6 +164,7 @@ const layerTest = RemoteControl.layer.pipe(
   Layer.provide(Layer.mock(DocumentText.DocumentText)({})),
   Layer.provide(layerEndpoints),
   Layer.provide(layerRemoteRelay),
+  Layer.provide(layerOrchestratorAgent),
   Layer.provide(layerConnect),
   Layer.provide(layerProviders),
   Layer.provide(ServerSecretStore.layer),
@@ -933,6 +960,146 @@ it.effect("audits a revoke against the device, with the owner as its cause", () 
     assert.equal(entry?.actor, "remote-guest");
     assert.equal(entry?.actorLabel, "Pixel 8");
     assert.equal(entry?.request, "revoked by owner");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+const HOUR = Duration.hours(1);
+
+it.effect("keeps a device signed in for as long as the owner chose, past the standard limits", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const device = yield* pairDevice();
+    const { deviceId } = yield* remote.session(device).pipe(
+      Effect.andThen(Stream.runHead(remote.changes)),
+      Effect.map((snapshot) => ({
+        deviceId: Option.getOrThrow(snapshot).switches[0]!.devices[0]!.id,
+      })),
+    );
+    const choose = (access: RemoteControlDeviceAccess, confirmRaise?: boolean) =>
+      remote.setDeviceAccess({
+        threadId,
+        deviceId,
+        access,
+        ...(confirmRaise === undefined ? {} : { confirmRaise }),
+      });
+
+    assert.equal(yield* failureReason(choose("forever")), "raise_needs_confirmation");
+    yield* choose("forever", true);
+    const listed = Option.getOrThrow(yield* Stream.runHead(remote.changes)).switches[0]!
+      .devices[0]!;
+    assert.equal(listed.access, "forever");
+    assert.isNull(listed.expiresAt);
+    assert.isNull(listed.idleExpiresAt);
+
+    // Far past both the 2 hour idle limit and the 12 hour limit.
+    yield* TestClock.adjust(Duration.days(90));
+    assert.equal(yield* failureReason(remote.session(device)), "ok");
+
+    // A fixed term ignores idling, then ends when it says it will.
+    yield* choose("1d", true);
+    yield* TestClock.adjust(Duration.hours(23));
+    assert.equal(yield* failureReason(remote.session(device)), "ok");
+    yield* TestClock.adjust(HOUR);
+    assert.notEqual(yield* failureReason(remote.session(device)), "ok");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("still ends a forever session when the owner disconnects it", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const device = yield* pairDevice();
+    const snapshot = Option.getOrThrow(yield* Stream.runHead(remote.changes));
+    const deviceId = snapshot.switches[0]!.devices[0]!.id;
+    yield* remote.setDeviceAccess({ threadId, deviceId, access: "forever", confirmRaise: true });
+    yield* remote.revokeDevice({ threadId, deviceId });
+    assert.equal(yield* failureReason(remote.session(device)), "ended");
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("keeps a plain HTTP device to the standard limit", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    yield* pairDevice({ transport: PLAIN });
+    const snapshot = Option.getOrThrow(yield* Stream.runHead(remote.changes));
+    const deviceId = snapshot.switches[0]!.devices[0]!.id;
+    assert.equal(
+      yield* failureReason(
+        remote.setDeviceAccess({ threadId, deviceId, access: "forever", confirmRaise: true }),
+      ),
+      "needs_encrypted",
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("lets a device change only what the owner granted, and only when encrypted", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const device = yield* pairDevice();
+    const modelSelection = { instanceId, model: "gpt-5.1-codex" };
+    const asked = { modelSelection };
+    const orchestratorAsk = { text: "Check the build" };
+
+    assert.equal(yield* failureReason(remote.setModel(device, asked)), "forbidden");
+    assert.equal(
+      yield* failureReason(remote.orchestratorSend(device, orchestratorAsk)),
+      "forbidden",
+    );
+    assert.equal(
+      yield* failureReason(remote.update({ threadId, permissions: ["model"] })),
+      "raise_needs_confirmation",
+    );
+
+    yield* remote.update({ threadId, permissions: ["model"], confirmRaise: true });
+    assert.equal(yield* failureReason(remote.setModel(device, asked)), "ok");
+    assert.equal(yield* failureReason(remote.rename(device, { title: "Renamed" })), "forbidden");
+    assert.equal(
+      yield* failureReason(remote.setModel({ ...device, transport: PLAIN }, asked)),
+      "unencrypted",
+    );
+
+    yield* remote.update({ threadId, permissions: ["orchestrator"], confirmRaise: true });
+    assert.equal(yield* failureReason(remote.setModel(device, asked)), "forbidden");
+    assert.equal(yield* failureReason(remote.orchestratorSend(device, orchestratorAsk)), "ok");
+    assert.isTrue(orchestratorMessages.includes("Check the build"));
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("gives Full everything in the conversation but never the orchestrator", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    yield* pairDevice({ accessLevel: "full" });
+    const full = Option.getOrThrow(yield* Stream.runHead(remote.changes)).switches[0]!;
+    assert.isTrue(full.permissions.includes("model"));
+    assert.isFalse(full.permissions.includes("orchestrator"));
+
+    yield* remote.update({ threadId, accessLevel: "chat" });
+    const lowered = Option.getOrThrow(yield* Stream.runHead(remote.changes)).switches[0]!;
+    assert.deepEqual(lowered.permissions, []);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("shows a device the conversation's real mode, not its access level", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const device = yield* pairDevice();
+    const events = yield* remote.stream(device, undefined);
+    const first = Option.getOrThrow(yield* Stream.runHead(events));
+    assert.equal(first.type, "view");
+    if (first.type !== "view") return;
+    assert.equal(first.view.level, "chat");
+    assert.equal(first.view.capabilityMode, "code");
+  }).pipe(Effect.scoped, Effect.provide(layerTest)),
+);
+
+it.effect("never gives a device the owner's accounts or paths", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const device = yield* pairDevice();
+    yield* remote.update({ threadId, permissions: ["model"], confirmRaise: true });
+    const { providers } = yield* remote.providers(device);
+    const text = JSON.stringify(providers);
+    assert.isFalse(text.includes("owner@example.com"));
+    assert.isFalse(text.includes("/home/owner"));
   }).pipe(Effect.provide(layerTest)),
 );
 

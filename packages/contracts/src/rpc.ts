@@ -294,6 +294,7 @@ import {
   RemoteControlReachability,
   RemoteControlResolvePairingInput,
   RemoteControlRevokeDeviceInput,
+  RemoteControlSetDeviceAccessInput,
   RemoteControlSnapshot,
   RemoteControlSwitch,
   RemoteControlThreadInput,
@@ -756,6 +757,7 @@ export const WS_METHODS = {
   remoteControlRotateLink: "remoteControl.rotateLink",
   remoteControlRevealLink: "remoteControl.revealLink",
   remoteControlRevokeDevice: "remoteControl.revokeDevice",
+  remoteControlSetDeviceAccess: "remoteControl.setDeviceAccess",
   remoteControlResolvePairing: "remoteControl.resolvePairing",
   remoteRelaySubscribe: "remoteRelay.subscribe",
   remoteRelayConfigure: "remoteRelay.configure",
@@ -2622,6 +2624,11 @@ const WsRemoteControlRevokeDeviceRpc = Rpc.make(WS_METHODS.remoteControlRevokeDe
   error: RemoteControlRpcError,
 });
 
+const WsRemoteControlSetDeviceAccessRpc = Rpc.make(WS_METHODS.remoteControlSetDeviceAccess, {
+  payload: RemoteControlSetDeviceAccessInput,
+  error: RemoteControlRpcError,
+});
+
 const WsRemoteControlResolvePairingRpc = Rpc.make(WS_METHODS.remoteControlResolvePairing, {
   payload: RemoteControlResolvePairingInput,
   error: RemoteControlRpcError,
@@ -2766,6 +2773,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsRemoteControlRotateLinkRpc,
   WsRemoteControlRevealLinkRpc,
   WsRemoteControlRevokeDeviceRpc,
+  WsRemoteControlSetDeviceAccessRpc,
   WsRemoteControlResolvePairingRpc,
   WsRemoteRelaySubscribeRpc,
   WsRemoteRelayConfigureRpc,

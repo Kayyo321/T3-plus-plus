@@ -1743,6 +1743,10 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:remote-control:reachability",
       tag: WS_METHODS.remoteControlReachability,
     }),
+    setRemoteControlDeviceAccess: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-control:set-device-access",
+      tag: WS_METHODS.remoteControlSetDeviceAccess,
+    }),
     remoteRelayLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:remote-relay:live",
       tag: WS_METHODS.remoteRelaySubscribe,

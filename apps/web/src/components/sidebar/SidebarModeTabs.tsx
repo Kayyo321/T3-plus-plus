@@ -1,19 +1,8 @@
-import type { ThreadCapabilityMode } from "@t3tools/contracts";
-import { CodeXmlIcon, MessageCircleIcon, type LucideIcon } from "lucide-react";
-
 import { useOpenWorkspaceMode } from "~/hooks/useWorkspaceModeRouting";
 import { cn } from "~/lib/utils";
 import { useWorkspaceMode } from "~/state/workspaceMode";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-
-const TABS: ReadonlyArray<{
-  readonly mode: ThreadCapabilityMode;
-  readonly label: string;
-  readonly icon: LucideIcon;
-}> = [
-  { mode: "chat", label: "Chat", icon: MessageCircleIcon },
-  { mode: "code", label: "Code", icon: CodeXmlIcon },
-];
+import { WORKSPACE_MODE_TABS } from "./workspaceModeTabs";
 
 /** The app's two halves. Chat never touches this machine's files; Code works in your projects. */
 export function SidebarModeTabs() {
@@ -25,7 +14,7 @@ export function SidebarModeTabs() {
       aria-label="Workspace"
       className="flex shrink-0 items-center gap-0.5 rounded-lg bg-sidebar-control-surface p-0.5 [-webkit-app-region:no-drag]"
     >
-      {TABS.map(({ mode, label, icon: Icon }) => (
+      {WORKSPACE_MODE_TABS.map(({ mode, label, icon: Icon }) => (
         <Tooltip key={mode}>
           <TooltipTrigger
             render={

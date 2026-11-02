@@ -88,7 +88,13 @@ it.effect("reads the session only from the cookie of the switch the request name
   Effect.gen(function* () {
     const seen: Array<RemoteControl.RemoteDeviceCredential> = [];
     yield* send(
-      { session: (credential) => Effect.sync(() => void seen.push(credential)) },
+      {
+        sessionLifetimeMs: (credential) =>
+          Effect.sync(() => {
+            seen.push(credential);
+            return 60_000;
+          }),
+      },
       new Request(`http://host${REMOTE_CONTROL_SESSION_ROUTE}?switch=a`, {
         headers: { cookie: "t3_remote_a=token-a; t3_remote_b=token-b; t3_session=environment" },
       }),

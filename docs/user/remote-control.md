@@ -5,7 +5,8 @@ watch it stream, and depending on the access you choose, you can send messages, 
 and stop a run. Nothing is installed on the other device: it is a web page.
 
 This is narrower than [connecting a client](./remote-access.md), which gives an app the whole
-machine. A remote device reaches one conversation and nothing else.
+machine. A remote device reaches one conversation and nothing else, unless you also allow it to
+message the orchestrator.
 
 ## Turn it on
 
@@ -43,10 +44,28 @@ After pairing, that browser stays signed in to this conversation for its session
 | Full    | Also stop a run and change the conversation's mode |
 
 The default is Chat. Raising the level asks you to confirm, and it applies to every paired device at
-once. Lowering it applies at once too.
+once. Lowering it applies at once too, and turns off the permissions below.
 
 A device can approve or deny one request at a time, but it cannot grant a standing approval. It
-cannot rewind the conversation, open files on your machine, or see other conversations.
+cannot rewind the conversation or open files on your machine.
+
+## What a device can change
+
+Choose **Manage** and use **What devices can change** to turn each of these on or off. Each one
+works on any access level, and each needs an encrypted route, such as the private relay.
+
+| Permission           | What the device can do                                  |
+| -------------------- | ------------------------------------------------------- |
+| Model                | Change the model and its effort                         |
+| Plan and permissions | Switch plan mode and permission mode                    |
+| Chat and Code        | Switch this conversation's mode, when no run is going   |
+| Rename               | Change the conversation's title                         |
+| Stop                 | Stop a run                                              |
+| Orchestrator         | Message the orchestrator, as you would on this computer |
+
+Picking Full turns on everything here except Orchestrator. Orchestrator is the only way a device
+reaches past this one conversation, because the orchestrator can start and read work across this
+machine, so it is always your own choice. Its approvals still wait for you on this computer.
 
 ## How a device connects
 
@@ -66,8 +85,12 @@ T3++ offers the routes this machine actually has, best first:
 
 ## How long access lasts
 
-A session ends after 2 hours without activity, or 12 hours after pairing, whichever comes first.
-Keeping the page open counts as activity. The sheet shows how long each device has left.
+By default, a session ends after 2 hours without activity, or 12 hours after pairing, whichever
+comes first. Keeping the page open counts as activity. The sheet shows how long each device has left.
+
+To change that, choose **Manage** and pick a time next to the device: 1 day, 7 days, 30 days, or
+**Forever**. A longer time isn't cut short when the device sits idle. A device that joined over plain
+HTTP keeps the default limits.
 
 To end access sooner:
 

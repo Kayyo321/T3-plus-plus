@@ -286,7 +286,7 @@ function Header(props: {
   );
 }
 
-function Composer(props: {
+export function OrchestratorComposer(props: {
   readonly draft: string;
   readonly disabled: boolean;
   readonly placeholder: string;
@@ -546,7 +546,7 @@ export default function OrchestratorPanel(props: {
         </p>
       )}
       {conversationShown ? (
-        <Composer
+        <OrchestratorComposer
           draft={draft}
           disabled={availability.status !== "available"}
           placeholder={blocked ? "Unavailable" : "Message the orchestrator"}

@@ -1,4 +1,6 @@
 import { RemoteComputerUse } from "./RemoteComputerUse";
+import { RemoteComposerControls, remoteProvidersUrl } from "./RemoteConversationControls";
+import { RemoteOrchestrator } from "./RemoteOrchestrator";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 import { derivePhase } from "~/session-logic";
@@ -21,9 +23,11 @@ import {
   REMOTE_CONTROL_LEVEL_INFO,
   REMOTE_CONTROL_MESSAGES_ROUTE,
   REMOTE_CONTROL_MODE_ROUTE,
+  REMOTE_CONTROL_MODEL_ROUTE,
   REMOTE_CONTROL_PAIR_CODE_ROUTE,
   REMOTE_CONTROL_PAIR_START_ROUTE,
   REMOTE_CONTROL_PAIR_STATUS_ROUTE,
+  REMOTE_CONTROL_RENAME_ROUTE,
   REMOTE_CONTROL_RESPOND_ROUTE,
   REMOTE_CONTROL_SESSION_ROUTE,
   REMOTE_CONTROL_SIGN_OUT_ROUTE,
@@ -31,20 +35,24 @@ import {
   REMOTE_CONTROL_SWITCH_PARAM,
   RemoteControlFailureBody,
   RemoteControlPairingProgress,
+  type RemoteControlPermission,
   type RemoteControlView,
   remoteControlLevelAllows,
   type RuntimeRequestId,
+  type ThreadCapabilityMode,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import { LogOutIcon, MousePointer2Icon } from "lucide-react";
 import { useEffect, useReducer, useState, type FormEvent } from "react";
 
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Switch } from "../ui/switch";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { MessagesTimelineHistoryControls } from "../chat/MessagesTimeline";
-import { runtimeModeConfig } from "../chat/runtimeModeConfig";
+import { OrchestratorGlyph } from "../orchestrator/OrchestratorGlyph";
+import { WORKSPACE_MODE_TABS } from "../sidebar/workspaceModeTabs";
 import {
   SHARED_THREAD_LANE,
   SharedNotice,
@@ -441,6 +449,7 @@ function RemoteSession({ switchId }: { readonly switchId: string }) {
     let finished = false;
     let attempts = 0;
     let lastSequence = 0;
+    let knownExpiry: string | null | undefined;
     const connect = () => {
       clearTimeout(timer);
       timer = undefined;
@@ -454,6 +463,11 @@ function RemoteSession({ switchId }: { readonly switchId: string }) {
         setConnection("live");
         lastSequence = streamEventSequence(event) ?? lastSequence;
         dispatch(event);
+        // Asking renews the cookie, so a limit the owner extended outlasts the old one.
+        if (event.type === "view" && event.view.expiresAt !== knownExpiry) {
+          knownExpiry = event.view.expiresAt;
+          void checkSession(switchId);
+        }
         if (event.type === "ended") {
           finished = true;
           current.close();
@@ -538,13 +552,137 @@ function RemoteSession({ switchId }: { readonly switchId: string }) {
   );
 }
 
-function SessionTimeLabel({ view }: { readonly view: RemoteControlView }) {
+function sessionTimeLabel(view: RemoteControlView, now: number) {
+  return view.expiresAt === null ? "No time limit" : `${formatRemaining(view.expiresAt, now)} left`;
+}
+
+/** Shows the conversation's real mode. With the permission, it switches like the app's tabs do. */
+function RemoteModeTabs({
+  mode,
+  canSwitch,
+  onSwitch,
+}: {
+  readonly mode: ThreadCapabilityMode;
+  readonly canSwitch: boolean;
+  readonly onSwitch: (mode: ThreadCapabilityMode) => void;
+}) {
+  const tabs = canSwitch
+    ? WORKSPACE_MODE_TABS
+    : WORKSPACE_MODE_TABS.filter((tab) => tab.mode === mode);
+  return (
+    <div
+      role="tablist"
+      aria-label="Conversation mode"
+      className="flex shrink-0 items-center gap-0.5 rounded-lg bg-sidebar-control-surface p-0.5"
+    >
+      {tabs.map(({ mode: tabMode, label, icon: Icon }) => (
+        <Tooltip key={tabMode}>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === tabMode}
+                aria-label={label}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-md outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                  mode === tabMode
+                    ? "bg-sidebar-row-active text-sidebar-foreground"
+                    : "cursor-pointer text-sidebar-muted-foreground hover:text-sidebar-foreground",
+                )}
+                onClick={() => {
+                  if (canSwitch && mode !== tabMode) onSwitch(tabMode);
+                }}
+              />
+            }
+          >
+            <Icon className="size-4" />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">{label}</TooltipPopup>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
+function RemoteTitle({
+  title,
+  canRename,
+  onRename,
+}: {
+  readonly title: string;
+  readonly canRename: boolean;
+  readonly onRename: (title: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  if (draft !== null) {
+    return (
+      <form
+        className="min-w-0 flex-1"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (draft.trim() !== "" && draft.trim() !== title) onRename(draft.trim());
+          setDraft(null);
+        }}
+      >
+        <Input
+          autoFocus
+          aria-label="Conversation title"
+          maxLength={200}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => setDraft(null)}
+        />
+      </form>
+    );
+  }
+  return canRename ? (
+    <button
+      type="button"
+      aria-label={`Rename ${title}`}
+      className="min-w-0 flex-1 cursor-pointer truncate text-left text-sm font-medium"
+      onClick={() => setDraft(title)}
+    >
+      {title}
+    </button>
+  ) : (
+    <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h1>
+  );
+}
+
+/** Remote Control's own icon from the app. What this device can do lives behind it. */
+function RemoteSessionMenu({
+  view,
+  onLeave,
+}: {
+  readonly view: RemoteControlView;
+  readonly onLeave: () => void;
+}) {
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}Z`);
   return (
-    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-      {formatRemaining(view.expiresAt, now)} left
-    </span>
+    <Menu>
+      <MenuTrigger
+        render={<Button size="icon-sm" variant="ghost" aria-label="Remote control session" />}
+      >
+        <MousePointer2Icon />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        <p className="px-2 py-1.5 text-xs">
+          <span className="block font-medium">
+            {REMOTE_CONTROL_LEVEL_INFO[view.level].label} access
+          </span>
+          <span className="block text-muted-foreground">{view.deviceLabel}</span>
+          <span className="block text-muted-foreground tabular-nums">
+            {sessionTimeLabel(view, now)}
+          </span>
+        </p>
+        <MenuItem onClick={onLeave}>
+          <LogOutIcon />
+          Leave
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
   );
 }
 
@@ -581,8 +719,12 @@ function RemoteConversation({
   const running = derivePhase(runtime) === "running";
   const canSend = remoteControlLevelAllows(view.level, "chat") && !offline;
   const canApprove = remoteControlLevelAllows(view.level, "approve");
-  const canControl = remoteControlLevelAllows(view.level, "full");
-  const heldBack = view.level !== view.grantedLevel;
+  const can = (permission: RemoteControlPermission) =>
+    view.permissions.includes(permission) && !offline;
+  const canStopComputer = remoteControlLevelAllows(view.level, "full");
+  const [orchestratorOpen, setOrchestratorOpen] = useState(false);
+  const heldBack =
+    view.level !== view.grantedLevel || view.permissions.length !== view.grantedPermissions.length;
   const send = async (text: string, files: ReadonlyArray<File>) => {
     const form = new FormData();
     form.append("shareId", switchId);
@@ -596,34 +738,49 @@ function RemoteConversation({
     setActionError(failure?.message ?? null);
   };
   const others = view.otherDevices.filter((device) => device.connected);
+  if (orchestratorOpen && can("orchestrator")) {
+    return (
+      <RemoteOrchestrator
+        routeFor={(route) => routeFor(route, switchId)}
+        onBack={() => setOrchestratorOpen(false)}
+      />
+    );
+  }
   return (
     <>
-      <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-        <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{view.title}</h1>
-        <Badge variant="outline" size="sm">
-          {REMOTE_CONTROL_LEVEL_INFO[view.level].label}
-        </Badge>
-        <SessionTimeLabel view={view} />
-        {canControl && running ? (
+      <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
+        <RemoteModeTabs
+          mode={view.capabilityMode}
+          canSwitch={can("threadMode")}
+          onSwitch={(capabilityMode) => {
+            if (running) setActionError("Stop the run before changing mode.");
+            else void act(routeFor(REMOTE_CONTROL_MODE_ROUTE, switchId), { capabilityMode });
+          }}
+        />
+        <RemoteTitle
+          key={view.title}
+          title={view.title}
+          canRename={can("rename")}
+          onRename={(title) => void act(routeFor(REMOTE_CONTROL_RENAME_ROUTE, switchId), { title })}
+        />
+        {can("orchestrator") ? (
           <Button
-            size="xs"
-            variant="destructive-outline"
-            onClick={() => void act(routeFor(REMOTE_CONTROL_STOP_ROUTE, switchId))}
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Orchestrator"
+            onClick={() => setOrchestratorOpen(true)}
           >
-            Stop
+            <OrchestratorGlyph size={18} motion="still" />
           </Button>
         ) : null}
-        <Button
-          size="xs"
-          variant="ghost"
-          onClick={() => {
+        <RemoteSessionMenu
+          view={view}
+          onLeave={() => {
             void postRemote(routeFor(REMOTE_CONTROL_SIGN_OUT_ROUTE, switchId)).then(() =>
               window.location.reload(),
             );
           }}
-        >
-          Leave
-        </Button>
+        />
       </header>
       <ConnectionBanner connection={connection} />
       {others.length > 0 ? (
@@ -648,7 +805,7 @@ function RemoteConversation({
         <RemoteComputerUse
           routeFor={(route) => routeFor(route, switchId)}
           canApprove={canApprove && !offline}
-          canStop={canControl && !offline}
+          canStop={canStopComputer && !offline}
           onAct={(url, body) => void act(url, body)}
         />
         {canApprove && !offline ? (
@@ -657,16 +814,10 @@ function RemoteConversation({
             onRespond={(body) => act(routeFor(REMOTE_CONTROL_RESPOND_ROUTE, switchId), body)}
           />
         ) : null}
-        {canControl && !offline ? (
-          <ModeControls
-            projection={projection}
-            onChange={(body) => void act(routeFor(REMOTE_CONTROL_MODE_ROUTE, switchId), body)}
-          />
-        ) : null}
         {heldBack ? (
           <p className="text-xs text-muted-foreground">
-            This connection is not encrypted, so approving and stopping need Tailscale or T3
-            Connect.
+            This connection is not encrypted, so these controls need the private relay, Tailscale,
+            or T3 Connect.
           </p>
         ) : null}
         {canSend ? (
@@ -674,6 +825,28 @@ function RemoteConversation({
             model={view.model}
             hint={
               view.ownerReview ? "The owner approves each message" : "Sent as " + view.deviceLabel
+            }
+            {...(can("model") || can("mode")
+              ? {
+                  controls: (
+                    <RemoteComposerControls
+                      view={view}
+                      projection={projection}
+                      providersUrl={remoteProvidersUrl((route) => routeFor(route, switchId))}
+                      onModel={(modelSelection) =>
+                        void act(routeFor(REMOTE_CONTROL_MODEL_ROUTE, switchId), { modelSelection })
+                      }
+                      onMode={(body) =>
+                        void act(routeFor(REMOTE_CONTROL_MODE_ROUTE, switchId), body)
+                      }
+                    />
+                  ),
+                }
+              : {})}
+            onStop={
+              can("stop") && running
+                ? () => void act(routeFor(REMOTE_CONTROL_STOP_ROUTE, switchId))
+                : undefined
             }
             onSend={send}
           />
@@ -843,47 +1016,5 @@ function QuestionCard({
         </Button>
       </div>
     </form>
-  );
-}
-
-function ModeControls({
-  projection,
-  onChange,
-}: {
-  readonly projection: OrchestrationV2ThreadProjection;
-  readonly onChange: (body: {
-    readonly interactionMode?: "default" | "plan";
-    readonly runtimeMode?: keyof typeof runtimeModeConfig;
-  }) => void;
-}) {
-  const { interactionMode, runtimeMode } = projection.thread;
-  return (
-    <div className="flex items-center gap-3 text-xs">
-      <label className="flex items-center gap-1.5">
-        <Switch
-          aria-label="Plan mode"
-          checked={interactionMode === "plan"}
-          onCheckedChange={(checked) => onChange({ interactionMode: checked ? "plan" : "default" })}
-        />
-        Plan
-      </label>
-      <label className="flex min-w-0 flex-1 items-center gap-1.5">
-        Permissions
-        <select
-          aria-label="Permission mode"
-          className="min-w-0 flex-1 rounded-md border border-border bg-background px-1.5 py-1"
-          value={runtimeMode}
-          onChange={(event) =>
-            onChange({ runtimeMode: event.target.value as keyof typeof runtimeModeConfig })
-          }
-        >
-          {Object.entries(runtimeModeConfig).map(([mode, config]) => (
-            <option key={mode} value={mode}>
-              {config.label}
-            </option>
-          ))}
-        </select>
-      </label>
-    </div>
   );
 }

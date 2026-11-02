@@ -476,6 +476,7 @@ export const layerProduction = Layer.mergeAll(
   RemoteControlService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        layerOrchestratorAgentProvided,
         layerOrchestratorProvided,
         layerCommandOutputHubProvided,
         layerThreadManagementProvided,

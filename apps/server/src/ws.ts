@@ -2115,6 +2115,10 @@ export const layerWsRpc = (
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(remoteControl.revokeDevice(input)),
           ),
+        [WS_METHODS.remoteControlSetDeviceAccess]: (input) =>
+          Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
+            Effect.andThen(remoteControl.setDeviceAccess(input)),
+          ),
         [WS_METHODS.remoteControlResolvePairing]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(remoteControl.resolvePairing(input)),

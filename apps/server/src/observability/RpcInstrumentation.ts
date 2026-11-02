@@ -175,6 +175,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.remoteControlRotateLink]: "remote-control",
   [WS_METHODS.remoteControlRevealLink]: "remote-control",
   [WS_METHODS.remoteControlRevokeDevice]: "remote-control",
+  [WS_METHODS.remoteControlSetDeviceAccess]: "remote-control",
   [WS_METHODS.remoteControlResolvePairing]: "remote-control",
   [WS_METHODS.remoteRelaySubscribe]: "remote-control",
   [WS_METHODS.remoteRelayConfigure]: "remote-control",

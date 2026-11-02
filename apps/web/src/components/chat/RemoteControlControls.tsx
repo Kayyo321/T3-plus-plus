@@ -4,18 +4,24 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import {
   type EnvironmentId,
+  REMOTE_CONTROL_DEVICE_ACCESS_INFO,
   REMOTE_CONTROL_INACTIVITY_TTL_MS,
   REMOTE_CONTROL_LEVEL_INFO,
+  REMOTE_CONTROL_PERMISSION_INFO,
+  REMOTE_CONTROL_PERMISSIONS,
   REMOTE_CONTROL_SESSION_TTL_MS,
   REMOTE_CONTROL_UNENCRYPTED_LEVEL_CAP,
   type RemoteControlAccessLevel,
   type RemoteControlDevice,
+  type RemoteControlDeviceAccess,
   type RemoteControlLink,
   type RemoteControlLinkRoute,
   type RemoteControlPairingMode,
+  type RemoteControlPermission,
   type RemoteControlRouteKind,
   type RemoteControlSwitch,
   remoteControlLevelAllows,
+  remoteControlLevelPermissions,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -76,7 +82,20 @@ const PAIRING_LABELS: Record<RemoteControlPairingMode, string> = {
 
 const LEVELS = Object.keys(REMOTE_CONTROL_LEVEL_INFO) as ReadonlyArray<RemoteControlAccessLevel>;
 
-const SESSION_LIMITS = `Sessions end after ${REMOTE_CONTROL_INACTIVITY_TTL_MS / 3_600_000} hours without activity, or ${REMOTE_CONTROL_SESSION_TTL_MS / 3_600_000} hours after pairing.`;
+const SESSION_LIMITS = `By default, a device's session ends after ${REMOTE_CONTROL_INACTIVITY_TTL_MS / 3_600_000} hours without activity, or ${REMOTE_CONTROL_SESSION_TTL_MS / 3_600_000} hours after pairing. Choose a longer time for each device above.`;
+
+const DEVICE_ACCESS = Object.keys(
+  REMOTE_CONTROL_DEVICE_ACCESS_INFO,
+) as Array<RemoteControlDeviceAccess>;
+
+const permissionsMessage = (added: ReadonlyArray<RemoteControlPermission>) =>
+  [
+    "Allow remote devices to do this?",
+    ...added.map((item) => {
+      const { label, description } = REMOTE_CONTROL_PERMISSION_INFO[item];
+      return `${label}: ${description}`;
+    }),
+  ].join("\n");
 
 const raiseMessage = (level: RemoteControlAccessLevel, devices: number) => {
   const { label, description } = REMOTE_CONTROL_LEVEL_INFO[level];
@@ -411,6 +430,7 @@ function RemoteControlOff({
   const [accessLevel, setAccessLevel] = useState<RemoteControlAccessLevel>("chat");
   const [pairingMode, setPairingMode] = useState<RemoteControlPairingMode>("approve");
   const [ownerReview, setOwnerReview] = useState(false);
+  const [permissions, setPermissions] = useState<ReadonlyArray<RemoteControlPermission>>([]);
   const [turningOn, setTurningOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const noRoute = reachability != null && reachability.routes.length === 0;
@@ -418,11 +438,22 @@ function RemoteControlOff({
   const turnOn = async () => {
     const raising = accessLevel !== "view" && accessLevel !== "chat";
     if (raising && !(await requestConfirmDialog(raiseMessage(accessLevel, 0)))) return;
+    const added = permissions.filter(
+      (item) => !remoteControlLevelPermissions(accessLevel).includes(item),
+    );
+    if (added.length > 0 && !(await requestConfirmDialog(permissionsMessage(added)))) return;
     setTurningOn(true);
     setError(null);
     const result = await enable({
       environmentId,
-      input: { threadId, accessLevel, pairingMode, ownerReview, confirmRaise: raising },
+      input: {
+        threadId,
+        accessLevel,
+        pairingMode,
+        ownerReview,
+        permissions,
+        confirmRaise: raising || added.length > 0,
+      },
     });
     setTurningOn(false);
     if (result._tag !== "Success" && !isAtomCommandInterrupted(result)) {
@@ -452,9 +483,14 @@ function RemoteControlOff({
               accessLevel={accessLevel}
               pairingMode={pairingMode}
               ownerReview={ownerReview}
-              onAccessLevel={setAccessLevel}
+              permissions={permissions}
+              onAccessLevel={(level) => {
+                setAccessLevel(level);
+                setPermissions(remoteControlLevelPermissions(level));
+              }}
               onPairingMode={setPairingMode}
               onOwnerReview={setOwnerReview}
+              onPermissions={setPermissions}
             />
           )}
           {error !== null ? (
@@ -488,16 +524,20 @@ function SwitchSettings({
   accessLevel,
   pairingMode,
   ownerReview,
+  permissions,
   onAccessLevel,
   onPairingMode,
   onOwnerReview,
+  onPermissions,
 }: {
   readonly accessLevel: RemoteControlAccessLevel;
   readonly pairingMode: RemoteControlPairingMode;
   readonly ownerReview: boolean;
+  readonly permissions: ReadonlyArray<RemoteControlPermission>;
   readonly onAccessLevel: (level: RemoteControlAccessLevel) => void;
   readonly onPairingMode: (mode: RemoteControlPairingMode) => void;
   readonly onOwnerReview: (review: boolean) => void;
+  readonly onPermissions: (permissions: ReadonlyArray<RemoteControlPermission>) => void;
 }) {
   return (
     <div className="flex flex-col gap-3 text-sm">
@@ -564,6 +604,34 @@ function SwitchSettings({
           onCheckedChange={onOwnerReview}
         />
       </label>
+      <div className="flex flex-col gap-2">
+        <p className="font-medium">What devices can change</p>
+        {REMOTE_CONTROL_PERMISSIONS.map((permission) => {
+          const { label, description } = REMOTE_CONTROL_PERMISSION_INFO[permission];
+          return (
+            <label key={permission} className="flex items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className="block">{label}</span>
+                <span className="block text-muted-foreground text-xs">{description}</span>
+              </span>
+              <Switch
+                aria-label={label}
+                checked={permissions.includes(permission)}
+                onCheckedChange={(checked) =>
+                  onPermissions(
+                    checked
+                      ? [...permissions, permission]
+                      : permissions.filter((item) => item !== permission),
+                  )
+                }
+              />
+            </label>
+          );
+        })}
+        <p className="text-muted-foreground text-xs">
+          These need an encrypted route, such as the private relay.
+        </p>
+      </div>
       <p className="text-muted-foreground text-xs">{SESSION_LIMITS}</p>
     </div>
   );
@@ -622,6 +690,66 @@ function useRemoteControlLink(threadRef: ScopedThreadRef, remote: RemoteControlS
   return { canManage, error, link, loading: canManage && linkIsLive && !answered, newLink };
 }
 
+const deviceLimit = (device: RemoteControlDevice, now: number) =>
+  device.expiresAt === null
+    ? "Stays until you disconnect it."
+    : device.access === "session" && device.idleExpiresAt !== null
+      ? `Ends in ${formatRemaining(device.idleExpiresAt, now)} if idle.`
+      : `Ends in ${formatRemaining(device.expiresAt, now)}.`;
+
+function DeviceAccessSelect({
+  threadRef,
+  device,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly device: RemoteControlDevice;
+}) {
+  const { environmentId, threadId } = threadRef;
+  const canChoose = useAtomValue(
+    serverEnvironment.setRemoteControlDeviceAccess.permissionAtom(environmentId),
+  );
+  const setAccess = useAtomCommand(serverEnvironment.setRemoteControlDeviceAccess, {
+    label: "change device access time",
+  });
+  const choose = async (access: RemoteControlDeviceAccess) => {
+    if (access === device.access) return;
+    const longer = access !== "session";
+    const question =
+      access === "forever"
+        ? `Keep ${device.label} signed in forever?\nIt stays connected until you disconnect it or turn off remote control.`
+        : `Keep ${device.label} signed in for ${REMOTE_CONTROL_DEVICE_ACCESS_INFO[access].label}?`;
+    if (longer && !(await requestConfirmDialog(question))) return;
+    await setAccess({
+      environmentId,
+      input: { threadId, deviceId: device.id, access, confirmRaise: longer },
+    });
+  };
+  return (
+    <Select
+      value={device.access}
+      disabled={!canChoose}
+      onValueChange={(value) => {
+        if (value !== null) void choose(value);
+      }}
+      items={DEVICE_ACCESS.map((access) => ({
+        value: access,
+        label: REMOTE_CONTROL_DEVICE_ACCESS_INFO[access].label,
+      }))}
+    >
+      <SelectTrigger size="sm" className="w-28" aria-label={`Access time for ${device.label}`}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectPopup>
+        {DEVICE_ACCESS.map((access) => (
+          <SelectItem key={access} value={access}>
+            {REMOTE_CONTROL_DEVICE_ACCESS_INFO[access].label}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
 function RemoteControlOn({
   threadRef,
   remote,
@@ -645,6 +773,7 @@ function RemoteControlOn({
     readonly accessLevel?: RemoteControlAccessLevel;
     readonly pairingMode?: RemoteControlPairingMode;
     readonly ownerReview?: boolean;
+    readonly permissions?: ReadonlyArray<RemoteControlPermission>;
   }) => {
     const raising =
       input.accessLevel !== undefined &&
@@ -654,9 +783,11 @@ function RemoteControlOn({
       const connected = remote.devices.length;
       if (!(await requestConfirmDialog(raiseMessage(input.accessLevel!, connected)))) return;
     }
+    const added = (input.permissions ?? []).filter((item) => !remote.permissions.includes(item));
+    if (added.length > 0 && !(await requestConfirmDialog(permissionsMessage(added)))) return;
     const result = await update({
       environmentId,
-      input: { threadId, ...input, confirmRaise: raising },
+      input: { threadId, ...input, confirmRaise: raising || added.length > 0 },
     });
     setSaveError(result._tag === "Success" ? null : failureMessage(result));
   };
@@ -677,9 +808,11 @@ function RemoteControlOn({
             accessLevel={remote.accessLevel}
             pairingMode={remote.pairingMode}
             ownerReview={remote.ownerReview}
+            permissions={remote.permissions}
             onAccessLevel={(accessLevel) => void save({ accessLevel })}
             onPairingMode={(pairingMode) => void save({ pairingMode })}
             onOwnerReview={(ownerReview) => void save({ ownerReview })}
+            onPermissions={(permissions) => void save({ permissions })}
           />
           {error !== null ? (
             <p role="alert" className="text-destructive text-xs">
@@ -889,10 +1022,10 @@ function DeviceList({
               </span>
             </p>
             <p className="truncate text-muted-foreground text-xs">
-              {device.lastAction ?? "Joined"}. Ends in{" "}
-              {formatRemaining(device.idleExpiresAt, Date.parse(`${nowMinute}Z`))} if idle.
+              {device.lastAction ?? "Joined"}. {deviceLimit(device, Date.parse(`${nowMinute}Z`))}
             </p>
           </div>
+          <DeviceAccessSelect threadRef={threadRef} device={device} />
           <Button
             size="xs"
             variant="ghost-destructive"

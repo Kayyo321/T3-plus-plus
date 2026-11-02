@@ -66,6 +66,7 @@ describe("V2 preview upgrade", () => {
         [85, "CheckpointRefIndex"],
         [86, "Teamwork"],
         [87, "ConversationFolderCapabilityMode"],
+        [88, "RemoteControlDeviceAccess"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -175,6 +176,7 @@ describe("V2 preview upgrade", () => {
         [85, "CheckpointRefIndex"],
         [86, "Teamwork"],
         [87, "ConversationFolderCapabilityMode"],
+        [88, "RemoteControlDeviceAccess"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

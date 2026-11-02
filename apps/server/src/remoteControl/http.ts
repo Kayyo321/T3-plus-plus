@@ -13,10 +13,17 @@ import {
   REMOTE_CONTROL_MEDIA_ROUTE,
   REMOTE_CONTROL_MESSAGES_ROUTE,
   REMOTE_CONTROL_MODE_ROUTE,
+  REMOTE_CONTROL_MODEL_ROUTE,
+  REMOTE_CONTROL_ORCHESTRATOR_REACT_ROUTE,
+  REMOTE_CONTROL_ORCHESTRATOR_SEND_ROUTE,
+  REMOTE_CONTROL_ORCHESTRATOR_STOP_ROUTE,
+  REMOTE_CONTROL_ORCHESTRATOR_STREAM_ROUTE,
   REMOTE_CONTROL_PAIR_CODE_ROUTE,
   REMOTE_CONTROL_PAIR_START_ROUTE,
   REMOTE_CONTROL_PAIR_STATUS_ROUTE,
   REMOTE_CONTROL_PAIRING_TTL_MS,
+  REMOTE_CONTROL_PROVIDERS_ROUTE,
+  REMOTE_CONTROL_RENAME_ROUTE,
   REMOTE_CONTROL_RENDER_ROUTE,
   REMOTE_CONTROL_RESPOND_ROUTE,
   REMOTE_CONTROL_ROUTE_PREFIX,
@@ -27,10 +34,16 @@ import {
   REMOTE_CONTROL_STREAM_ROUTE,
   REMOTE_CONTROL_SWITCH_PARAM,
   RemoteControlAccessError,
+  RemoteControlModelRequest,
   RemoteControlModeRequest,
+  RemoteControlOrchestratorEvent,
+  RemoteControlOrchestratorReactRequest,
+  RemoteControlOrchestratorSendRequest,
   RemoteControlPairCodeRequest,
   RemoteControlPairingProgress,
   RemoteControlPairStartRequest,
+  RemoteControlProviders,
+  RemoteControlRenameRequest,
   RemoteControlRespondRequest,
   RemoteControlStreamEvent,
   remoteControlPairingCookieName,
@@ -62,6 +75,14 @@ const decodePairStart = Schema.decodeUnknownEffect(RemoteControlPairStartRequest
 const decodePairCode = Schema.decodeUnknownEffect(RemoteControlPairCodeRequest);
 const decodeRespond = Schema.decodeUnknownEffect(RemoteControlRespondRequest);
 const decodeMode = Schema.decodeUnknownEffect(RemoteControlModeRequest);
+const decodeModel = Schema.decodeUnknownEffect(RemoteControlModelRequest);
+const decodeRename = Schema.decodeUnknownEffect(RemoteControlRenameRequest);
+const decodeOrchestratorSend = Schema.decodeUnknownEffect(RemoteControlOrchestratorSendRequest);
+const decodeOrchestratorReact = Schema.decodeUnknownEffect(RemoteControlOrchestratorReactRequest);
+const encodeProviders = Schema.encodeEffect(Schema.toCodecJson(RemoteControlProviders));
+const encodeOrchestratorEvent = Schema.encodeEffect(
+  Schema.fromJsonString(Schema.toCodecJson(RemoteControlOrchestratorEvent)),
+);
 const encodeProgress = Schema.encodeEffect(Schema.toCodecJson(RemoteControlPairingProgress));
 const encodeStreamEvent = Schema.encodeEffect(
   Schema.fromJsonString(Schema.toCodecJson(RemoteControlStreamEvent)),
@@ -247,9 +268,19 @@ const sessionRoute = HttpRouter.add(
   REMOTE_CONTROL_SESSION_ROUTE,
   Effect.gen(function* () {
     const remote = yield* RemoteControl.RemoteControlService;
-    return yield* remote
-      .session(yield* deviceCredential)
-      .pipe(Effect.as(noContent), Effect.catchTags({ RemoteControlAccessError: errorResponse }));
+    const credential = yield* deviceCredential;
+    // The owner can extend a device after it paired, so the cookie follows the current limit.
+    return yield* remote.sessionLifetimeMs(credential).pipe(
+      Effect.flatMap((lifetimeMs) =>
+        HttpServerResponse.setCookie(
+          noContent,
+          remoteControlSessionCookieName(credential.switchId),
+          credential.token,
+          cookieOptions(credential.transport, REMOTE_CONTROL_ROUTE_PREFIX, lifetimeMs),
+        ),
+      ),
+      Effect.catchTags({ RemoteControlAccessError: errorResponse }),
+    );
   }),
 );
 
@@ -469,6 +500,89 @@ const modeRoute = HttpRouter.add(
   }),
 );
 
+/** A POST that decodes a JSON body and answers with no content. */
+const jsonAction = <A, E>(
+  route: `/${string}`,
+  decode: (body: unknown) => Effect.Effect<A, E>,
+  run: (
+    remote: RemoteControl.RemoteControlService["Service"],
+    credential: RemoteControl.RemoteDeviceCredential,
+    body: A,
+  ) => Effect.Effect<void, RemoteControlAccessError>,
+) =>
+  HttpRouter.add(
+    "POST",
+    route,
+    Effect.gen(function* () {
+      const body = yield* readJson.pipe(Effect.flatMap(decode), Effect.option);
+      if (body._tag === "None") return yield* badRequest;
+      const remote = yield* RemoteControl.RemoteControlService;
+      return yield* run(remote, yield* deviceCredential, body.value).pipe(
+        Effect.as(noContent),
+        Effect.catchTags({ RemoteControlAccessError: errorResponse }),
+      );
+    }),
+  );
+
+const modelRoute = jsonAction(REMOTE_CONTROL_MODEL_ROUTE, decodeModel, (remote, credential, body) =>
+  remote.setModel(credential, body),
+);
+const renameRoute = jsonAction(
+  REMOTE_CONTROL_RENAME_ROUTE,
+  decodeRename,
+  (remote, credential, body) => remote.rename(credential, body),
+);
+const orchestratorSendRoute = jsonAction(
+  REMOTE_CONTROL_ORCHESTRATOR_SEND_ROUTE,
+  decodeOrchestratorSend,
+  (remote, credential, body) => remote.orchestratorSend(credential, body),
+);
+const orchestratorReactRoute = jsonAction(
+  REMOTE_CONTROL_ORCHESTRATOR_REACT_ROUTE,
+  decodeOrchestratorReact,
+  (remote, credential, body) => remote.orchestratorReact(credential, body),
+);
+
+const orchestratorStreamRoute = HttpRouter.add(
+  "GET",
+  REMOTE_CONTROL_ORCHESTRATOR_STREAM_ROUTE,
+  Effect.gen(function* () {
+    const remote = yield* RemoteControl.RemoteControlService;
+    return yield* remote.orchestratorStream(yield* deviceCredential).pipe(
+      Effect.map((events) => eventStreamResponse(events, encodeOrchestratorEvent)),
+      Effect.catchTags({ RemoteControlAccessError: errorResponse }),
+    );
+  }),
+);
+
+const orchestratorStopRoute = HttpRouter.add(
+  "POST",
+  REMOTE_CONTROL_ORCHESTRATOR_STOP_ROUTE,
+  Effect.gen(function* () {
+    const remote = yield* RemoteControl.RemoteControlService;
+    return yield* remote
+      .orchestratorStop(yield* deviceCredential)
+      .pipe(Effect.as(noContent), Effect.catchTags({ RemoteControlAccessError: errorResponse }));
+  }),
+);
+
+const providersRoute = HttpRouter.add(
+  "GET",
+  REMOTE_CONTROL_PROVIDERS_ROUTE,
+  Effect.gen(function* () {
+    const remote = yield* RemoteControl.RemoteControlService;
+    return yield* remote.providers(yield* deviceCredential).pipe(
+      Effect.flatMap((result) =>
+        encodeProviders(result).pipe(
+          Effect.mapError(() => new RemoteControlAccessError({ reason: "unavailable" })),
+        ),
+      ),
+      Effect.map((body) => HttpServerResponse.jsonUnsafe(body, { headers: NO_STORE })),
+      Effect.catchTags({ RemoteControlAccessError: errorResponse }),
+    );
+  }),
+);
+
 const encodeComputerSnapshot = Schema.encodeEffect(Schema.fromJsonString(ComputerUseSnapshot));
 const computerStreamRoute = HttpRouter.add(
   "GET",
@@ -525,6 +639,13 @@ const computerStopRoute = HttpRouter.add(
 );
 
 export const layer = Layer.mergeAll(
+  modelRoute,
+  renameRoute,
+  providersRoute,
+  orchestratorStreamRoute,
+  orchestratorSendRoute,
+  orchestratorReactRoute,
+  orchestratorStopRoute,
   computerStreamRoute,
   computerScreenshotRoute,
   computerApprovalRoute,

@@ -1,9 +1,13 @@
-import type {
-  RemoteControlAccessLevel,
-  RemoteControlPairingMode,
-  ThreadId,
+import {
+  type RemoteControlAccessLevel,
+  type RemoteControlDeviceAccess,
+  type RemoteControlPairingMode,
+  RemoteControlPermission,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 export type StoredLinkState = "ready" | "spent" | "locked";
@@ -16,6 +20,7 @@ export interface StoredSwitch {
   readonly accessLevel: RemoteControlAccessLevel;
   readonly pairingMode: RemoteControlPairingMode;
   readonly ownerReview: boolean;
+  readonly permissions: ReadonlyArray<RemoteControlPermission>;
   readonly linkGeneration: number;
   readonly linkState: StoredLinkState;
   readonly linkExpiresAt: number;
@@ -44,15 +49,26 @@ export interface StoredDevice {
   readonly boundPeer: string | null;
   readonly pairedAt: number;
   readonly lastSeenAt: number;
+  readonly access: RemoteControlDeviceAccess;
+  /** Not meaningful for `forever`, which never reaches it. */
   readonly expiresAt: number;
   readonly lastAction: string | null;
   readonly lastActionAt: number | null;
 }
 
-type SwitchRow = Omit<StoredSwitch, "ownerReview"> & { readonly ownerReview: number };
-const toSwitch = (row: SwitchRow): StoredSwitch => ({
+const PermissionsJson = Schema.fromJsonString(Schema.Array(RemoteControlPermission));
+const decodePermissions = Schema.decodeUnknownOption(PermissionsJson);
+const encodePermissions = Schema.encodeSync(PermissionsJson);
+
+type SwitchRow = Omit<StoredSwitch, "ownerReview" | "permissions"> & {
+  readonly ownerReview: number;
+  readonly permissionsJson: string;
+};
+const toSwitch = ({ permissionsJson, ...row }: SwitchRow): StoredSwitch => ({
   ...row,
   ownerReview: row.ownerReview !== 0,
+  // Unreadable means nothing granted: this decides what a device may do.
+  permissions: Option.getOrElse(decodePermissions(permissionsJson), () => []),
 });
 
 /**
@@ -70,6 +86,7 @@ export const makeRemoteControlStore = Effect.gen(function* () {
       access_level AS "accessLevel",
       pairing_mode AS "pairingMode",
       owner_review AS "ownerReview",
+      permissions_json AS "permissionsJson",
       link_generation AS "linkGeneration",
       link_state AS "linkState",
       link_expires_at AS "linkExpiresAt",
@@ -99,6 +116,7 @@ export const makeRemoteControlStore = Effect.gen(function* () {
       bound_peer AS "boundPeer",
       paired_at AS "pairedAt",
       last_seen_at AS "lastSeenAt",
+      access,
       expires_at AS "expiresAt",
       last_action AS "lastAction",
       last_action_at AS "lastActionAt"
@@ -132,6 +150,7 @@ export const makeRemoteControlStore = Effect.gen(function* () {
           access_level: row.accessLevel,
           pairing_mode: row.pairingMode,
           owner_review: row.ownerReview ? 1 : 0,
+          permissions_json: encodePermissions(row.permissions),
           link_generation: row.linkGeneration,
           link_state: row.linkState,
           link_expires_at: row.linkExpiresAt,
@@ -145,13 +164,15 @@ export const makeRemoteControlStore = Effect.gen(function* () {
       readonly accessLevel: RemoteControlAccessLevel;
       readonly pairingMode: RemoteControlPairingMode;
       readonly ownerReview: boolean;
+      readonly permissions: ReadonlyArray<RemoteControlPermission>;
     }) =>
       sql`
         UPDATE remote_control_switches
         SET
           access_level = ${input.accessLevel},
           pairing_mode = ${input.pairingMode},
-          owner_review = ${input.ownerReview ? 1 : 0}
+          owner_review = ${input.ownerReview ? 1 : 0},
+          permissions_json = ${encodePermissions(input.permissions)}
         WHERE switch_id = ${input.switchId}
       `.pipe(Effect.orDie),
     /** A fresh link: pending pairings on the old one go, and so does the failure count. */
@@ -262,10 +283,25 @@ export const makeRemoteControlStore = Effect.gen(function* () {
           bound_peer: row.boundPeer,
           paired_at: row.pairedAt,
           last_seen_at: row.lastSeenAt,
+          access: row.access,
           expires_at: row.expiresAt,
           last_action: row.lastAction,
           last_action_at: row.lastActionAt,
         })}
+      `.pipe(Effect.orDie),
+    setDeviceAccess: (input: {
+      readonly id: string;
+      readonly access: RemoteControlDeviceAccess;
+      readonly expiresAt: number;
+      readonly lastSeenAt: number;
+    }) =>
+      sql`
+        UPDATE remote_control_devices
+        SET
+          access = ${input.access},
+          expires_at = ${input.expiresAt},
+          last_seen_at = ${input.lastSeenAt}
+        WHERE id = ${input.id}
       `.pipe(Effect.orDie),
     touchDevice: (id: string, lastSeenAt: number) =>
       sql`UPDATE remote_control_devices SET last_seen_at = ${lastSeenAt} WHERE id = ${id}`.pipe(

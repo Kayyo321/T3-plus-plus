@@ -10,8 +10,11 @@ import {
 import { ComputerUseAnswerApprovalInput } from "./computerUse.ts";
 import { GuestDisplayName, ThreadGuestMessage } from "./guestShare.ts";
 import { GuestThreadModel } from "./guestStream.ts";
+import { ModelSelection } from "./modelSelection.ts";
 import { OrchestrationV2ThreadStreamItem } from "./orchestrationV2.ts";
-import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy.ts";
+import { OrchestratorBrainAvailability, OrchestratorReaction } from "./orchestratorAgent.ts";
+import { ProviderInteractionMode, RuntimeMode, ThreadCapabilityMode } from "./providerPolicy.ts";
+import { ServerProvider } from "./server.ts";
 
 /**
  * Remote control is a switch on one conversation. It serves a small page for that conversation to
@@ -56,7 +59,61 @@ export const REMOTE_CONTROL_LEVEL_INFO: Record<
   view: { label: "View", description: "Watch the conversation. Nothing else." },
   chat: { label: "Chat", description: "Also send messages to the agent." },
   approve: { label: "Approve", description: "Also answer the agent's approvals and questions." },
-  full: { label: "Full", description: "Also stop a run and change the conversation's mode." },
+  full: { label: "Full", description: "Also stop a run and change how the conversation runs." },
+};
+
+/**
+ * What a device may change, set one by one. Each is separate from the level, and none works on a
+ * plain HTTP route. Only the orchestrator reaches past this conversation, so no level includes it.
+ */
+export const RemoteControlPermission = Schema.Literals([
+  "model",
+  "mode",
+  "threadMode",
+  "rename",
+  "stop",
+  "orchestrator",
+]);
+export type RemoteControlPermission = typeof RemoteControlPermission.Type;
+
+export const REMOTE_CONTROL_PERMISSION_INFO: Record<
+  RemoteControlPermission,
+  { readonly label: string; readonly description: string }
+> = {
+  model: { label: "Model", description: "Change the model and its effort." },
+  mode: { label: "Plan and permissions", description: "Switch plan mode and permission mode." },
+  threadMode: { label: "Chat and Code", description: "Switch this conversation's mode." },
+  rename: { label: "Rename", description: "Change this conversation's title." },
+  stop: { label: "Stop", description: "Stop a run." },
+  orchestrator: {
+    label: "Orchestrator",
+    description: "Message the orchestrator, which can act across this machine.",
+  },
+};
+
+export const REMOTE_CONTROL_PERMISSIONS = Object.keys(
+  REMOTE_CONTROL_PERMISSION_INFO,
+) as ReadonlyArray<RemoteControlPermission>;
+
+/** What a level brings when the owner picks it. Full is everything in this conversation. */
+export const remoteControlLevelPermissions = (
+  level: RemoteControlAccessLevel,
+): ReadonlyArray<RemoteControlPermission> =>
+  level === "full" ? REMOTE_CONTROL_PERMISSIONS.filter((item) => item !== "orchestrator") : [];
+
+/** How long a device stays signed in. `session` keeps the standard limits below. */
+export const RemoteControlDeviceAccess = Schema.Literals(["session", "1d", "7d", "30d", "forever"]);
+export type RemoteControlDeviceAccess = typeof RemoteControlDeviceAccess.Type;
+
+export const REMOTE_CONTROL_DEVICE_ACCESS_INFO: Record<
+  RemoteControlDeviceAccess,
+  { readonly label: string; readonly durationMs: number | null }
+> = {
+  session: { label: "Standard", durationMs: null },
+  "1d": { label: "1 day", durationMs: 24 * 60 * 60 * 1000 },
+  "7d": { label: "7 days", durationMs: 7 * 24 * 60 * 60 * 1000 },
+  "30d": { label: "30 days", durationMs: 30 * 24 * 60 * 60 * 1000 },
+  forever: { label: "Forever", durationMs: null },
 };
 
 /**
@@ -112,10 +169,11 @@ export const RemoteControlDevice = Schema.Struct({
   id: RemoteControlDeviceId,
   label: GuestDisplayName,
   pairedAt: IsoDateTime,
-  /** When the session ends with no further activity. */
-  idleExpiresAt: IsoDateTime,
-  /** When the session ends regardless of activity. */
-  expiresAt: IsoDateTime,
+  access: RemoteControlDeviceAccess,
+  /** When the session ends with no further activity, or null when idling never ends it. */
+  idleExpiresAt: Schema.NullOr(IsoDateTime),
+  /** When the session ends regardless of activity, or null when it never does. */
+  expiresAt: Schema.NullOr(IsoDateTime),
   /** Whether this device has the conversation open right now. */
   connected: Schema.Boolean,
   lastAction: Schema.NullOr(TrimmedNonEmptyString),
@@ -141,6 +199,7 @@ export const RemoteControlSwitch = Schema.Struct({
   accessLevel: RemoteControlAccessLevel,
   pairingMode: RemoteControlPairingMode,
   ownerReview: Schema.Boolean,
+  permissions: Schema.Array(RemoteControlPermission),
   linkStatus: RemoteControlLinkStatus,
   linkExpiresAt: IsoDateTime,
   createdAt: IsoDateTime,
@@ -181,6 +240,7 @@ export const RemoteControlEnableInput = Schema.Struct({
   pairingMode: Schema.optional(RemoteControlPairingMode),
   ownerReview: Schema.optional(Schema.Boolean),
   /** Required for a level above the default: the owner agreed to it in a confirmation. */
+  permissions: Schema.optional(Schema.Array(RemoteControlPermission)),
   confirmRaise: ConfirmRaise,
 });
 export type RemoteControlEnableInput = typeof RemoteControlEnableInput.Type;
@@ -197,6 +257,7 @@ export const RemoteControlUpdateInput = Schema.Struct({
   pairingMode: Schema.optional(RemoteControlPairingMode),
   ownerReview: Schema.optional(Schema.Boolean),
   /** Required to raise the level: the owner agreed to it in a confirmation. */
+  permissions: Schema.optional(Schema.Array(RemoteControlPermission)),
   confirmRaise: ConfirmRaise,
 });
 export type RemoteControlUpdateInput = typeof RemoteControlUpdateInput.Type;
@@ -206,6 +267,14 @@ export const RemoteControlRevokeDeviceInput = Schema.Struct({
   deviceId: RemoteControlDeviceId,
 });
 export type RemoteControlRevokeDeviceInput = typeof RemoteControlRevokeDeviceInput.Type;
+
+export const RemoteControlSetDeviceAccessInput = Schema.Struct({
+  threadId: ThreadId,
+  deviceId: RemoteControlDeviceId,
+  access: RemoteControlDeviceAccess,
+  confirmRaise: ConfirmRaise,
+});
+export type RemoteControlSetDeviceAccessInput = typeof RemoteControlSetDeviceAccessInput.Type;
 
 export const RemoteControlResolvePairingInput = Schema.Struct({
   threadId: ThreadId,
@@ -238,6 +307,7 @@ const REMOTE_CONTROL_MESSAGES = {
   not_found: "That device or request is gone.",
   storage_failed: "Remote control could not save its state.",
   invalid_relay: "Enter the relay's https address, with no path.",
+  needs_encrypted: "This device joined over plain HTTP, so it keeps the standard time limit.",
 } as const;
 
 export class RemoteControlError extends Schema.TaggedError<RemoteControlError>()(
@@ -252,6 +322,7 @@ export class RemoteControlError extends Schema.TaggedError<RemoteControlError>()
       "not_found",
       "storage_failed",
       "invalid_relay",
+      "needs_encrypted",
     ]),
   },
 ) {
@@ -281,6 +352,13 @@ export const REMOTE_CONTROL_MESSAGES_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/mes
 export const REMOTE_CONTROL_RESPOND_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/respond`;
 export const REMOTE_CONTROL_STOP_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/stop`;
 export const REMOTE_CONTROL_MODE_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/mode`;
+export const REMOTE_CONTROL_MODEL_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/model`;
+export const REMOTE_CONTROL_RENAME_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/rename`;
+export const REMOTE_CONTROL_PROVIDERS_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/providers`;
+export const REMOTE_CONTROL_ORCHESTRATOR_STREAM_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/orchestrator/stream`;
+export const REMOTE_CONTROL_ORCHESTRATOR_SEND_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/orchestrator/send`;
+export const REMOTE_CONTROL_ORCHESTRATOR_REACT_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/orchestrator/react`;
+export const REMOTE_CONTROL_ORCHESTRATOR_STOP_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/orchestrator/stop`;
 
 export const remoteControlSessionCookieName = (switchId: string) => `t3_remote_${switchId}`;
 export const remoteControlPairingCookieName = (switchId: string) => `t3_remote_pair_${switchId}`;
@@ -317,8 +395,33 @@ export type RemoteControlRespondRequest = typeof RemoteControlRespondRequest.Typ
 export const RemoteControlModeRequest = Schema.Struct({
   interactionMode: Schema.optional(ProviderInteractionMode),
   runtimeMode: Schema.optional(RuntimeMode),
+  capabilityMode: Schema.optional(ThreadCapabilityMode),
 });
 export type RemoteControlModeRequest = typeof RemoteControlModeRequest.Type;
+
+export const RemoteControlModelRequest = Schema.Struct({ modelSelection: ModelSelection });
+export type RemoteControlModelRequest = typeof RemoteControlModelRequest.Type;
+
+export const RemoteControlRenameRequest = Schema.Struct({
+  title: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
+});
+export type RemoteControlRenameRequest = typeof RemoteControlRenameRequest.Type;
+
+export const RemoteControlProviders = Schema.Struct({ providers: Schema.Array(ServerProvider) });
+export type RemoteControlProviders = typeof RemoteControlProviders.Type;
+
+export const RemoteControlOrchestratorSendRequest = Schema.Struct({
+  text: TrimmedNonEmptyString.check(Schema.isMaxLength(10_000)),
+});
+export type RemoteControlOrchestratorSendRequest = typeof RemoteControlOrchestratorSendRequest.Type;
+
+export const RemoteControlOrchestratorReactRequest = Schema.Struct({
+  messageId: TrimmedNonEmptyString,
+  emoji: TrimmedNonEmptyString,
+  excerpt: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+});
+export type RemoteControlOrchestratorReactRequest =
+  typeof RemoteControlOrchestratorReactRequest.Type;
 
 /** Why a remote page's session ended, so it can say so. */
 export const RemoteControlEndReason = Schema.Literals([
@@ -398,8 +501,16 @@ export const RemoteControlView = Schema.Struct({
   grantedLevel: RemoteControlAccessLevel,
   encrypted: Schema.Boolean,
   ownerReview: Schema.Boolean,
-  idleExpiresAt: IsoDateTime,
-  expiresAt: IsoDateTime,
+  /** What this device can change right now. */
+  permissions: Schema.Array(RemoteControlPermission),
+  /** The owner's choice, which a plain HTTP route holds back entirely. */
+  grantedPermissions: Schema.Array(RemoteControlPermission),
+  /** Null when idling never ends this session. */
+  idleExpiresAt: Schema.NullOr(IsoDateTime),
+  /** Null when this session never ends by itself. */
+  expiresAt: Schema.NullOr(IsoDateTime),
+  capabilityMode: ThreadCapabilityMode,
+  modelSelection: ModelSelection,
   messages: Schema.Array(ThreadGuestMessage),
   model: GuestThreadModel,
   /** Other paired devices, so people sharing a conversation can see who else is here. */
@@ -413,6 +524,23 @@ export const RemoteControlStreamEvent = Schema.Union([
   Schema.Struct({ type: Schema.Literal("ended"), reason: RemoteControlEndReason }),
 ]);
 export type RemoteControlStreamEvent = typeof RemoteControlStreamEvent.Type;
+
+/** The orchestrator as a device sees it. Its approvals stay with the owner's own clients. */
+export const RemoteControlOrchestratorState = Schema.Struct({
+  threadId: Schema.NullOr(ThreadId),
+  hasBrain: Schema.Boolean,
+  availability: OrchestratorBrainAvailability,
+  reactions: Schema.Record(Schema.String, Schema.Array(OrchestratorReaction)),
+  ownerReadAt: Schema.NullOr(IsoDateTime),
+  pendingApprovals: NonNegativeInt,
+});
+export type RemoteControlOrchestratorState = typeof RemoteControlOrchestratorState.Type;
+
+export const RemoteControlOrchestratorEvent = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("state"), state: RemoteControlOrchestratorState }),
+  Schema.Struct({ type: Schema.Literal("thread"), item: OrchestrationV2ThreadStreamItem }),
+]);
+export type RemoteControlOrchestratorEvent = typeof RemoteControlOrchestratorEvent.Type;
 
 export const REMOTE_CONTROL_COMPUTER_STREAM_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/computer/stream`;
 export const REMOTE_CONTROL_COMPUTER_SCREENSHOT_ROUTE = `${REMOTE_CONTROL_ROUTE_PREFIX}/computer/screenshot`;

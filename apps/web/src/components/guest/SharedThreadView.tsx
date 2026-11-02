@@ -392,10 +392,16 @@ function StagedImage({ file }: { readonly file: File }) {
 export function SharedThreadComposer({
   model,
   hint,
+  controls,
+  onStop,
   onSend,
 }: {
   readonly model: GuestThreadModel;
   readonly hint: string;
+  /** Takes the model label's place, for a reader who can change what it shows. */
+  readonly controls?: ReactNode;
+  /** Replaces Send while a run can be stopped and nothing is written. */
+  readonly onStop?: (() => void) | undefined;
   /** Resolves to null on success, or to a message the reader can read. */
   readonly onSend: (text: string, files: ReadonlyArray<File>) => Promise<string | null>;
 }) {
@@ -528,22 +534,37 @@ export function SharedThreadComposer({
         <ComposerControl aria-label="Attach files" onClick={() => fileInputRef.current?.click()}>
           <ComposerControlIcon icon={PaperclipIcon} />
         </ComposerControl>
-        <SharedModelLabel model={model} />
+        {controls ?? <SharedModelLabel model={model} />}
         {error !== null ? (
           <p role="alert" className="min-w-0 flex-1 text-xs text-destructive">
             {error}
           </p>
         ) : (
-          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hint}</p>
+          <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {controls === undefined ? hint : null}
+          </p>
         )}
-        <button
-          type="submit"
-          aria-label="Send"
-          disabled={sending || (text.trim() === "" && files.length === 0)}
-          className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs hover:bg-message-action-hover focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-64"
-        >
-          <ArrowUpIcon aria-hidden className="size-4" />
-        </button>
+        {onStop !== undefined && text.trim() === "" && files.length === 0 ? (
+          <button
+            type="button"
+            aria-label="Stop generation"
+            onClick={onStop}
+            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <rect x="2" y="2" width="8" height="8" rx="1.5" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            aria-label="Send"
+            disabled={sending || (text.trim() === "" && files.length === 0)}
+            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full bg-message-action text-message-action-foreground shadow-xs hover:bg-message-action-hover focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-64"
+          >
+            <ArrowUpIcon aria-hidden className="size-4" />
+          </button>
+        )}
       </div>
     </form>
   );
