@@ -690,6 +690,7 @@ export const WS_METHODS = {
   orchestratorAgentSubscribeDirectives: "orchestratorAgent.subscribeDirectives",
   orchestratorAgentReact: "orchestratorAgent.react",
   orchestratorAgentMarkRead: "orchestratorAgent.markRead",
+  orchestratorAgentClearConversation: "orchestratorAgent.clearConversation",
   supervisionGetThread: "supervision.getThread",
   supervisionSetThread: "supervision.setThread",
   gitGraphList: "gitGraph.list",
@@ -2167,6 +2168,14 @@ const WsOrchestratorAgentMarkReadRpc = Rpc.make(WS_METHODS.orchestratorAgentMark
   error: OrchestratorRpcError,
 });
 
+const WsOrchestratorAgentClearConversationRpc = Rpc.make(
+  WS_METHODS.orchestratorAgentClearConversation,
+  {
+    payload: Schema.Struct({}),
+    error: OrchestratorRpcError,
+  },
+);
+
 const WsSupervisionGetThreadRpc = Rpc.make(WS_METHODS.supervisionGetThread, {
   payload: SupervisionGetThreadInput,
   success: SupervisionResolvedThreadState,
@@ -2705,6 +2714,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestratorAgentSubscribeDirectivesRpc,
   WsOrchestratorAgentReactRpc,
   WsOrchestratorAgentMarkReadRpc,
+  WsOrchestratorAgentClearConversationRpc,
   WsSupervisionGetThreadRpc,
   WsSupervisionSetThreadRpc,
   WsGitGraphListRpc,

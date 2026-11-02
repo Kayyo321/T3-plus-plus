@@ -32,7 +32,7 @@ const shared = {
 const EditorUiTool = Tool.make("editor_ui", {
   ...shared,
   description:
-    "Act on the owner's open app: open or close a panel, apply a saved layout, open a conversation, or split one beside the current view. Reports how many clients received it; zero means no client is open.",
+    "Act on the owner's open app: open or close a panel, open a settings page, apply a saved layout, open a conversation, or split one beside the current view. Settings are pages, not panels: use open-settings. Reports how many clients received it; zero means no client is open.",
   parameters: Schema.Struct({ directive: OrchestratorUiDirective }),
   success: Schema.Struct({ clients: Schema.Number }),
 });

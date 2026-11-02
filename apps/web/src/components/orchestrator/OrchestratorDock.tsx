@@ -11,7 +11,10 @@ import { toastManager } from "../ui/toast";
 import OrchestratorPanel from "./OrchestratorPanel";
 
 const uiDirectiveFor = (
-  request: Exclude<OrchestratorUiDirective, { readonly type: "escalate" | "open-thread" }>,
+  request: Exclude<
+    OrchestratorUiDirective,
+    { readonly type: "escalate" | "open-settings" | "open-thread" }
+  >,
   environmentId: EnvironmentId,
 ): UiDirective => {
   switch (request.type) {
@@ -42,6 +45,11 @@ function DirectiveListener(props: { readonly environmentId: EnvironmentId }) {
         void navigate({
           to: "/$environmentId/$threadId",
           params: { environmentId: props.environmentId, threadId: request.threadId },
+        });
+        return;
+      case "open-settings":
+        void navigate({
+          to: request.page === undefined ? "/settings" : `/settings/${request.page}`,
         });
         return;
     }

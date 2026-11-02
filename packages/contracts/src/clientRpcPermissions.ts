@@ -109,6 +109,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.orchestratorAgentSend]: AuthOrchestrationOperateScope,
   [WS_METHODS.orchestratorAgentReact]: AuthOrchestrationOperateScope,
   [WS_METHODS.orchestratorAgentMarkRead]: AuthOrchestrationOperateScope,
+  [WS_METHODS.orchestratorAgentClearConversation]: AuthOrchestrationOperateScope,
   [WS_METHODS.supervisionSetThread]: AuthOrchestrationOperateScope,
   [WS_METHODS.orchestratorAgentInterrupt]: AuthOrchestrationOperateScope,
   // Answering is what lets the orchestrator act, so it is access management too.

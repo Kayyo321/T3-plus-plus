@@ -155,6 +155,8 @@ export class OrchestratorAgent extends Context.Service<
       input: OrchestratorMarkReadInput,
     ) => Effect.Effect<void, OrchestratorAgentError>;
     readonly interrupt: Effect.Effect<void, OrchestratorAgentError>;
+    /** Deletes the conversation and stops its run. The brain, grants, and audit trail stay. */
+    readonly clearConversation: Effect.Effect<void, OrchestratorAgentError>;
     readonly answerApproval: (
       input: OrchestratorAnswerApprovalInput,
     ) => Effect.Effect<void, OrchestratorAgentError>;
@@ -786,6 +788,43 @@ const make = Effect.gen(function* () {
     if (threadId !== null) yield* interruptRun(threadId);
   }).pipe(Effect.withSpan("OrchestratorAgent.interrupt"));
 
+  const clearConversation = Effect.gen(function* () {
+    const { threadId } = yield* Ref.get(state);
+    if (threadId === null) return;
+    const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+    if (shell !== null && shell.deletedAt === null) {
+      yield* orchestrator
+        .dispatch({
+          type: "thread.delete",
+          commandId: CommandId.make(`server:orchestrator:clear:${yield* uuid}`),
+          threadId,
+        })
+        .pipe(
+          Effect.mapError((cause) => new OrchestratorAgentError({ reason: "store_failed", cause })),
+        );
+    }
+    // The run these belonged to is gone, so nothing is left to answer them.
+    for (const entry of pending.values()) yield* Deferred.succeed(entry.answer, false);
+    pending.clear();
+    yield* Ref.set(lastRealReplyAt, null);
+    yield* Ref.set(pushedLatestReplyAt, null);
+    yield* Ref.set(supervisionReviewing, null);
+    yield* persist({
+      ...(yield* Ref.get(state)),
+      threadId: null,
+      reactions: {},
+      reviewContexts: {},
+      followedThreads: {},
+      ownerReadAt: null,
+    });
+    yield* audit.record({
+      actor: "user",
+      domain: "orchestrator",
+      action: "conversation.clear",
+      outcome: "succeeded",
+    });
+  }).pipe(Effect.withSpan("OrchestratorAgent.clearConversation"));
+
   const answerApproval: OrchestratorAgent["Service"]["answerApproval"] = Effect.fn(
     "OrchestratorAgent.answerApproval",
   )(function* (input) {
@@ -929,6 +968,7 @@ const make = Effect.gen(function* () {
     reactToOwner,
     markRead,
     interrupt,
+    clearConversation,
     answerApproval,
     governTool,
     directive,
