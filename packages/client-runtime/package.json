@@ -247,6 +247,10 @@
       "types": "./src/state/orchestratorAgent.ts",
       "default": "./src/state/orchestratorAgent.ts"
     },
+    "./state/orchestratorMessages": {
+      "types": "./src/state/orchestratorMessages.ts",
+      "default": "./src/state/orchestratorMessages.ts"
+    },
     "./state/peerLinks": {
       "types": "./src/state/peerLinks.ts",
       "default": "./src/state/peerLinks.ts"

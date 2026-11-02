@@ -28,6 +28,13 @@ export const layer = McpToolAccess.toLayer(EditorToolkit, {
       return { clients: yield* agent.directive(directive) };
     }),
   ),
+  orchestrator_react: McpToolAccess.reads(({ emoji }) =>
+    Effect.gen(function* () {
+      yield* requireEditor;
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      return yield* agent.reactToOwner(emoji);
+    }),
+  ),
   supervision_status: McpToolAccess.reads(() =>
     Effect.gen(function* () {
       yield* requireEditor;

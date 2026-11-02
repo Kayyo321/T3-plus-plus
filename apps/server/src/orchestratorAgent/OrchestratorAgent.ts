@@ -3,7 +3,10 @@ import {
   CommandId,
   DEFAULT_ORCHESTRATOR_GRANTS,
   DEFAULT_SUPERVISION_THRESHOLDS,
+  IsoDateTime,
   MessageId,
+  ORCHESTRATOR_SILENT_REPLY,
+  type OrchestrationV2ThreadShell,
   ModelSelection,
   type OrchestratorAnswerApprovalInput,
   OrchestratorAgentError,
@@ -12,6 +15,10 @@ import {
   type OrchestratorBrainAvailability,
   OrchestratorGrants,
   OrchestratorMcpFailure,
+  type OrchestratorMarkReadInput,
+  OrchestratorNeedsAttention,
+  OrchestratorReaction,
+  type OrchestratorReactInput,
   type OrchestratorSendInput,
   type OrchestratorSendResult,
   type OrchestratorSetBrainInput,
@@ -21,10 +28,11 @@ import {
   type ServerProvider,
   type ScheduledTaskId,
   RunId,
-  OrchestratorNeedsAttention,
   SupervisionThresholds,
   ThreadId,
 } from "@t3tools/contracts";
+import { derive as deriveId } from "@t3tools/provider-core/server/IdAllocator";
+import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -36,11 +44,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
@@ -50,14 +60,20 @@ import {
   grantDecision,
   ORCHESTRATOR_TOOL_POLICY,
   type OrchestratorToolPolicy,
+  type StartedThread,
+  startedThreadsFrom,
 } from "./toolPolicy.ts";
 
 const APPROVAL_WAIT = Duration.minutes(10);
 const REFRESH_WAIT = Duration.seconds(5);
 const AUDIT_PARAMS_MAX_CHARS = 400;
+const REACTION_CAP = 200;
+const FOLLOWED_CAP = 20;
 
 const ReviewContext = Schema.Struct({ threadId: ThreadId, runId: RunId });
 type ReviewContext = typeof ReviewContext.Type;
+
+const FollowedThread = Schema.Struct({ runId: Schema.NullOr(RunId) });
 
 const StoredState = Schema.Struct({
   brain: Schema.NullOr(ModelSelection),
@@ -66,6 +82,11 @@ const StoredState = Schema.Struct({
   thresholds: SupervisionThresholds,
   needsAttention: Schema.optional(Schema.NullOr(OrchestratorNeedsAttention)),
   reviewContexts: Schema.optional(Schema.Record(Schema.String, ReviewContext)),
+  /** Keyed by the turn item id of the message, as clients see it. */
+  reactions: Schema.optional(Schema.Record(Schema.String, Schema.Array(OrchestratorReaction))),
+  ownerReadAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  /** Threads the orchestrator started or messaged, until their work ends. */
+  followedThreads: Schema.optional(Schema.Record(Schema.String, FollowedThread)),
 });
 type StoredState = typeof StoredState.Type;
 const StoredStateJson = Schema.fromJsonString(StoredState);
@@ -114,7 +135,24 @@ export class OrchestratorAgent extends Context.Service<
       text: string,
       context?: ReviewContext,
     ) => Effect.Effect<void, OrchestratorAgentError>;
+    /** A system prompt that is not a review, such as a follow-up on work the orchestrator started. */
+    readonly wake: (text: string) => Effect.Effect<void, OrchestratorAgentError>;
+    /** One pass per tick: pushes the latest reply when it changes, and wakes for followed work. */
+    readonly checkOrchestrator: Effect.Effect<void>;
     readonly supervisionReview: Effect.Effect<ReviewContext | null, OrchestratorMcpFailure>;
+    /** The owner's reaction to a message. Adding the same emoji again removes it. */
+    readonly react: (input: OrchestratorReactInput) => Effect.Effect<void, OrchestratorAgentError>;
+    /** The orchestrator's reaction to the owner's latest message, with the same toggling. */
+    readonly reactToOwner: (
+      emoji: string,
+    ) => Effect.Effect<
+      { readonly emoji: string; readonly reacted: boolean },
+      OrchestratorMcpFailure
+    >;
+    /** Moves the owner's read position forward. It never moves back. */
+    readonly markRead: (
+      input: OrchestratorMarkReadInput,
+    ) => Effect.Effect<void, OrchestratorAgentError>;
     readonly interrupt: Effect.Effect<void, OrchestratorAgentError>;
     readonly answerApproval: (
       input: OrchestratorAnswerApprovalInput,
@@ -143,6 +181,8 @@ const make = Effect.gen(function* () {
   const folders = yield* ManagedProjectFolders.ManagedProjectFolders;
   const providers = yield* ProviderRegistry.ProviderRegistry;
   const turnContext = yield* OrchestratorTurnContext.OrchestratorTurnContext;
+  const environment = yield* ServerEnvironment.ServerEnvironment;
+  const environmentId = yield* environment.getEnvironmentId;
 
   const rows = yield* sql<{ readonly stateJson: string }>`
     SELECT state_json AS "stateJson" FROM orchestrator_agent_state WHERE id = 1
@@ -155,6 +195,9 @@ const make = Effect.gen(function* () {
   );
   const pending = new Map<OrchestratorApprovalId, PendingApproval>();
   const watching = yield* Ref.make(0);
+  const pushedLatestReplyAt = yield* Ref.make<string | null>(null);
+  // The last real reply's time, kept through silent replies so one cannot clear an unread reply.
+  const lastRealReplyAt = yield* Ref.make<string | null>(null);
   const changed = yield* PubSub.sliding<void>(1);
   const directivesHub = yield* PubSub.sliding<OrchestratorUiDirective>(16);
   const notify = PubSub.publish(changed, undefined);
@@ -208,9 +251,28 @@ const make = Effect.gen(function* () {
     return yield* readAvailability;
   }).pipe(Effect.withSpan("OrchestratorAgent.checkAvailability"));
 
+  /** The orchestrator's latest reply as an ISO time, or null when it is silent or not an assistant message. */
+  /**
+   * The orchestrator's latest reply as an ISO time. A silent reply keeps the last real reply's time,
+   * so it cannot clear an unread reply. Null when there is none, or the latest message is the owner's.
+   */
+  const latestReplyAt = Effect.fn("OrchestratorAgent.latestReplyAt")(function* (
+    threadId: ThreadId | null,
+  ) {
+    if (threadId === null) return null;
+    const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+    const message = shell?.latestVisibleMessage;
+    if (message == null || message.role !== "assistant") return null;
+    if (message.text.trim() === ORCHESTRATOR_SILENT_REPLY) return yield* Ref.get(lastRealReplyAt);
+    const at = DateTime.formatIso(message.updatedAt);
+    yield* Ref.set(lastRealReplyAt, at);
+    return at;
+  });
+
   const snapshot = Effect.gen(function* () {
     const current = yield* Ref.get(state);
     const availability = yield* readAvailability;
+    const latestMessageAt = yield* latestReplyAt(current.threadId);
     return {
       brain: current.brain,
       needsAttention: current.needsAttention ?? null,
@@ -229,6 +291,9 @@ const make = Effect.gen(function* () {
                   : "Choose the orchestrator's model to start supervising.",
             },
       pendingApprovals: [...pending.values()].map((entry) => entry.approval),
+      reactions: current.reactions ?? {},
+      ownerReadAt: current.ownerReadAt ?? null,
+      latestMessageAt,
     } satisfies OrchestratorSnapshot;
   }).pipe(Effect.withSpan("OrchestratorAgent.snapshot"));
 
@@ -285,6 +350,16 @@ const make = Effect.gen(function* () {
       outcome: "succeeded",
       result: `${input.brain.instanceId} ${input.brain.model}`,
     });
+    if (current.brain === null && current.threadId === null) {
+      // Forked: the wake waits on the provider's availability check, which the picker must not.
+      yield* wake(
+        `The owner just picked you as their orchestrator. This one is for them: greet them in one short message and say what you can do for them here.`,
+      ).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("Could not greet the owner", cause)),
+        Effect.forkDetach,
+        Effect.asVoid,
+      );
+    }
   });
 
   const setGrants: OrchestratorAgent["Service"]["setGrants"] = Effect.fn(
@@ -397,39 +472,283 @@ const make = Effect.gen(function* () {
     },
   );
 
-  const review: OrchestratorAgent["Service"]["review"] = Effect.fn("OrchestratorAgent.review")(
-    function* (text, context) {
-      const brain = yield* requireBrain();
-      const { threadId, projectId } = yield* ensureThread(brain);
-      const id = yield* uuid;
-      const messageId = MessageId.make(`orchestrator-review-${id}`);
-      if (context !== undefined) {
-        const current = yield* Ref.get(state);
-        yield* persist({
-          ...current,
-          reviewContexts: Object.fromEntries(
-            [...Object.entries(current.reviewContexts ?? {}), [messageId, context]].slice(-100),
-          ),
-        });
+  const queueSystemPrompt = Effect.fn("OrchestratorAgent.queueSystemPrompt")(function* (
+    kind: "review" | "wake",
+    text: string,
+    context?: ReviewContext,
+  ) {
+    const brain = yield* requireBrain();
+    const { threadId, projectId } = yield* ensureThread(brain);
+    const id = yield* uuid;
+    const messageId = MessageId.make(`orchestrator-${kind}-${id}`);
+    if (context !== undefined) {
+      const current = yield* Ref.get(state);
+      yield* persist({
+        ...current,
+        reviewContexts: Object.fromEntries(
+          [...Object.entries(current.reviewContexts ?? {}), [messageId, context]].slice(-100),
+        ),
+      });
+    }
+    yield* threads
+      .sendToThread({
+        projectId,
+        commandId: CommandId.make(`server:orchestrator:${kind}:${id}`),
+        threadId,
+        messageId,
+        text,
+        attachments: [],
+        modelSelection: brain,
+        mode: "queue",
+        createdBy: "system",
+        creationSource: "server",
+      })
+      .pipe(
+        Effect.mapError((cause) => new OrchestratorAgentError({ reason: "start_failed", cause })),
+      );
+  });
+
+  const review: OrchestratorAgent["Service"]["review"] = (text, context) =>
+    queueSystemPrompt("review", text, context);
+
+  const wake: OrchestratorAgent["Service"]["wake"] = (text) => queueSystemPrompt("wake", text);
+
+  /** Adds the started threads, or refreshes their run, keeping the newest `FOLLOWED_CAP`. */
+  const withFollowed = (
+    current: NonNullable<StoredState["followedThreads"]>,
+    started: ReadonlyArray<StartedThread>,
+  ): NonNullable<StoredState["followedThreads"]> => {
+    const next = { ...current };
+    for (const { threadId, runId } of started) {
+      const previous = next[threadId]?.runId ?? null;
+      delete next[threadId];
+      next[threadId] = { runId: runId ?? previous };
+    }
+    return Object.fromEntries(Object.entries(next).slice(-FOLLOWED_CAP));
+  };
+
+  const setFollowed = Effect.fn("OrchestratorAgent.setFollowed")(function* (
+    threadId: ThreadId,
+    value: { readonly runId: RunId | null } | null,
+  ) {
+    const current = yield* Ref.get(state);
+    const { [threadId]: _previous, ...others } = current.followedThreads ?? {};
+    yield* persist({
+      ...current,
+      followedThreads: value === null ? others : { ...others, [threadId]: value },
+    });
+  });
+
+  const followStarted = Effect.fn("OrchestratorAgent.followStarted")(function* (
+    tool: string,
+    params: unknown,
+    result: unknown,
+  ) {
+    const started = startedThreadsFrom(tool, params, result);
+    if (started.length === 0) return;
+    const current = yield* Ref.get(state);
+    yield* persist({
+      ...current,
+      followedThreads: withFollowed(current.followedThreads ?? {}, started),
+    }).pipe(Effect.catchCause((cause) => Effect.logWarning("Could not follow a thread", cause)));
+  });
+
+  const followedLine = (shell: OrchestrationV2ThreadShell, what: string) =>
+    `- ${formatThreadLink({ environmentId, threadId: shell.id }, shell.title)} ${what}`;
+
+  /** Pushes the orchestrator's latest reply to subscribers when it changed since the last push. */
+  const pushLatestReply = Effect.gen(function* () {
+    const { threadId } = yield* Ref.get(state);
+    const latest = yield* latestReplyAt(threadId);
+    if ((yield* Ref.getAndSet(pushedLatestReplyAt, latest)) !== latest) yield* notify;
+  });
+
+  /**
+   * One pass per tick. Pushes the orchestrator's latest reply when it changes, then wakes the
+   * orchestrator once for followed work that ended or waits on the owner.
+   */
+  const checkOrchestrator: OrchestratorAgent["Service"]["checkOrchestrator"] = Effect.gen(
+    function* () {
+      const { threadId: ownThreadId } = yield* Ref.get(state);
+      yield* pushLatestReply;
+      const followed = (yield* Ref.get(state)).followedThreads ?? {};
+      if (Object.keys(followed).length === 0) return;
+      // No model runs while the brain is unavailable, and the orchestrator's own run goes first.
+      if ((yield* readAvailability).status !== "available") return;
+      if (ownThreadId !== null) {
+        const own = yield* threads
+          .getThreadShell(ownThreadId)
+          .pipe(Effect.orElseSucceed(() => null));
+        if (own?.activeRunId != null) return;
       }
-      yield* threads
-        .sendToThread({
-          projectId,
-          commandId: CommandId.make(`server:orchestrator:review:${id}`),
-          threadId,
-          messageId,
-          text,
-          attachments: [],
-          modelSelection: brain,
-          mode: "queue",
-          createdBy: "system",
-          creationSource: "server",
-        })
-        .pipe(
-          Effect.mapError((cause) => new OrchestratorAgentError({ reason: "start_failed", cause })),
+      // Several threads ending in one pass cost one wake, so the lines are collected first.
+      const lines: Array<string> = [];
+      for (const [key, entry] of Object.entries(followed)) {
+        const threadId = ThreadId.make(key);
+        const shell = yield* threads
+          .getThreadShell(threadId)
+          .pipe(Effect.orElseSucceed(() => null));
+        if (shell === null || shell.deletedAt !== null) {
+          yield* setFollowed(threadId, null);
+        } else if (shell.status === "waiting") {
+          yield* setFollowed(threadId, null);
+          lines.push(followedLine(shell, `is waiting for the owner's input (${shell.status})`));
+        } else if (shell.activeRunId !== null) {
+          if (entry.runId !== shell.activeRunId) {
+            yield* setFollowed(threadId, { runId: shell.activeRunId });
+          }
+        } else if (entry.runId !== null) {
+          yield* setFollowed(threadId, null);
+          lines.push(followedLine(shell, `has finished its run (${shell.status})`));
+        }
+      }
+      if (lines.length === 0) return;
+      yield* wake(
+        `Followed work needs a look:\n${lines.join("\n")}\nRead it with t3_thread_read if you need the detail. Tell the owner only if it matters.`,
+      ).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("Could not wake for followed work", cause)),
+      );
+    },
+  ).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logWarning("Could not check the orchestrator's threads", cause),
+    ),
+    Effect.withSpan("OrchestratorAgent.checkOrchestrator"),
+  );
+
+  // A run settling pushes the reply at once. The tick keeps the same check as a backstop.
+  yield* threads.streamDomainEvents.pipe(
+    Stream.filter(
+      (event) =>
+        event.type === "run.updated" &&
+        ThreadManagementService.isTerminalRunStatus(event.payload.status),
+    ),
+    Stream.runForEach((event) =>
+      Effect.gen(function* () {
+        const { threadId } = yield* Ref.get(state);
+        if (event.threadId === threadId) yield* pushLatestReply;
+      }).pipe(
+        Effect.catchCause((cause) => Effect.logWarning("Could not push the latest reply", cause)),
+      ),
+    ),
+    Effect.retry({ schedule: Schedule.spaced("5 seconds") }),
+    Effect.catchCause((cause) =>
+      Effect.logWarning("The orchestrator's event subscription stopped", cause),
+    ),
+    Effect.forkScoped,
+  );
+
+  /** Toggles one reaction per emoji per author. A different emoji replaces the author's last one. */
+  const toggleReaction = (
+    current: ReadonlyArray<OrchestratorReaction>,
+    by: OrchestratorReaction["by"],
+    emoji: string,
+  ) => {
+    const others = current.filter((reaction) => reaction.by !== by);
+    const mine = current.find((reaction) => reaction.by === by);
+    return mine?.emoji === emoji
+      ? { next: others, added: false }
+      : { next: [...others, { emoji, by }], added: true };
+  };
+
+  const withReactions = (
+    reactions: NonNullable<StoredState["reactions"]>,
+    messageId: string,
+    next: ReadonlyArray<OrchestratorReaction>,
+  ) => {
+    const { [messageId]: _previous, ...others } = reactions;
+    const merged = next.length === 0 ? others : { ...others, [messageId]: next };
+    return Object.fromEntries(Object.entries(merged).slice(-REACTION_CAP));
+  };
+
+  const react: OrchestratorAgent["Service"]["react"] = Effect.fn("OrchestratorAgent.react")(
+    function* (input) {
+      const current = yield* Ref.get(state);
+      const reactions = current.reactions ?? {};
+      const { next, added } = toggleReaction(
+        reactions[input.messageId] ?? [],
+        "owner",
+        input.emoji,
+      );
+      yield* persist({
+        ...current,
+        reactions: withReactions(reactions, input.messageId, next),
+      });
+      if (added && current.threadId !== null) {
+        const quoted = input.excerpt === undefined ? "." : `: "${input.excerpt}"`;
+        yield* turnContext.addNote(
+          current.threadId,
+          `The owner reacted ${input.emoji} to your message${quoted}`,
         );
+      }
     },
   );
+
+  const reactToOwner: OrchestratorAgent["Service"]["reactToOwner"] = Effect.fn(
+    "OrchestratorAgent.reactToOwner",
+  )(function* (emoji) {
+    const { threadId } = yield* Ref.get(state);
+    if (threadId === null) {
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: "The orchestrator has no conversation with the owner yet.",
+      });
+    }
+    const { messages } = yield* threads
+      .getThreadRecords(threadId, ["messages"], { messageRoles: ["user"] })
+      .pipe(
+        Effect.mapError(
+          () =>
+            new OrchestratorMcpFailure({
+              code: "orchestration_error",
+              message: "The owner's messages could not be read.",
+            }),
+        ),
+      );
+    const latest = messages
+      .filter((message) => message.createdBy === "user")
+      .toSorted(
+        (left, right) =>
+          DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt),
+      )
+      .at(-1);
+    if (latest === undefined) {
+      return yield* new OrchestratorMcpFailure({
+        code: "invalid_request",
+        message: "The owner has not sent a message to react to.",
+      });
+    }
+    const messageId = deriveId.userTurnItem({ messageId: latest.id });
+    const current = yield* Ref.get(state);
+    const reactions = current.reactions ?? {};
+    const { next, added } = toggleReaction(reactions[messageId] ?? [], "orchestrator", emoji);
+    yield* persist({
+      ...current,
+      reactions: withReactions(reactions, messageId, next),
+    }).pipe(
+      Effect.mapError(
+        () =>
+          new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: "The reaction could not be saved.",
+          }),
+      ),
+    );
+    return { emoji, reacted: added };
+  });
+
+  const markRead: OrchestratorAgent["Service"]["markRead"] = Effect.fn(
+    "OrchestratorAgent.markRead",
+  )(function* (input) {
+    const current = yield* Ref.get(state);
+    if (
+      current.ownerReadAt != null &&
+      Date.parse(current.ownerReadAt) >= Date.parse(input.through)
+    ) {
+      return;
+    }
+    yield* persist({ ...current, ownerReadAt: input.through });
+  });
 
   const supervisionReview = Effect.gen(function* () {
     const current = yield* Ref.get(state);
@@ -543,6 +862,7 @@ const make = Effect.gen(function* () {
       return yield* refusal("The owner did not approve this.");
     }
     return yield* run.pipe(
+      Effect.tap((result) => followStarted(tool, params, result)),
       Effect.onExit((exit) =>
         auditTool({
           tool,
@@ -584,7 +904,12 @@ const make = Effect.gen(function* () {
     setThresholds,
     send,
     review,
+    wake,
+    checkOrchestrator,
     supervisionReview,
+    react,
+    reactToOwner,
+    markRead,
     interrupt,
     answerApproval,
     governTool,

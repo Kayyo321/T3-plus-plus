@@ -7,6 +7,16 @@ has its own conversation, separate from the one you are in, and keeps working wh
 Open it with **Orchestrator** in the command palette (`Cmd/Ctrl+K`) or `Cmd/Ctrl+Alt+O`. Closing the
 panel keeps its conversation and any work in progress.
 
+## Talk to it
+
+The panel works like a messaging app. A message shows **Read at** once the orchestrator has picked it
+up, the dots show while it writes, and tool icons show what it is doing. Hover a message to react
+with an emoji. It sees your reactions on its next turn and can react to you too.
+
+It can also message you first: it says hello when you choose its model, and it tells you when work
+it started finishes or needs you, if that matters. Those check-ins run on your chosen model. It stays
+silent when there is nothing worth interrupting you for. New messages put a dot on its sidebar row.
+
 ## Choose its model
 
 The first time you open it, choose a provider and model. Nothing runs until you do. A fast, cheap

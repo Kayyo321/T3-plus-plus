@@ -218,15 +218,16 @@ const make = Effect.gen(function* () {
     switch (mutation.type) {
       case "create": {
         const rows = yield* liveFolders;
-        if (mutation.parentId !== null) yield* requireHoldable(mutation.parentId);
-        if (depthOf(rows, mutation.parentId) + 1 > CONVERSATION_FOLDER_MAX_DEPTH) {
+        const parentId = mutation.parentId ?? null;
+        if (parentId !== null) yield* requireHoldable(parentId);
+        if (depthOf(rows, parentId) + 1 > CONVERSATION_FOLDER_MAX_DEPTH) {
           return yield* failWith("too_deep");
         }
         const id = yield* newId;
         yield* mapUniqueName(sql`
           INSERT INTO conversation_folders ${sql.insert({
             id,
-            parent_id: mutation.parentId,
+            parent_id: parentId,
             name: mutation.name,
             smart_filter_json:
               mutation.smartFilter === undefined ? null : encodeSmartFilter(mutation.smartFilter),

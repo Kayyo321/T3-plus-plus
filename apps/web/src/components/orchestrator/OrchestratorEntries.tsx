@@ -35,6 +35,12 @@ function SidebarRow(props: {
       <span className="min-w-0 flex-1 truncate">Orchestrator</span>
       {status.needsYou ? (
         <span className="truncate text-xs text-warning-foreground">{status.label}</span>
+      ) : status.unread && !open ? (
+        <span
+          role="img"
+          aria-label="New message"
+          className="orchestrator-reaction-pop size-2 shrink-0 rounded-full bg-primary"
+        />
       ) : shortcut ? (
         <span className="opacity-0 transition-opacity group-hover/orchestrator:opacity-100">
           <Kbd>{shortcut}</Kbd>

@@ -162,20 +162,42 @@ export interface AsciiShaderEngine {
   readonly dispose: () => void;
 }
 
+/** Reads a CSS color as linear 0 to 1 channels. */
+export const asciiColorProbe = () => {
+  const probe = document.createElement("canvas");
+  probe.width = 1;
+  probe.height = 1;
+  const context = probe.getContext("2d", { willReadFrequently: true });
+  return (color: string, fallback: AsciiRgb): AsciiRgb => {
+    if (context === null || color.length === 0) return fallback;
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = "#000";
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    const [red = 255, green = 255, blue = 255] = context.getImageData(0, 0, 1, 1).data;
+    return [red / 255, green / 255, blue / 255];
+  };
+};
+
 /** The wallpaper is decoration: without WebGL2, or if its shaders fail, the app simply has none. */
 export function createAsciiShaderEngine(
   canvas: HTMLCanvasElement,
   seed: number,
+  frameMs = IDLE_FRAME_MS,
 ): AsciiShaderEngine | null {
   try {
-    return makeAsciiShaderEngine(canvas, seed);
+    return makeAsciiShaderEngine(canvas, seed, frameMs);
   } catch (cause) {
     console.error(cause);
     return null;
   }
 }
 
-function makeAsciiShaderEngine(canvas: HTMLCanvasElement, seed: number): AsciiShaderEngine | null {
+function makeAsciiShaderEngine(
+  canvas: HTMLCanvasElement,
+  seed: number,
+  frameMs: number,
+): AsciiShaderEngine | null {
   const gl = canvas.getContext("webgl2", {
     alpha: true,
     antialias: false,
@@ -384,7 +406,7 @@ function makeAsciiShaderEngine(canvas: HTMLCanvasElement, seed: number): AsciiSh
     if (morph < 1) morph = Math.min(1, morph + delta / MORPH_MS);
     if (onDissolved !== null) dissolve = Math.min(1, dissolve + delta / DISSOLVE_MS);
     const moving = morph < 1 || onDissolved !== null || ripplesAlive();
-    if (!moving && now - lastPaint < IDLE_FRAME_MS) return;
+    if (!moving && now - lastPaint < frameMs) return;
     lastPaint = now;
     paint();
     if (dissolve >= 1 && onDissolved !== null) {

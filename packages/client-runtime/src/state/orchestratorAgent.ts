@@ -56,6 +56,14 @@ export function createOrchestratorAgentEnvironmentAtoms<R, E>(
       label: "environment-data:orchestrator:answer-approval",
       tag: WS_METHODS.orchestratorAgentAnswerApproval,
     }),
+    react: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:orchestrator:react",
+      tag: WS_METHODS.orchestratorAgentReact,
+    }),
+    markRead: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:orchestrator:mark-read",
+      tag: WS_METHODS.orchestratorAgentMarkRead,
+    }),
     setThreadSupervision: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:supervision:set-thread",
       tag: WS_METHODS.supervisionSetThread,

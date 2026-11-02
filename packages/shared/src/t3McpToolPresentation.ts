@@ -31,6 +31,7 @@ export type T3McpToolSummaryAction =
   | "thread-transfers"
   | "thread-organize"
   | "thread-update"
+  | "message-react"
   | "queue-list"
   | "queue-read"
   | "queue-edit"
@@ -141,6 +142,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     ["Get", "Getting", "Got", "orchestration capabilities"],
     "capabilities",
   ),
+  orchestrator_react: tool(["React", "Reacting", "Reacted", "to a message"], "message-react"),
   delegate_task: tool(["Delegate", "Delegating", "Delegated", "a child task"], "delegate"),
   start_nested_session: tool(["Start", "Starting", "Started", "a nested session"], "thread-create"),
   report_to_parent: tool(["Report", "Reporting", "Reported", "to the parent"], "thread-send"),

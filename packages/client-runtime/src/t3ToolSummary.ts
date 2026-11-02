@@ -259,6 +259,9 @@ export function summarizeT3ToolCalls(
     case "thread-update":
       label = phrase("Updated", "update", quantity(countEntities(threadIds), "thread"));
       break;
+    case "message-react":
+      label = phrase("Reacted", "react", "to a message");
+      break;
     case "queue-list":
       label = phrase("Listed", "list", `queued messages ${times}`);
       break;

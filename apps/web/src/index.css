@@ -88,6 +88,147 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
+@keyframes orchestrator-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+}
+
+@keyframes orchestrator-view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes orchestrator-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.9);
+  }
+}
+
+@keyframes orchestrator-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes orchestrator-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes orchestrator-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.orchestrator-panel-enter {
+  animation: orchestrator-panel-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.orchestrator-view-enter {
+  animation: orchestrator-view-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.orchestrator-bubble-enter {
+  animation: orchestrator-bubble-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.25) backwards;
+  animation-delay: var(--bubble-delay, 0ms);
+  transform-origin: left bottom;
+}
+
+.orchestrator-bubble-enter[data-mine="true"] {
+  transform-origin: right bottom;
+}
+
+.orchestrator-tool-pop,
+.orchestrator-reaction-pop {
+  animation: orchestrator-pop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.5) backwards;
+}
+
+.orchestrator-reaction-tray {
+  animation: orchestrator-bubble-in 180ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+
+.orchestrator-reaction-option {
+  animation: orchestrator-pop 200ms cubic-bezier(0.2, 0.9, 0.3, 1.5) backwards;
+  animation-delay: calc(var(--option-index) * 22ms);
+}
+
+.orchestrator-fade-in {
+  animation: orchestrator-fade 220ms ease-out;
+}
+
+.orchestrator-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--muted-foreground);
+  animation: orchestrator-typing 1.2s ease-in-out infinite;
+}
+
+.orchestrator-typing-dot:nth-child(2) {
+  animation-delay: 160ms;
+}
+
+.orchestrator-typing-dot:nth-child(3) {
+  animation-delay: 320ms;
+}
+
+.orchestrator-backdrop {
+  background: radial-gradient(
+    120% 70% at 50% 0%,
+    color-mix(in srgb, var(--primary) 18%, transparent),
+    transparent 70%
+  );
+}
+
+.orchestrator-avatar-glow {
+  box-shadow: 0 0 12px -2px var(--primary);
+}
+
+.orchestrator-composer-focus:focus-within {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+}
+
+.orchestrator-spring {
+  transition-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+
+.orchestrator-markdown > :first-child {
+  margin-top: 0;
+}
+
+.orchestrator-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orchestrator-panel-enter,
+  .orchestrator-view-enter,
+  .orchestrator-bubble-enter,
+  .orchestrator-tool-pop,
+  .orchestrator-reaction-pop,
+  .orchestrator-reaction-tray,
+  .orchestrator-reaction-option,
+  .orchestrator-fade-in,
+  .orchestrator-typing-dot {
+    animation: none;
+  }
+}
+
 :root:has([data-orchestrator-dock]) {
   --orchestrator-dock-width: min(24rem, 50vw);
 }

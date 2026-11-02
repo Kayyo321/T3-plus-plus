@@ -20,6 +20,8 @@ import {
   OrchestratorAgentError,
   OrchestratorAnswerApprovalInput,
   OrchestratorBrainAvailability,
+  OrchestratorMarkReadInput,
+  OrchestratorReactInput,
   OrchestratorSendInput,
   OrchestratorSendResult,
   OrchestratorSetBrainInput,
@@ -683,6 +685,8 @@ export const WS_METHODS = {
   orchestratorAgentInterrupt: "orchestratorAgent.interrupt",
   orchestratorAgentAnswerApproval: "orchestratorAgent.answerApproval",
   orchestratorAgentSubscribeDirectives: "orchestratorAgent.subscribeDirectives",
+  orchestratorAgentReact: "orchestratorAgent.react",
+  orchestratorAgentMarkRead: "orchestratorAgent.markRead",
   supervisionGetThread: "supervision.getThread",
   supervisionSetThread: "supervision.setThread",
   gitGraphList: "gitGraph.list",
@@ -2146,6 +2150,16 @@ const WsOrchestratorAgentSubscribeDirectivesRpc = Rpc.make(
   },
 );
 
+const WsOrchestratorAgentReactRpc = Rpc.make(WS_METHODS.orchestratorAgentReact, {
+  payload: OrchestratorReactInput,
+  error: OrchestratorRpcError,
+});
+
+const WsOrchestratorAgentMarkReadRpc = Rpc.make(WS_METHODS.orchestratorAgentMarkRead, {
+  payload: OrchestratorMarkReadInput,
+  error: OrchestratorRpcError,
+});
+
 const WsSupervisionGetThreadRpc = Rpc.make(WS_METHODS.supervisionGetThread, {
   payload: SupervisionGetThreadInput,
   success: SupervisionThreadState,
@@ -2660,6 +2674,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestratorAgentInterruptRpc,
   WsOrchestratorAgentAnswerApprovalRpc,
   WsOrchestratorAgentSubscribeDirectivesRpc,
+  WsOrchestratorAgentReactRpc,
+  WsOrchestratorAgentMarkReadRpc,
   WsSupervisionGetThreadRpc,
   WsSupervisionSetThreadRpc,
   WsGitGraphListRpc,

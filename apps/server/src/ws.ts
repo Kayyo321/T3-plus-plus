@@ -2001,6 +2001,8 @@ export const layerWsRpc = (
         [WS_METHODS.orchestratorAgentAnswerApproval]: (input) =>
           orchestratorAgent.answerApproval(input),
         [WS_METHODS.orchestratorAgentSubscribeDirectives]: (_input) => orchestratorAgent.directives,
+        [WS_METHODS.orchestratorAgentReact]: (input) => orchestratorAgent.react(input),
+        [WS_METHODS.orchestratorAgentMarkRead]: (input) => orchestratorAgent.markRead(input),
         [WS_METHODS.supervisionGetThread]: (input) => supervision.threadState(input.threadId),
         [WS_METHODS.supervisionSetThread]: (input) => supervision.setThreadMode(input),
         [WS_METHODS.gitGraphList]: (input) => gitGraph.list(input),

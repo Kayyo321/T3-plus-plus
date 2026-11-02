@@ -3,12 +3,13 @@ import { assert, it } from "@effect/vitest";
 import {
   CONVERSATION_FOLDER_MAX_DEPTH,
   type ConversationFolderId,
-  type ConversationFolderMutation,
+  ConversationFolderMutation,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
@@ -24,6 +25,7 @@ const TestLayer = ConversationFolderService.layer.pipe(
 const service = ConversationFolderService.ConversationFolderService;
 const threadA = ThreadId.make("thread-folder-a");
 const threadB = ThreadId.make("thread-folder-b");
+const decodeMutation = Schema.decodeSync(ConversationFolderMutation);
 
 const create = (name: string, parentId: ConversationFolderId | null = null) =>
   service.pipe(
@@ -136,6 +138,14 @@ it.layer(TestLayer)("ConversationFolderService", (it) => {
         folderId: folder!.id,
       }).pipe(Effect.flip);
       assert.strictEqual(error.reason, "smart_folder");
+    }),
+  );
+
+  it.effect("a create without parentId files the folder at the top level", () =>
+    Effect.gen(function* () {
+      const { folder } = yield* mutate(decodeMutation({ type: "create", name: "Top level" }));
+      assert.strictEqual(folder?.name, "Top level");
+      assert.isNull(folder?.parentId);
     }),
   );
 

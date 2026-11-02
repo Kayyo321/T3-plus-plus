@@ -90,6 +90,7 @@ it.effect.each(["scheduled", "background", "teamwork"] as const)(
                   }) as never,
               ),
               setWatching: () => Effect.void,
+              checkOrchestrator: Effect.void,
               governTool: (_name, _params, run) => run,
               supervisionReview: Effect.sync(() => reviewContext),
               review: (prompt) =>

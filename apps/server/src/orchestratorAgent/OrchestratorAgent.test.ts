@@ -3,23 +3,30 @@ import { assert, it } from "@effect/vitest";
 import {
   CommandId,
   DEFAULT_ORCHESTRATOR_GRANTS,
+  EnvironmentId,
   type ModelSelection,
   type OrchestratorApproval,
+  type OrchestrationV2DomainEvent,
+  type OrchestratorSnapshot,
   ProjectId,
   ThreadId,
   RunId,
-  type MessageId,
+  MessageId,
   ProviderInstanceId,
   type ServerProvider,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
@@ -44,7 +51,30 @@ const provider = (overrides: Partial<ServerProvider> = {}) =>
     ...overrides,
   }) as ServerProvider;
 
-const harness = (completeSends = false) =>
+type TestShell = {
+  readonly id: ThreadId;
+  readonly title: string;
+  readonly status: "idle" | "running" | "waiting" | "completed";
+  readonly activeRunId: RunId | null;
+  readonly deletedAt: null | string;
+  readonly latestVisibleMessage: {
+    readonly id: MessageId;
+    readonly role: "user" | "assistant";
+    readonly text: string;
+    readonly updatedAt: DateTime.Utc;
+  } | null;
+};
+
+const shell = (overrides: Partial<TestShell> & { readonly id: ThreadId }): TestShell => ({
+  title: "Work",
+  status: "idle",
+  activeRunId: null,
+  deletedAt: null,
+  latestVisibleMessage: null,
+  ...overrides,
+});
+
+const harness = (options: { readonly holdSends?: boolean } = {}) =>
   Effect.gen(function* () {
     const providers = yield* Ref.make<ReadonlyArray<ServerProvider>>([provider()]);
     const sends = yield* Ref.make<ReadonlyArray<ThreadManagementService.ThreadManagementSendInput>>(
@@ -53,6 +83,16 @@ const harness = (completeSends = false) =>
     const created = yield* Ref.make(0);
     const active = yield* Ref.make<{ id: ThreadId; activeRunId: RunId } | null>(null);
     const activeMessage = yield* Ref.make<MessageId | null>(null);
+    const ownerMessages = yield* Ref.make<ReadonlyArray<OwnerMessage>>([]);
+    const shells = yield* Ref.make(new Map<ThreadId, TestShell | null>());
+    const failSends = yield* Ref.make(false);
+    // Open unless a test holds the sends, to show that choosing the brain does not wait on them.
+    const gate = yield* Deferred.make<void>();
+    if (options.holdSends !== true) yield* Deferred.succeed(gate, undefined);
+    // The orchestrator's domain events; a test offers the ones it needs.
+    const domainEvents = yield* Queue.unbounded<OrchestrationV2DomainEvent>();
+    // Completes after every send attempt, whether it was recorded or failed.
+    const attempted = yield* Deferred.make<void>();
     const dependencies = Layer.mergeAll(
       Layer.mock(ProviderRegistry.ProviderRegistry)({
         getProviders: Ref.get(providers),
@@ -60,14 +100,30 @@ const harness = (completeSends = false) =>
         refreshInstance: () => Ref.get(providers),
       }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({
-        getThreadShell: () => Ref.get(active).pipe(Effect.map((shell) => shell as never)),
-        getThreadRecords: () =>
-          Ref.get(activeMessage).pipe(
-            Effect.map((id) => ({ runs: id === null ? [] : [{ userMessageId: id }] }) as never),
+        getThreadShell: (threadId: ThreadId) =>
+          Ref.get(shells).pipe(
+            Effect.flatMap((known) =>
+              known.has(threadId)
+                ? Effect.succeed(known.get(threadId) as never)
+                : Ref.get(active).pipe(Effect.map((own) => own as never)),
+            ),
           ),
+        getThreadRecords: (_threadId: ThreadId, fields: ReadonlyArray<string>) =>
+          fields.includes("messages")
+            ? Ref.get(ownerMessages).pipe(Effect.map((messages) => ({ messages }) as never))
+            : Ref.get(activeMessage).pipe(
+                Effect.map((id) => ({ runs: id === null ? [] : [{ userMessageId: id }] }) as never),
+              ),
+        streamDomainEvents: Stream.fromQueue(domainEvents),
         sendToThread: (input) =>
-          Ref.update(sends, (current) => [...current, input]).pipe(
-            Effect.andThen(completeSends ? Effect.succeed({} as never) : Effect.never),
+          Deferred.await(gate).pipe(
+            Effect.andThen(Ref.get(failSends)),
+            Effect.flatMap((fail) =>
+              fail
+                ? Effect.die("send failed")
+                : Ref.update(sends, (current) => [...current, input]).pipe(Effect.as({} as never)),
+            ),
+            Effect.ensuring(Deferred.succeed(attempted, undefined)),
           ),
       }),
       Layer.mock(Orchestrator.OrchestratorV2)({
@@ -77,25 +133,51 @@ const harness = (completeSends = false) =>
         namedProjectsRoot: "/projects",
         ensureScratchProject: Effect.succeed({ projectId }),
       }),
-      OrchestratorTurnContext.layer,
+      Layer.mock(ServerEnvironment.ServerEnvironment)({
+        getEnvironmentId: Effect.succeed(EnvironmentId.make("local")),
+      }),
     );
     const layer = OrchestratorAgent.layer.pipe(
       Layer.provideMerge(AuditTrail.layer),
+      Layer.provideMerge(OrchestratorTurnContext.layer),
       Layer.provide(dependencies),
       Layer.provideMerge(Sqlite.layerMemory),
       Layer.provideMerge(NodeServices.layer),
     );
-    return { providers, sends, created, active, activeMessage, layer };
+    return {
+      providers,
+      sends,
+      created,
+      active,
+      activeMessage,
+      ownerMessages,
+      shells,
+      failSends,
+      gate,
+      attempted,
+      domainEvents,
+      layer,
+    };
   });
+
+type OwnerMessage = {
+  readonly id: MessageId;
+  readonly createdBy: "user" | "system";
+  readonly createdAt: DateTime.Utc;
+};
 
 const sendInput = { commandId: CommandId.make("command-1"), text: "hello" };
 
 it.effect("refuses to send while blocked, and starts nothing elsewhere", () =>
   Effect.gen(function* () {
-    const { providers, sends, created, layer } = yield* harness();
+    const { attempted, providers, sends, created, layer } = yield* harness();
     yield* Effect.gen(function* () {
       const agent = yield* OrchestratorAgent.OrchestratorAgent;
       yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      // The greeting is the first send; the cases below count only what follows.
+      yield* Ref.set(sends, []);
+      yield* Ref.set(created, 0);
       yield* Ref.set(providers, [
         provider({ auth: { status: "unauthenticated" } } as Partial<ServerProvider>),
       ]);
@@ -204,13 +286,14 @@ it.effect("honours an off domain and records what ran", () =>
 
 it.effect("attributes only active supervision turns to their persisted review context", () =>
   Effect.gen(function* () {
-    const { layer, sends, active, activeMessage } = yield* harness(true);
+    const { attempted, layer, sends, active, activeMessage } = yield* harness();
     yield* Effect.gen(function* () {
       const agent = yield* OrchestratorAgent.OrchestratorAgent;
       yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
       const context = { threadId: ThreadId.make("reviewed"), runId: RunId.make("reviewed-run") };
       yield* agent.review("Check progress", context);
-      const message = (yield* Ref.get(sends))[0]!;
+      const message = (yield* Ref.get(sends)).at(-1)!;
       yield* Ref.set(active, { id: message.threadId, activeRunId: RunId.make("brain-run") });
       yield* Ref.set(activeMessage, message.messageId);
       assert.deepStrictEqual(yield* agent.supervisionReview, context);
@@ -221,6 +304,365 @@ it.effect("attributes only active supervision turns to their persisted review co
         (yield* agent.supervisionReview.pipe(Effect.flip)).message,
         "no target context",
       );
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect(
+  "greets the owner once, when the first brain is chosen, without waiting on the greeting",
+  () =>
+    Effect.gen(function* () {
+      const { sends, attempted, gate, layer } = yield* harness({ holdSends: true });
+      yield* Effect.gen(function* () {
+        const agent = yield* OrchestratorAgent.OrchestratorAgent;
+        // The greeting is held at the gate, so choosing the brain has already returned.
+        yield* agent.setBrain({ brain });
+        assert.deepStrictEqual(yield* Ref.get(sends), []);
+        yield* Deferred.succeed(gate, undefined);
+        yield* Deferred.await(attempted);
+        const [greeting] = yield* Ref.get(sends);
+        assert.equal(greeting?.createdBy, "system");
+        assert.isTrue(greeting?.messageId.startsWith("orchestrator-wake-") === true);
+        yield* agent.setBrain({ brain: { ...brain, model: "haiku" } });
+        assert.equal((yield* Ref.get(sends)).length, 1);
+      }).pipe(Effect.provide(layer));
+    }),
+);
+
+it.effect("a failed greeting does not fail choosing the brain", () =>
+  Effect.gen(function* () {
+    const { sends, failSends, attempted, layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* Ref.set(failSends, true);
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      assert.deepStrictEqual((yield* agent.snapshot).brain, brain);
+      assert.deepStrictEqual(yield* Ref.get(sends), []);
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("toggles the owner's reaction, replaces it with another emoji, and queues a note", () =>
+  Effect.gen(function* () {
+    const { attempted, layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      const turns = yield* OrchestratorTurnContext.OrchestratorTurnContext;
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      const threadId = (yield* agent.snapshot).threadId!;
+      const messageId = "turn-item:message:owner-1";
+      const reacted = { messageId, emoji: "👍", excerpt: "Shipped the fix" };
+
+      yield* agent.react(reacted);
+      assert.deepStrictEqual((yield* agent.snapshot).reactions, {
+        [messageId]: [{ emoji: "👍", by: "owner" }],
+      });
+      assert.deepStrictEqual(yield* turns.takeNotes(threadId), [
+        'The owner reacted 👍 to your message: "Shipped the fix"',
+      ]);
+
+      yield* agent.react({ ...reacted, emoji: "🎉" });
+      assert.deepStrictEqual((yield* agent.snapshot).reactions, {
+        [messageId]: [{ emoji: "🎉", by: "owner" }],
+      });
+      yield* turns.takeNotes(threadId);
+
+      yield* agent.react({ ...reacted, emoji: "🎉" });
+      assert.deepStrictEqual((yield* agent.snapshot).reactions, {});
+      assert.deepStrictEqual(yield* turns.takeNotes(threadId), []);
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("keeps the newest 200 reacted messages", () =>
+  Effect.gen(function* () {
+    const { layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      for (let index = 0; index <= 200; index += 1) {
+        yield* agent.react({ messageId: `message-${index}`, emoji: "👍" });
+      }
+      const keys = Object.keys((yield* agent.snapshot).reactions ?? {});
+      assert.equal(keys.length, 200);
+      assert.equal(keys[0], "message-1");
+      assert.equal(keys.at(-1), "message-200");
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("reacts to the owner's latest message, and toggles as the owner does", () =>
+  Effect.gen(function* () {
+    const { attempted, ownerMessages, layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      yield* Ref.set(ownerMessages, [
+        {
+          id: MessageId.make("owner-old"),
+          createdBy: "user",
+          createdAt: DateTime.makeUnsafe("2026-08-01T10:00:00.000Z"),
+        },
+        {
+          id: MessageId.make("greeting"),
+          createdBy: "system",
+          createdAt: DateTime.makeUnsafe("2026-08-01T10:05:00.000Z"),
+        },
+        {
+          id: MessageId.make("owner-new"),
+          createdBy: "user",
+          createdAt: DateTime.makeUnsafe("2026-08-01T10:03:00.000Z"),
+        },
+      ]);
+      const key = "turn-item:message:owner-new";
+      assert.deepStrictEqual(yield* agent.reactToOwner("👍"), { emoji: "👍", reacted: true });
+      assert.deepStrictEqual((yield* agent.snapshot).reactions, {
+        [key]: [{ emoji: "👍", by: "orchestrator" }],
+      });
+      assert.deepStrictEqual(yield* agent.reactToOwner("👍"), { emoji: "👍", reacted: false });
+      assert.deepStrictEqual((yield* agent.snapshot).reactions, {});
+
+      yield* Ref.set(ownerMessages, []);
+      const failure = yield* agent.reactToOwner("👍").pipe(Effect.flip);
+      assert.equal(failure.code, "invalid_request");
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("moves the owner's read position forward and never back", () =>
+  Effect.gen(function* () {
+    const { layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      assert.isNull((yield* agent.snapshot).ownerReadAt);
+      yield* agent.markRead({ through: "2026-08-01T10:00:00.000Z" });
+      yield* agent.markRead({ through: "2026-08-01T09:00:00.000Z" });
+      assert.equal((yield* agent.snapshot).ownerReadAt, "2026-08-01T10:00:00.000Z");
+      yield* agent.markRead({ through: "2026-08-01T11:00:00.000Z" });
+      assert.equal((yield* agent.snapshot).ownerReadAt, "2026-08-01T11:00:00.000Z");
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("wakes the orchestrator once per pass, naming each followed thread that ended", () =>
+  Effect.gen(function* () {
+    const { sends, shells, attempted, layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      yield* Ref.set(sends, []);
+      const work = ThreadId.make("work");
+      const other = ThreadId.make("other");
+      const gone = ThreadId.make("gone");
+      const setShell = (threadId: ThreadId, value: TestShell | null) =>
+        Ref.update(shells, (known) => new Map(known).set(threadId, value));
+      yield* setShell(
+        work,
+        shell({ id: work, title: "Work", status: "running", activeRunId: RunId.make("run-1") }),
+      );
+      yield* setShell(
+        other,
+        shell({ id: other, title: "Other", status: "running", activeRunId: RunId.make("run-2") }),
+      );
+      yield* setShell(
+        gone,
+        shell({ id: gone, title: "Gone", status: "running", activeRunId: RunId.make("run-3") }),
+      );
+      yield* agent.governTool(
+        "t3_thread_launch",
+        { title: "Work" },
+        Effect.succeed({ threadId: work, runId: RunId.make("run-1") }),
+      );
+      yield* agent.governTool(
+        "t3_thread_launch",
+        { title: "Other" },
+        Effect.succeed({ threadId: other, runId: RunId.make("run-2") }),
+      );
+      yield* agent.governTool(
+        "t3_thread_launch",
+        { title: "Gone" },
+        Effect.succeed({ threadId: gone, runId: RunId.make("run-3") }),
+      );
+
+      yield* agent.checkOrchestrator;
+      assert.equal((yield* Ref.get(sends)).length, 0);
+
+      yield* setShell(gone, null);
+      yield* setShell(
+        work,
+        shell({ id: work, title: "Work", status: "completed", activeRunId: null }),
+      );
+      yield* setShell(
+        other,
+        shell({ id: other, title: "Other", status: "completed", activeRunId: null }),
+      );
+      yield* agent.checkOrchestrator;
+      const woken = yield* Ref.get(sends);
+      assert.equal(woken.length, 1);
+      assert.isTrue(woken[0]?.messageId.startsWith("orchestrator-wake-") === true);
+      const text = woken[0]?.text ?? "";
+      assert.include(text, "[Work](");
+      assert.include(text, "[Other](");
+      assert.notInclude(text, "Gone");
+      assert.include(text, "has finished its run (completed)");
+
+      yield* agent.checkOrchestrator;
+      assert.equal((yield* Ref.get(sends)).length, 1);
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("leaves followed work for later while the brain or its own run is busy", () =>
+  Effect.gen(function* () {
+    const { attempted, sends, shells, providers, active, layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      yield* Ref.set(sends, []);
+      const work = ThreadId.make("work");
+      yield* Ref.update(shells, (known) =>
+        new Map(known).set(work, shell({ id: work, status: "completed", activeRunId: null })),
+      );
+      yield* agent.governTool(
+        "t3_thread_launch",
+        { title: "Work" },
+        Effect.succeed({ threadId: work, runId: RunId.make("run-1") }),
+      );
+
+      yield* Ref.set(providers, [
+        provider({ auth: { status: "unauthenticated" } } as Partial<ServerProvider>),
+      ]);
+      yield* agent.checkOrchestrator;
+      assert.deepStrictEqual(yield* Ref.get(sends), []);
+
+      yield* Ref.set(providers, [provider()]);
+      const threadId = (yield* agent.snapshot).threadId!;
+      yield* Ref.set(active, { id: threadId, activeRunId: RunId.make("brain-run") });
+      yield* agent.checkOrchestrator;
+      assert.deepStrictEqual(yield* Ref.get(sends), []);
+
+      yield* Ref.set(active, null);
+      yield* agent.checkOrchestrator;
+      assert.equal((yield* Ref.get(sends)).length, 1);
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect(
+  "pushes the orchestrator's latest reply when it changes, and keeps it through a silent one",
+  () =>
+    Effect.gen(function* () {
+      const { shells, attempted, layer } = yield* harness();
+      yield* Effect.gen(function* () {
+        const agent = yield* OrchestratorAgent.OrchestratorAgent;
+        yield* agent.setBrain({ brain });
+        yield* Deferred.await(attempted);
+        const threadId = (yield* agent.snapshot).threadId!;
+        const setLatest = (role: "user" | "assistant", text: string, at: string) =>
+          Ref.update(shells, (known) =>
+            new Map(known).set(
+              threadId,
+              shell({
+                id: threadId,
+                latestVisibleMessage: {
+                  id: MessageId.make(`message-${at}`),
+                  role,
+                  text,
+                  updatedAt: DateTime.makeUnsafe(at),
+                },
+              }),
+            ),
+          );
+        const pushed = yield* Queue.unbounded<OrchestratorSnapshot>();
+        yield* agent.changes.pipe(
+          Stream.runForEach((snapshot) => Queue.offer(pushed, snapshot)),
+          Effect.forkChild({ startImmediately: true }),
+        );
+        // Lets the subscriber take what was pushed, then returns the snapshots it received.
+        const received = Effect.gen(function* () {
+          yield* Effect.yieldNow;
+          const count = yield* Queue.size(pushed);
+          const snapshots: Array<OrchestratorSnapshot> = [];
+          for (let index = 0; index < count; index += 1) snapshots.push(yield* Queue.take(pushed));
+          return snapshots;
+        });
+        // The snapshot a new subscriber starts with.
+        assert.equal((yield* received).length, 1);
+
+        yield* setLatest("assistant", "(silent)", "2026-08-01T09:00:00.000Z");
+        yield* agent.checkOrchestrator;
+        assert.equal((yield* received).length, 0);
+        assert.isNull((yield* agent.snapshot).latestMessageAt);
+
+        yield* setLatest("assistant", "Done with the fix.", "2026-08-01T10:00:00.000Z");
+        yield* agent.checkOrchestrator;
+        const replies = yield* received;
+        assert.equal(replies.length, 1);
+        assert.equal(replies[0]?.latestMessageAt, "2026-08-01T10:00:00.000Z");
+        assert.equal((yield* agent.snapshot).latestMessageAt, "2026-08-01T10:00:00.000Z");
+
+        // A silent reply after a real one keeps the real reply's time: nothing is pushed.
+        yield* setLatest("assistant", "(silent)", "2026-08-01T11:00:00.000Z");
+        yield* agent.checkOrchestrator;
+        assert.equal((yield* received).length, 0);
+        assert.equal((yield* agent.snapshot).latestMessageAt, "2026-08-01T10:00:00.000Z");
+
+        yield* agent.checkOrchestrator;
+        assert.equal((yield* received).length, 0);
+      }).pipe(Effect.provide(layer));
+    }),
+);
+
+it.effect("pushes a settled run's reply without waiting for a tick", () =>
+  Effect.gen(function* () {
+    const { shells, domainEvents, attempted, layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      const threadId = (yield* agent.snapshot).threadId!;
+      const pushed = yield* Queue.unbounded<OrchestratorSnapshot>();
+      yield* agent.changes.pipe(
+        Stream.runForEach((snapshot) => Queue.offer(pushed, snapshot)),
+        Effect.forkChild({ startImmediately: true }),
+      );
+      // The snapshot a new subscriber starts with.
+      yield* Queue.take(pushed);
+      yield* Ref.update(shells, (known) =>
+        new Map(known).set(
+          threadId,
+          shell({
+            id: threadId,
+            latestVisibleMessage: {
+              id: MessageId.make("reply-1"),
+              role: "assistant",
+              text: "Done.",
+              updatedAt: DateTime.makeUnsafe("2026-08-01T10:00:00.000Z"),
+            },
+          }),
+        ),
+      );
+      const runUpdated = (on: ThreadId, status: string) =>
+        ({ type: "run.updated", threadId: on, payload: { status } }) as never;
+
+      // A run still going pushes nothing.
+      yield* Queue.offer(domainEvents, runUpdated(threadId, "running"));
+      yield* Effect.yieldNow;
+      assert.equal(yield* Queue.size(pushed), 0);
+
+      // The run settling pushes the reply straight away: no tick ran.
+      yield* Queue.offer(domainEvents, runUpdated(threadId, "completed"));
+      const settled = yield* Queue.take(pushed);
+      assert.equal(settled.latestMessageAt, "2026-08-01T10:00:00.000Z");
+
+      // A run settling on another thread changes nothing here.
+      yield* Queue.offer(domainEvents, runUpdated(ThreadId.make("elsewhere"), "completed"));
+      yield* Effect.yieldNow;
+      assert.equal(yield* Queue.size(pushed), 0);
     }).pipe(Effect.provide(layer));
   }),
 );

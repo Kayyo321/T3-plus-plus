@@ -201,6 +201,36 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
+  it("approves T3's own MCP tools for chat threads only", () => {
+    const mcpSession = {
+      environmentId: EnvironmentId.make("environment-codex-chat-mcp"),
+      threadId: ThreadId.make("thread-codex-chat-mcp"),
+      providerSessionId: "provider-session-codex-chat-mcp",
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      endpoint: "http://127.0.0.1:43123/mcp",
+      authorizationHeader: "Bearer secret-codex-chat-token",
+      browserToolsAvailable: false,
+    } as const;
+    const serverFor = (capabilityMode: "chat" | "code" | undefined) =>
+      CodexAdapterV2.codexThreadRuntimeParams({
+        mcpSession,
+        runtimePolicy: {
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: null,
+          ...(capabilityMode === undefined ? {} : { capabilityMode }),
+        },
+      }).config["mcp_servers.t3-code"];
+    const server = {
+      url: "http://127.0.0.1:43123/mcp",
+      tool_timeout_sec: 3_900,
+      http_headers: { Authorization: "Bearer secret-codex-chat-token" },
+    };
+    assert.deepEqual(serverFor("chat"), { ...server, default_tools_approval_mode: "approve" });
+    assert.deepEqual(serverFor("code"), server);
+    assert.deepEqual(serverFor(undefined), server);
+  });
+
   it.effect("derives concrete Codex turn policies from every T3 runtime mode", () =>
     Effect.gen(function* () {
       const build = (

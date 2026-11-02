@@ -77,7 +77,8 @@ export const ConversationFolderMutation = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("create"),
     name: ConversationFolderName,
-    parentId: Schema.NullOr(ConversationFolderId),
+    /** Omitted or null creates a top-level folder. */
+    parentId: Schema.optionalKey(Schema.NullOr(ConversationFolderId)),
     smartFilter: Schema.optional(ConversationSmartFilter),
   }),
   Schema.Struct({

@@ -4,11 +4,11 @@ import { observeResize } from "~/lib/observeResize";
 import { THEME_PREVIEW_ID } from "~/themePalette";
 
 import {
+  asciiColorProbe,
   asciiShaderForTheme,
   createAsciiShaderEngine,
   type AsciiLayout,
   type AsciiLook,
-  type AsciiRgb,
   type AsciiShaderEngine,
   type AsciiShaderId,
 } from "./asciiShaderEngine";
@@ -57,22 +57,6 @@ const paintStill = (canvas: HTMLCanvasElement, seed: number, logo: AsciiLayout["
       Math.floor(index / columns) * CELL_HEIGHT,
     );
   }
-};
-
-const colorProbe = () => {
-  const probe = document.createElement("canvas");
-  probe.width = 1;
-  probe.height = 1;
-  const context = probe.getContext("2d", { willReadFrequently: true });
-  return (color: string, fallback: AsciiRgb): AsciiRgb => {
-    if (context === null || color.length === 0) return fallback;
-    context.clearRect(0, 0, 1, 1);
-    context.fillStyle = "#000";
-    context.fillStyle = color;
-    context.fillRect(0, 0, 1, 1);
-    const [red = 255, green = 255, blue = 255] = context.getImageData(0, 0, 1, 1).data;
-    return [red / 255, green / 255, blue / 255];
-  };
 };
 
 /**
@@ -138,7 +122,7 @@ function AsciiCanvas(props: {
     }
 
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const toRgb = colorProbe();
+    const toRgb = asciiColorProbe();
     let shader: AsciiShaderId = asciiShaderForTheme(root.dataset.themeId);
     let lookKey = "";
     let onScreen = true;

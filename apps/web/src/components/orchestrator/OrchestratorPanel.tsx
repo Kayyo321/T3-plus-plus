@@ -1,6 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import {
   AuthAccessWriteScope,
   CommandId,
   type EnvironmentId,
@@ -9,40 +13,39 @@ import {
   type OrchestratorBrainAvailability,
   type OrchestratorFocus,
   orchestratorBrainAvailability,
+  type RunId,
   type ServerProvider,
   type ThreadId,
 } from "@t3tools/contracts";
+import { resolveT3McpToolPresentation } from "@t3tools/shared/t3McpToolPresentation";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUpIcon, XIcon } from "lucide-react";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
+import { ActivityIcon, ArrowUpIcon, CheckIcon, ShieldCheckIcon, XIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
-import { useOrchestratorDock, orchestratorEnvironment } from "../../state/orchestratorAgent";
-import { useThreadVisibleTurnItems } from "../../state/entities";
+import { useEnvironmentSettings } from "../../hooks/useSettings";
+import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
+import { orchestratorEnvironment, useOrchestratorDock } from "../../state/orchestratorAgent";
 import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { randomUUID } from "../../lib/utils";
-import ChatMarkdown from "../ChatMarkdown";
+import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { Button } from "../ui/button";
-import { Textarea } from "../ui/textarea";
 import OrchestratorActivity from "./OrchestratorActivity";
-import { OrchestratorGlyph } from "./OrchestratorGlyph";
+import { OrchestratorBackdrop } from "./OrchestratorBackdrop";
+import { OrchestratorConversation, useOrchestratorFeed } from "./OrchestratorConversation";
+import { OrchestratorGlyph, type OrchestratorGlyphMotion } from "./OrchestratorGlyph";
 import OrchestratorGrantsEditor from "./OrchestratorGrantsEditor";
 import { useOrchestratorStatus } from "./useOrchestratorStatus";
 
-const VISIBLE_ITEM_LIMIT = 200;
-
-const selectionKey = (selection: ModelSelection) => `${selection.instanceId} ${selection.model}`;
+type OrchestratorView = "conversation" | "activity" | "grants";
 
 function ProviderOption(props: {
   readonly provider: ServerProvider;
+  readonly current: ModelSelection | null;
   readonly onChoose: (selection: ModelSelection) => void;
 }) {
-  const { provider } = props;
+  const { provider, current } = props;
   const usable = provider.models.filter(
     (model) =>
       !model.isLegacy &&
@@ -51,21 +54,42 @@ function ProviderOption(props: {
       ]).status === "available",
   );
   if (usable.length === 0) return null;
+  const name = provider.displayName ?? provider.instanceId;
   return (
     <section className="flex flex-col gap-1">
-      <h3 className="px-1 font-mono text-2xs tracking-wide text-muted-foreground uppercase">
-        {provider.displayName ?? provider.instanceId}
+      <h3 className="flex items-center gap-1.5 px-1 font-mono text-2xs tracking-wide text-muted-foreground uppercase">
+        <ProviderInstanceIcon
+          driverKind={provider.driver}
+          displayName={name}
+          size="compact"
+          acpRegistryIconUrl={provider.iconUrl}
+        />
+        {name}
       </h3>
-      {usable.map((model) => (
-        <button
-          key={model.slug}
-          type="button"
-          className="rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
-          onClick={() => props.onChoose({ instanceId: provider.instanceId, model: model.slug })}
-        >
-          {model.name}
-        </button>
-      ))}
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-card/60 backdrop-blur-xl">
+        {usable.map((model) => {
+          const selected =
+            current?.instanceId === provider.instanceId && current.model === model.slug;
+          return (
+            <button
+              key={model.slug}
+              type="button"
+              aria-pressed={selected}
+              className="flex items-center gap-2 px-2.5 py-2 text-left text-sm transition-colors duration-150 hover:bg-accent aria-pressed:bg-primary/15"
+              onClick={() => props.onChoose({ instanceId: provider.instanceId, model: model.slug })}
+            >
+              <ProviderInstanceIcon
+                driverKind={provider.driver}
+                displayName={name}
+                size="compact"
+                acpRegistryIconUrl={provider.iconUrl}
+              />
+              <span className="min-w-0 flex-1 truncate">{model.name}</span>
+              {selected ? <CheckIcon className="size-4 shrink-0 text-primary" /> : null}
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -87,7 +111,7 @@ function BrainPicker(props: {
     ),
   );
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+    <div className="orchestrator-view-enter relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
       <div className="flex flex-col gap-1">
         <h2 className="text-sm font-medium">Choose the orchestrator's model</h2>
         <p className="text-xs text-muted-foreground">
@@ -111,6 +135,7 @@ function BrainPicker(props: {
           <ProviderOption
             key={provider.instanceId}
             provider={provider}
+            current={props.current}
             onChoose={(selection) => props.onChoose(selection, interruptRun)}
           />
         ))
@@ -135,7 +160,10 @@ function BlockedNotice(props: {
   readonly onChooseAnother: () => void;
 }) {
   return (
-    <div role="alert" className="flex flex-col gap-2 border-t border-border p-3">
+    <div
+      role="alert"
+      className="orchestrator-bubble-enter mx-3 mb-2 flex flex-col gap-2 rounded-2xl border border-foreground/10 bg-card/70 p-3 backdrop-blur-xl"
+    >
       <p className="text-xs">{props.availability.message}</p>
       <div className="flex gap-2">
         <Button size="sm" variant="outline" onClick={props.onFix}>
@@ -154,12 +182,13 @@ function ApprovalCard(props: {
   readonly canAnswer: boolean;
   readonly onAnswer: (allow: boolean) => void;
 }) {
+  const tool = resolveT3McpToolPresentation(props.approval.tool);
   return (
-    <div className="flex flex-col gap-2 border-t border-border p-3">
-      <p className="font-mono text-2xs tracking-wide text-muted-foreground uppercase">
-        Asks to act · {props.approval.domain}
+    <div className="orchestrator-bubble-enter mx-3 mb-2 flex flex-col gap-2 rounded-2xl rounded-bl-md border border-primary/40 bg-card/70 p-3 shadow-sm backdrop-blur-xl">
+      <p className="text-sm font-medium">{tool?.displayName ?? props.approval.tool}?</p>
+      <p className="max-h-24 overflow-y-auto font-mono text-2xs break-words text-muted-foreground">
+        {props.approval.summary}
       </p>
-      <p className="text-xs break-words">{props.approval.summary}</p>
       <div className="flex gap-2">
         <Button size="sm" disabled={!props.canAnswer} onClick={() => props.onAnswer(true)}>
           Allow
@@ -177,43 +206,189 @@ function ApprovalCard(props: {
   );
 }
 
-function Transcript(props: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId }) {
-  const threadRef = scopeThreadRef(props.environmentId, props.threadId);
-  const items = useThreadVisibleTurnItems(threadRef).slice(-VISIBLE_ITEM_LIMIT);
+function Header(props: {
+  readonly provider: ServerProvider | undefined;
+  readonly brain: ModelSelection | null;
+  readonly glyph: OrchestratorGlyphMotion;
+  readonly presence: "online" | "attention" | "off";
+  readonly status: string;
+  readonly view: OrchestratorView;
+  readonly onChangeModel: () => void;
+  readonly onView: (view: OrchestratorView) => void;
+  readonly onClose: () => void;
+}) {
+  const { provider, brain } = props;
+  const model = provider?.models.find((candidate) => candidate.slug === brain?.model);
+  const providerName = provider?.displayName ?? brain?.instanceId;
+  const modelName = model?.shortName ?? model?.name ?? brain?.model;
   return (
-    <div className="flex min-h-0 flex-1 flex-col-reverse overflow-y-auto">
-      <div className="flex flex-col gap-3 p-3">
-        {items.map(({ item }) => {
-          switch (item.type) {
-            case "user_message":
-              return (
-                <p key={item.id} className="self-end rounded-md bg-accent px-2 py-1 text-sm">
-                  {item.text}
-                </p>
-              );
-            case "assistant_message":
-              return (
-                <ChatMarkdown
-                  key={item.id}
-                  text={item.text}
-                  cwd={undefined}
-                  threadRef={threadRef}
-                  environmentId={props.environmentId}
-                  className="text-sm"
-                />
-              );
-            case "dynamic_tool":
-              return (
-                <p key={item.id} className="font-mono text-2xs text-muted-foreground">
-                  ∙ {item.toolName ?? "tool"}
-                </p>
-              );
-            default:
-              return null;
-          }
-        })}
+    <header className="relative z-10 flex min-h-13 shrink-0 items-center gap-2.5 border-b border-foreground/10 bg-background/55 py-1.5 pr-2 pl-3 backdrop-blur-xl wco:pr-(--workspace-native-controls-inset)">
+      <span className="relative shrink-0">
+        <span className="flex size-9 items-center justify-center rounded-full border border-primary/40 bg-card/80 orchestrator-avatar-glow">
+          <OrchestratorGlyph size={26} motion={props.glyph} />
+        </span>
+        <span
+          aria-hidden
+          data-presence={props.presence}
+          className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-background bg-muted-foreground transition-colors duration-300 data-[presence=attention]:bg-warning data-[presence=online]:bg-success"
+        />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm leading-tight font-medium">Orchestrator</span>
+        <span className="flex min-w-0 items-center gap-1 text-xs leading-tight text-muted-foreground">
+          {provider && brain ? (
+            <button
+              type="button"
+              className="flex max-w-[70%] min-w-0 shrink-0 items-center gap-1 rounded-sm transition-colors duration-150 hover:text-foreground"
+              aria-label={`Model: ${providerName} ${modelName}. Change it.`}
+              onClick={props.onChangeModel}
+            >
+              <ProviderInstanceIcon
+                driverKind={provider.driver}
+                displayName={providerName ?? provider.instanceId}
+                size="compact"
+                iconClassName="size-3"
+                acpRegistryIconUrl={provider.iconUrl}
+              />
+              <span className="truncate">{modelName}</span>
+            </button>
+          ) : null}
+          <span key={props.status} className="orchestrator-fade-in truncate">
+            {provider && brain ? "· " : ""}
+            {props.status}
+          </span>
+        </span>
+      </span>
+      {(
+        [
+          ["activity", "Activity", ActivityIcon],
+          ["grants", "Grants", ShieldCheckIcon],
+        ] as const
+      ).map(([target, label, Icon]) => (
+        <Button
+          key={target}
+          variant="ghost"
+          size="icon-xs"
+          aria-label={label}
+          title={label}
+          aria-pressed={props.view === target}
+          onClick={() => props.onView(props.view === target ? "conversation" : target)}
+        >
+          <Icon />
+        </Button>
+      ))}
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label="Close the orchestrator panel"
+        onClick={props.onClose}
+      >
+        <XIcon />
+      </Button>
+    </header>
+  );
+}
+
+function Composer(props: {
+  readonly draft: string;
+  readonly disabled: boolean;
+  readonly placeholder: string;
+  readonly canSend: boolean;
+  readonly onDraft: (draft: string) => void;
+  readonly onSubmit: () => void;
+}) {
+  return (
+    <form
+      className="relative z-10 flex shrink-0 items-end gap-1.5 p-3 pt-1"
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.onSubmit();
+      }}
+    >
+      <div className="flex min-w-0 flex-1 items-end rounded-3xl border border-foreground/10 bg-card/70 pr-1 shadow-sm backdrop-blur-xl transition-[border-color,box-shadow] duration-200 focus-within:border-primary/50 orchestrator-composer-focus">
+        <textarea
+          aria-label="Message the orchestrator"
+          placeholder={props.placeholder}
+          value={props.draft}
+          disabled={props.disabled}
+          rows={1}
+          className="max-h-32 min-h-9 min-w-0 flex-1 resize-none bg-transparent px-3.5 py-2 text-sm [field-sizing:content] outline-none placeholder:text-muted-foreground disabled:opacity-60"
+          onChange={(event) => props.onDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              props.onSubmit();
+            }
+          }}
+        />
+        <button
+          type="submit"
+          aria-label="Send"
+          disabled={!props.canSend}
+          data-ready={props.canSend}
+          className="mb-1 flex size-7 shrink-0 scale-75 items-center justify-center rounded-full bg-primary text-primary-foreground opacity-0 transition-[transform,opacity] duration-200 orchestrator-spring hover:brightness-110 data-[ready=true]:scale-100 data-[ready=true]:opacity-100"
+        >
+          <ArrowUpIcon className="size-4" />
+        </button>
       </div>
-    </div>
+    </form>
+  );
+}
+
+/** Marks the conversation read while someone can actually see it. */
+function useMarkRead(input: {
+  readonly environmentId: EnvironmentId;
+  readonly through: string | null;
+  readonly ownerReadAt: string | null;
+}) {
+  const markRead = useAtomCommand(orchestratorEnvironment.markRead, { reportFailure: false });
+  const { environmentId, through, ownerReadAt } = input;
+  const send = useEffectEvent((at: string) => {
+    if (document.visibilityState !== "visible") return;
+    void markRead({ environmentId, input: { through: at } });
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the server the owner has seen a message, including when the window comes back
+  useEffect(() => {
+    if (through === null || (ownerReadAt !== null && ownerReadAt >= through)) return;
+    const mark = () => send(through);
+    mark();
+    document.addEventListener("visibilitychange", mark);
+    return () => document.removeEventListener("visibilitychange", mark);
+  }, [through, ownerReadAt]);
+}
+
+function ConversationBody(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly activeRunId: RunId | null;
+  readonly reactions: Parameters<typeof OrchestratorConversation>[0]["reactions"];
+  readonly latestMessageAt: string | null;
+  readonly ownerReadAt: string | null;
+  readonly onStatus: (status: string | null) => void;
+}) {
+  const { environmentId, threadId, activeRunId, onStatus } = props;
+  const { timestampFormat } = useEnvironmentSettings(environmentId);
+  const react = useAtomCommand(orchestratorEnvironment.react);
+  const feed = useOrchestratorFeed(environmentId, threadId, activeRunId);
+  useMarkRead({
+    environmentId,
+    through: props.latestMessageAt,
+    ownerReadAt: props.ownerReadAt,
+  });
+  const status = feed.currentTool?.label ?? (feed.typing ? "typing…" : null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the header sits outside this subtree and shows what the feed derives
+  useEffect(() => onStatus(status), [onStatus, status]);
+  return (
+    <OrchestratorConversation
+      environmentId={environmentId}
+      threadId={threadId}
+      feed={feed}
+      reactions={props.reactions}
+      timestampFormat={timestampFormat}
+      onReact={(messageId, emoji, excerpt) =>
+        void react({ environmentId, input: { messageId, emoji, excerpt } })
+      }
+    />
   );
 }
 
@@ -236,10 +411,16 @@ export default function OrchestratorPanel(props: {
   const checkAvailability = useAtomCommand(orchestratorEnvironment.checkAvailability, {
     reportFailure: false,
   });
+  const threadId = snapshot?.threadId ?? null;
+  const shell = useQuietThreadShell(
+    threadId === null ? null : scopeThreadRef(environmentId, threadId),
+  );
+  const activeRunId = shell?.runtime?.activeRunId ?? null;
   const [draft, setDraft] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  const [view, setView] = useState<"conversation" | "activity" | "grants">("conversation");
+  const [view, setView] = useState<OrchestratorView>("conversation");
+  const [feedStatus, setFeedStatus] = useState<string | null>(null);
 
   const checkOnOpen = useEffectEvent((target: EnvironmentId) => {
     void checkAvailability({ environmentId: target, input: {} });
@@ -253,6 +434,9 @@ export default function OrchestratorPanel(props: {
   const blocked = availability.status === "blocked" ? availability : null;
   const showPicker = picking || (snapshot !== null && snapshot.brain === null);
   const canSend = availability.status === "available" && draft.trim().length > 0;
+  const provider = providers.find(
+    (candidate) => candidate.instanceId === snapshot?.brain?.instanceId,
+  );
 
   const choose = async (selection: ModelSelection, interruptRun: boolean) => {
     const result = await setBrain({
@@ -283,68 +467,62 @@ export default function OrchestratorPanel(props: {
     }
   };
 
+  const conversationShown = !showPicker && view === "conversation";
+
   return (
     <aside
       aria-label="Orchestrator"
       data-orchestrator-dock
-      className="flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col border-l border-border bg-background"
+      className="orchestrator-panel-enter relative isolate flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
     >
-      <header className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center gap-2 border-b border-border px-3 wco:pr-(--workspace-native-controls-inset)">
-        <OrchestratorGlyph size={18} motion={status.motion === "working" ? "working" : "still"} />
-        <span className="text-sm font-medium">Orchestrator</span>
-        {snapshot?.brain ? (
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left text-xs hover:underline"
-            aria-label={`Model: ${selectionKey(snapshot.brain)}. Change it.`}
-            onClick={() => setPicking(true)}
-          >
-            {selectionKey(snapshot.brain)}
-          </button>
-        ) : (
-          <span className="flex-1" />
-        )}
-        {(["activity", "grants"] as const).map((target) => (
-          <Button
-            key={target}
-            variant="ghost"
-            size="xs"
-            aria-pressed={view === target}
-            onClick={() => setView(view === target ? "conversation" : target)}
-          >
-            {target === "activity" ? "Activity" : "Grants"}
-          </Button>
-        ))}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Close the orchestrator panel"
-          onClick={() => setOpen(false)}
-        >
-          <XIcon />
-        </Button>
-      </header>
+      <OrchestratorBackdrop />
+      <Header
+        provider={provider}
+        brain={snapshot?.brain ?? null}
+        glyph={activeRunId !== null ? "working" : "idle"}
+        presence={status.needsYou ? "attention" : blocked ? "off" : "online"}
+        status={conversationShown ? (feedStatus ?? status.label) : status.label}
+        view={view}
+        onChangeModel={() => setPicking(true)}
+        onView={setView}
+        onClose={() => setOpen(false)}
+      />
       {showPicker ? (
         <BrainPicker
           providers={providers}
           current={snapshot?.brain ?? null}
-          runActive={false}
+          runActive={activeRunId !== null}
           onChoose={(selection, interruptRun) => void choose(selection, interruptRun)}
           onCancel={snapshot?.brain ? () => setPicking(false) : undefined}
         />
       ) : view === "activity" ? (
-        <OrchestratorActivity environmentId={environmentId} />
+        <div className="orchestrator-view-enter relative flex min-h-0 flex-1 flex-col bg-background/70 backdrop-blur-xl">
+          <OrchestratorActivity environmentId={environmentId} />
+        </div>
       ) : view === "grants" && snapshot !== null ? (
-        <OrchestratorGrantsEditor environmentId={environmentId} grants={snapshot.grants} />
-      ) : snapshot?.threadId != null ? (
-        <Transcript environmentId={environmentId} threadId={snapshot.threadId} />
+        <div className="orchestrator-view-enter relative flex min-h-0 flex-1 flex-col bg-background/70 backdrop-blur-xl">
+          <OrchestratorGrantsEditor environmentId={environmentId} grants={snapshot.grants} />
+        </div>
+      ) : threadId !== null ? (
+        <ConversationBody
+          environmentId={environmentId}
+          threadId={threadId}
+          activeRunId={activeRunId}
+          reactions={snapshot?.reactions ?? {}}
+          latestMessageAt={snapshot?.latestMessageAt ?? null}
+          ownerReadAt={snapshot?.ownerReadAt ?? null}
+          onStatus={setFeedStatus}
+        />
       ) : (
-        <div className="flex flex-1 items-center justify-center p-6 text-center text-xs text-muted-foreground">
-          Ask for anything you would do by hand: start threads, tidy the sidebar, open a diff.
+        <div className="orchestrator-view-enter relative flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <OrchestratorGlyph size={72} motion="idle" />
+          <p className="max-w-60 text-xs text-muted-foreground">
+            Ask for anything you would do by hand: start threads, tidy the sidebar, open a diff.
+          </p>
         </div>
       )}
       {snapshot?.supervision.status === "paused" && snapshot.brain !== null ? (
-        <p className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
+        <p className="relative z-10 mb-2 self-center rounded-full bg-background/60 px-2.5 py-0.5 text-2xs text-muted-foreground backdrop-blur-md">
           Supervision is paused.
         </p>
       ) : null}
@@ -366,37 +544,20 @@ export default function OrchestratorPanel(props: {
         />
       ) : null}
       {sendError === null ? null : (
-        <p role="alert" className="border-t border-border px-3 py-1.5 text-xs">
+        <p role="alert" className="relative z-10 mx-3 mb-2 text-xs">
           {sendError}
         </p>
       )}
-      {showPicker || view !== "conversation" ? null : (
-        <form
-          className="flex items-end gap-2 border-t border-border p-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
-          }}
-        >
-          <Textarea
-            aria-label="Message the orchestrator"
-            placeholder={blocked ? "Unavailable" : "Ask the orchestrator"}
-            value={draft}
-            disabled={availability.status !== "available"}
-            rows={2}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void submit();
-              }
-            }}
-          />
-          <Button type="submit" size="icon-sm" aria-label="Send" disabled={!canSend}>
-            <ArrowUpIcon />
-          </Button>
-        </form>
-      )}
+      {conversationShown ? (
+        <Composer
+          draft={draft}
+          disabled={availability.status !== "available"}
+          placeholder={blocked ? "Unavailable" : "Message the orchestrator"}
+          canSend={canSend}
+          onDraft={setDraft}
+          onSubmit={() => void submit()}
+        />
+      ) : null}
     </aside>
   );
 }
