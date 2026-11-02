@@ -19,19 +19,27 @@ import {
 } from "@t3tools/contracts";
 import { resolveT3McpToolPresentation } from "@t3tools/shared/t3McpToolPresentation";
 import { useNavigate } from "@tanstack/react-router";
-import { ActivityIcon, ArrowUpIcon, CheckIcon, ShieldCheckIcon, Trash2Icon } from "lucide-react";
+import {
+  ActivityIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { useClientSettings, useEnvironmentSettings } from "../../hooks/useSettings";
 import { readLocalApi } from "../../localApi";
 import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
-import { orchestratorEnvironment } from "../../state/orchestratorAgent";
+import { orchestratorEnvironment, useOrchestratorDock } from "../../state/orchestratorAgent";
 import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { randomUUID } from "../../lib/utils";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import OrchestratorActivity from "./OrchestratorActivity";
 import { OrchestratorBackdrop } from "./OrchestratorBackdrop";
 import { OrchestratorConversation, useOrchestratorFeed } from "./OrchestratorConversation";
@@ -201,6 +209,26 @@ function ApprovalCard(props: {
         </Button>
       </div>
     </div>
+  );
+}
+
+function MinimizeTab(props: { readonly onMinimize: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label="Minimize the orchestrator panel"
+            className="absolute top-1/2 -left-5 flex h-12 w-5 -translate-y-1/2 items-center justify-center rounded-l-lg border border-r-0 border-border bg-background text-muted-foreground transition-colors duration-150 outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            onClick={props.onMinimize}
+          />
+        }
+      >
+        <ChevronRightIcon className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="left">Minimize</TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -405,6 +433,7 @@ export default function OrchestratorPanel(props: {
 }) {
   const { environmentId } = props;
   const navigate = useNavigate();
+  const setOpen = useOrchestratorDock((state) => state.setOpen);
   const liveResult = useAtomValue(orchestratorEnvironment.live({ environmentId, input: {} }));
   const snapshot = liveResult._tag === "Success" ? liveResult.value : null;
   const status = useOrchestratorStatus(environmentId);
@@ -509,8 +538,9 @@ export default function OrchestratorPanel(props: {
     <aside
       aria-label="Orchestrator"
       data-orchestrator-dock
-      className="orchestrator-panel-enter relative isolate flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+      className="orchestrator-panel-enter relative isolate z-30 flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col border-l border-border bg-background"
     >
+      <MinimizeTab onMinimize={() => setOpen(false)} />
       <OrchestratorBackdrop />
       <Header
         provider={provider}
