@@ -12,10 +12,12 @@ import {
 import { PencilIcon, PlusIcon } from "lucide-react";
 import { useEffect } from "react";
 
+import { cn } from "~/lib/utils";
 import { useEnvironmentQuery } from "~/state/query";
 import { useOrchestratorDock } from "~/state/orchestratorAgent";
 import { serverEnvironment } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { ComposerContextLabel } from "../ComposerContextLabel";
 import { TeamworkIcon } from "../Icons";
 import { openTeamSheetEditor } from "../teamwork/openTeamSheetEditor";
 import {
@@ -132,14 +134,35 @@ function TeamworkToggleControl({ threadRef }: { readonly threadRef: ScopedThread
         <TooltipTrigger
           render={
             <MenuTrigger
-              render={<ComposerControl size="xs" className="shrink-0" />}
+              render={
+                <ComposerControl
+                  size="xs"
+                  className={cn(
+                    "shrink-0",
+                    sheetId !== null &&
+                      "teamwork-control-on border-primary/40 group-data-[compact]/composer-context:has-[[data-composer-label]]:gap-0 aria-pressed:bg-primary/15 aria-pressed:text-primary aria-pressed:hover:bg-primary/20 dark:aria-pressed:text-primary",
+                  )}
+                />
+              }
               aria-label={label}
               aria-pressed={sheetId !== null}
               data-composer-context-control
             />
           }
         >
-          <TeamworkIcon aria-hidden="true" />
+          <TeamworkIcon
+            key={sheetId ?? OFF_VALUE}
+            aria-hidden="true"
+            className={sheetId !== null ? "teamwork-icon-on" : undefined}
+          />
+          {sheetName !== null ? (
+            <span
+              key={`name:${sheetId}`}
+              className="teamwork-name-on inline-flex min-w-0 overflow-hidden"
+            >
+              <ComposerContextLabel>{sheetName}</ComposerContextLabel>
+            </span>
+          ) : null}
         </TooltipTrigger>
         <TooltipPopup side="top">{label}</TooltipPopup>
       </Tooltip>
