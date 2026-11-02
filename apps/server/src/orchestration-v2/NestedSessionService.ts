@@ -205,6 +205,23 @@ const make = Effect.gen(function* () {
     }
   });
 
+  // A child whose first turn never started is an empty thread nobody asked to keep.
+  const discardChild = (input: NestedSessionStartInput) =>
+    threads
+      .dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make(`${input.commandId}:discard`),
+        threadId: input.threadId,
+      })
+      .pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not remove a nested session that failed to start", {
+            threadId: input.threadId,
+            cause,
+          }),
+        ),
+      );
+
   const start: NestedSessionService["Service"]["start"] = Effect.fn("NestedSessionService.start")(
     function* (input, actor) {
       const parent = yield* projections
@@ -213,6 +230,19 @@ const make = Effect.gen(function* () {
           Effect.mapError((cause) => fail(describe(cause, "The parent conversation is gone."))),
         );
       const nested = yield* nestedOptions(input, parent);
+      if (input.modelSelection !== undefined) {
+        yield* threads
+          .assertProviderInstanceEnabled({
+            projectId: parent.projectId,
+            commandId: input.commandId,
+            instanceId: input.modelSelection.instanceId,
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              fail(describe(cause, "The provider is not enabled for this project.")),
+            ),
+          );
+      }
       yield* threads
         .dispatch({
           type: "thread.fork",
@@ -276,6 +306,7 @@ const make = Effect.gen(function* () {
               creationSource: actor.creationSource,
             })
             .pipe(
+              Effect.tapError(() => discardChild(input)),
               Effect.mapError((cause) =>
                 fail(describe(cause, "The nested session could not start its first turn.")),
               ),
