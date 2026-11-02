@@ -179,9 +179,7 @@ through the pages you have visited, like a browser's back and forward buttons.
 [Chat and Code](./thread-sidebar.md#chat-and-code).
 
 `workspaceBundle.switch` (`mod+alt+w` by default) opens the
-[workspace](./workspaces.md) picker in the thread header. `conversationFolders.toggleView` has no
-default shortcut; it switches the sidebar between projects and
-[folders](./conversation-folders.md).
+[workspace](./workspaces.md) picker in the thread header.
 
 ## Reserved shortcuts
 

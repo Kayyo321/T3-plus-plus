@@ -1,9 +1,8 @@
 import { conversationFolderChoices } from "@t3tools/client-runtime/state/conversationFolders";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useNavigate } from "@tanstack/react-router";
-import { BoxesIcon, FolderInputIcon, FoldersIcon } from "lucide-react";
+import { BoxesIcon, FolderInputIcon } from "lucide-react";
 
-import { useConversationFolderViewStore } from "../conversationFolderViewStore";
 import { useEnvironmentQuery } from "../state/query";
 import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -26,10 +25,6 @@ export function useWorkspacePaletteItems(
       ? null
       : serverEnvironment.conversationFoldersLive({ environmentId, input: {} }),
   ).data;
-  const foldersVisible = useConversationFolderViewStore((state) => state.foldersVisible);
-  const toggleFoldersVisible = useConversationFolderViewStore(
-    (state) => state.toggleFoldersVisible,
-  );
   const attach = useAtomCommand(serverEnvironment.attachWorkspace, {
     label: "conversation workspace",
   });
@@ -47,15 +42,6 @@ export function useWorkspacePaletteItems(
       run: async () => {
         await navigate({ to: "/settings/workspaces" });
       },
-    },
-    {
-      kind: "action",
-      value: "action:conversation-folders-toggle",
-      searchTerms: ["folders", "sidebar", "organize", "projects", "tree"],
-      title: foldersVisible ? "Show projects in the sidebar" : "Show folders in the sidebar",
-      icon: <FoldersIcon className={ICON_CLASS} />,
-      shortcutCommand: "conversationFolders.toggleView",
-      run: async () => toggleFoldersVisible(),
     },
   ];
 

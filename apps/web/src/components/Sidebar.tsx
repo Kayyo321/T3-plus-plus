@@ -70,7 +70,6 @@ import {
   CheckIcon,
   ChevronDownIcon,
   FolderIcon,
-  FoldersIcon,
   ListFilterIcon,
   PlusIcon,
   SettingsIcon,
@@ -259,8 +258,10 @@ import {
   useComboboxFilter,
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
-import { SidebarConversationFolders } from "./sidebar/SidebarConversationFolders";
-import { useConversationFolderViewStore } from "../conversationFolderViewStore";
+import {
+  SidebarConversationFolders,
+  SidebarFolderActions,
+} from "./sidebar/SidebarConversationFolders";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
@@ -1134,12 +1135,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     (thread) => (thread.capabilityMode ?? "code") === workspaceMode,
   );
   const nestedSessions = nestedSessionsByParent(threads);
-  const conversationFoldersVisible = useConversationFolderViewStore(
-    (state) => state.foldersVisible,
-  );
-  const toggleConversationFolders = useConversationFolderViewStore(
-    (state) => state.toggleFoldersVisible,
-  );
   // One tree at a time: folders belong to an environment, so the open thread's is the one shown.
   const folderEnvironmentId = routeThreadRef?.environmentId ?? primaryEnvironmentId;
   const routeRowThreadKey =
@@ -3232,13 +3227,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               searchResultCount={threadSearchResults.length}
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
-              viewToggle={
-                <SidebarHeaderIconButton
-                  label={conversationFoldersVisible ? "Show projects" : "Show folders"}
-                  onClick={toggleConversationFolders}
-                >
-                  <FoldersIcon />
-                </SidebarHeaderIconButton>
+              folderActions={
+                folderEnvironmentId === null ? null : (
+                  <SidebarFolderActions environmentId={folderEnvironmentId} />
+                )
               }
             />
           </SidebarGroup>
@@ -3314,7 +3306,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               </p>
             )
           ) : null}
-          {!isSearchingThreads && conversationFoldersVisible && folderEnvironmentId !== null ? (
+          {!isSearchingThreads && folderEnvironmentId !== null ? (
             <div className="relative min-h-[calc(100dvh-8rem)] flex-1">
               <div className="absolute inset-0">
                 <SidebarConversationFolders
@@ -3331,7 +3323,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               </div>
             </div>
           ) : null}
-          {!isSearchingThreads && !(conversationFoldersVisible && folderEnvironmentId !== null) ? (
+          {!isSearchingThreads && folderEnvironmentId === null ? (
             <TooltipProvider
               key="sidebar-thread-tooltips-150"
               delay={150}

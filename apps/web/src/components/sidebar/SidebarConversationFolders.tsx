@@ -52,6 +52,7 @@ import {
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { toastManager } from "../ui/toast";
+import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
 const FOLDER_ROW_HEIGHT = 30;
 const THREADS_DRAG_TYPE = "application/x-t3pp-thread-ids";
@@ -142,7 +143,7 @@ function FolderHeaderRow(props: {
     <div
       role="presentation"
       className={cn(
-        "group/folder flex h-[30px] min-w-0 items-center rounded-md hover:bg-sidebar-row-hover",
+        "group/folder relative flex h-[30px] min-w-0 items-center rounded-md hover:bg-sidebar-row-hover",
         dropTarget && "ring-1 ring-inset ring-primary/70",
       )}
       style={{ paddingLeft: props.depth * 12 }}
@@ -188,11 +189,19 @@ function FolderHeaderRow(props: {
           <FolderIcon aria-hidden className="size-3.5 shrink-0 text-sidebar-muted-foreground" />
         )}
         <span className="min-w-0 flex-1 truncate">{props.label}</span>
-        <span className="shrink-0 pr-1 text-xs text-sidebar-muted-foreground/70 tabular-nums">
+        <span
+          className={cn(
+            "shrink-0 pr-2 text-xs text-sidebar-muted-foreground/70 tabular-nums",
+            props.actions !== null &&
+              "group-focus-within/folder:invisible group-hover/folder:invisible",
+          )}
+        >
           {props.count}
         </span>
       </button>
-      {props.actions}
+      {props.actions === null ? null : (
+        <span className="absolute inset-y-0 right-0.5 flex items-center">{props.actions}</span>
+      )}
     </div>
   );
 }
@@ -244,6 +253,65 @@ function FolderNameDialog(props: {
  * The folder tree, virtualized: thousands of rows mount a screenful of DOM. `renderThreadRow`
  * replaces a row's body for callers that want to compose one; it receives the same flat row.
  */
+/** The sidebar header's way to add folders, beside search so the tree keeps its full height. */
+export function SidebarFolderActions(props: { readonly environmentId: EnvironmentId }) {
+  const { environmentId } = props;
+  const canOrganize = useAtomValue(
+    serverEnvironment.mutateConversationFolders.permissionAtom(environmentId),
+  );
+  const mutate = useAtomCommand(serverEnvironment.mutateConversationFolders, {
+    label: "conversation folder change",
+  });
+  const [dialog, setDialog] = useState<FolderDialog | null>(null);
+  if (!canOrganize) return null;
+  return (
+    <>
+      <SidebarHeaderIconButton
+        label="New folder"
+        onClick={() => setDialog({ kind: "create", parentId: null })}
+      >
+        <FolderPlusIcon />
+      </SidebarHeaderIconButton>
+      <Menu>
+        <MenuTrigger render={<SidebarHeaderIconButton label="Smart folder" />}>
+          <SparklesIcon />
+        </MenuTrigger>
+        <MenuPopup align="end">
+          {SMART_FOLDER_PRESETS.map((preset) => (
+            <MenuItem
+              key={preset.name}
+              onClick={() =>
+                void mutate({
+                  environmentId,
+                  input: {
+                    type: "create",
+                    name: preset.name as never,
+                    parentId: null,
+                    smartFilter: preset.filter,
+                  },
+                })
+              }
+            >
+              {preset.name}
+            </MenuItem>
+          ))}
+        </MenuPopup>
+      </Menu>
+      <FolderNameDialog
+        dialog={dialog}
+        onClose={() => setDialog(null)}
+        onSubmit={async (_current, name) => {
+          const result = await mutate({
+            environmentId,
+            input: { type: "create", name: name as never, parentId: null },
+          });
+          if (result._tag === "Success") setDialog(null);
+        }}
+      />
+    </>
+  );
+}
+
 export function SidebarConversationFolders(props: {
   readonly environmentId: EnvironmentId;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -363,41 +431,6 @@ export function SidebarConversationFolders(props: {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {canOrganize ? (
-        <div className="flex shrink-0 items-center gap-1 px-1 pb-1">
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => setDialog({ kind: "create", parentId: null })}
-          >
-            <FolderPlusIcon aria-hidden className="size-3" />
-            New folder
-          </Button>
-          <Menu>
-            <MenuTrigger render={<Button size="xs" variant="ghost" />}>
-              <SparklesIcon aria-hidden className="size-3" />
-              Smart folder
-            </MenuTrigger>
-            <MenuPopup align="start">
-              {SMART_FOLDER_PRESETS.map((preset) => (
-                <MenuItem
-                  key={preset.name}
-                  onClick={() =>
-                    void run({
-                      type: "create",
-                      name: preset.name as never,
-                      parentId: null,
-                      smartFilter: preset.filter,
-                    })
-                  }
-                >
-                  {preset.name}
-                </MenuItem>
-              ))}
-            </MenuPopup>
-          </Menu>
-        </div>
-      ) : null}
       <LegendList<ConversationFolderRow<EnvironmentThreadShell>>
         className="min-h-0 flex-1"
         data={rows}

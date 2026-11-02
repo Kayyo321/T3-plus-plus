@@ -60,7 +60,6 @@ const MODEL_PICKER_KEYBINDING_COMMANDS = [
 
 export const STATIC_KEYBINDING_COMMANDS = [
   "workspaceBundle.switch",
-  "conversationFolders.toggleView",
   "workspace.focusNext",
   "workspace.focusPrevious",
   "sidebar.toggle",

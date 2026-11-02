@@ -32,7 +32,7 @@ export interface SidebarThreadHeaderProps {
   searchResultCount: number;
   activeSearchResultIndex: number;
   onClearSearch: () => void;
-  viewToggle?: ReactNode;
+  folderActions?: ReactNode;
 }
 
 export function SidebarThreadHeader({
@@ -53,7 +53,7 @@ export function SidebarThreadHeader({
   searchResultCount,
   activeSearchResultIndex,
   onClearSearch,
-  viewToggle,
+  folderActions,
 }: SidebarThreadHeaderProps) {
   const resultsVisible = isSearching && searchResultCount > 0;
   // Shrinking results can remove the active option; never leave aria-activedescendant pointing at it.
@@ -132,7 +132,7 @@ export function SidebarThreadHeader({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center">
-          {viewToggle}
+          {folderActions}
           {hasProjects ? (
             <>
               {projectScope}

@@ -57,13 +57,7 @@ function ProviderOption(props: {
   const name = provider.displayName ?? provider.instanceId;
   return (
     <section className="flex flex-col gap-1">
-      <h3 className="flex items-center gap-1.5 px-1 font-mono text-2xs tracking-wide text-muted-foreground uppercase">
-        <ProviderInstanceIcon
-          driverKind={provider.driver}
-          displayName={name}
-          size="compact"
-          acpRegistryIconUrl={provider.iconUrl}
-        />
+      <h3 className="px-1 font-mono text-2xs tracking-wide text-muted-foreground uppercase">
         {name}
       </h3>
       <div className="flex flex-col overflow-hidden rounded-2xl border border-foreground/10 bg-card/60 backdrop-blur-xl">
@@ -222,7 +216,7 @@ function Header(props: {
   const providerName = provider?.displayName ?? brain?.instanceId;
   const modelName = model?.shortName ?? model?.name ?? brain?.model;
   return (
-    <header className="relative z-10 flex min-h-13 shrink-0 items-center gap-2.5 border-b border-foreground/10 bg-background/55 py-1.5 pr-2 pl-3 backdrop-blur-xl wco:pr-(--workspace-native-controls-inset)">
+    <header className="relative z-10 flex shrink-0 items-center gap-2.5 border-b border-foreground/10 bg-background/55 px-3 pt-1.5 pb-1.5 backdrop-blur-xl wco:pt-0">
       <span className="relative shrink-0">
         <span className="flex size-9 items-center justify-center rounded-full border border-primary/40 bg-card/80 orchestrator-avatar-glow">
           <OrchestratorGlyph size={26} motion={props.glyph} />
@@ -233,58 +227,62 @@ function Header(props: {
           className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-background bg-muted-foreground transition-colors duration-300 data-[presence=attention]:bg-warning data-[presence=online]:bg-success"
         />
       </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm leading-tight font-medium">Orchestrator</span>
-        <span className="flex min-w-0 items-center gap-1 text-xs leading-tight text-muted-foreground">
-          {provider && brain ? (
-            <button
-              type="button"
-              className="flex max-w-[70%] min-w-0 shrink-0 items-center gap-1 rounded-sm transition-colors duration-150 hover:text-foreground"
-              aria-label={`Model: ${providerName} ${modelName}. Change it.`}
-              onClick={props.onChangeModel}
-            >
-              <ProviderInstanceIcon
-                driverKind={provider.driver}
-                displayName={providerName ?? provider.instanceId}
-                size="compact"
-                iconClassName="size-3"
-                acpRegistryIconUrl={provider.iconUrl}
-              />
-              <span className="truncate">{modelName}</span>
-            </button>
-          ) : null}
-          <span key={props.status} className="orchestrator-fade-in truncate">
-            {provider && brain ? "· " : ""}
-            {props.status}
-          </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="flex items-center truncate text-sm leading-tight font-medium wco:h-(--workspace-topbar-height) wco:pr-(--workspace-native-controls-inset)">
+          Orchestrator
         </span>
-      </span>
-      {(
-        [
-          ["activity", "Activity", ActivityIcon],
-          ["grants", "Grants", ShieldCheckIcon],
-        ] as const
-      ).map(([target, label, Icon]) => (
-        <Button
-          key={target}
-          variant="ghost"
-          size="icon-xs"
-          aria-label={label}
-          title={label}
-          aria-pressed={props.view === target}
-          onClick={() => props.onView(props.view === target ? "conversation" : target)}
-        >
-          <Icon />
-        </Button>
-      ))}
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label="Close the orchestrator panel"
-        onClick={props.onClose}
-      >
-        <XIcon />
-      </Button>
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="flex min-w-0 flex-1 items-center gap-1 text-xs leading-tight text-muted-foreground">
+            {provider && brain ? (
+              <button
+                type="button"
+                className="flex max-w-[70%] min-w-0 shrink-0 items-center gap-1 rounded-sm transition-colors duration-150 hover:text-foreground"
+                aria-label={`Model: ${providerName} ${modelName}. Change it.`}
+                onClick={props.onChangeModel}
+              >
+                <ProviderInstanceIcon
+                  driverKind={provider.driver}
+                  displayName={providerName ?? provider.instanceId}
+                  size="compact"
+                  iconClassName="size-3"
+                  acpRegistryIconUrl={provider.iconUrl}
+                />
+                <span className="truncate">{modelName}</span>
+              </button>
+            ) : null}
+            <span key={props.status} className="orchestrator-fade-in truncate">
+              {provider && brain ? "· " : ""}
+              {props.status}
+            </span>
+          </span>
+          {(
+            [
+              ["activity", "Activity", ActivityIcon],
+              ["grants", "Grants", ShieldCheckIcon],
+            ] as const
+          ).map(([target, label, Icon]) => (
+            <Button
+              key={target}
+              variant="ghost"
+              size="icon-xs"
+              aria-label={label}
+              title={label}
+              aria-pressed={props.view === target}
+              onClick={() => props.onView(props.view === target ? "conversation" : target)}
+            >
+              <Icon />
+            </Button>
+          ))}
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Close the orchestrator panel"
+            onClick={props.onClose}
+          >
+            <XIcon />
+          </Button>
+        </div>
+      </div>
     </header>
   );
 }

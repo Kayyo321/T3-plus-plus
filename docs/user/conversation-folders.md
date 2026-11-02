@@ -4,9 +4,9 @@ Folders organize conversations across projects. Every client connected to a serv
 
 ## Use them
 
-Choose the folders button beside the sidebar search, or run **Show folders in the sidebar** from the command palette. Conversations you have not filed are under **Unfiled**.
+The sidebar lists conversations in folders. Conversations you have not filed are under **Unfiled**.
 
-- **New folder** adds a top-level folder. A folder's menu adds a subfolder, up to 8 levels deep.
+- The folder icon beside the sidebar search adds a top-level folder, and the sparkle icon adds a smart folder. A folder's menu adds a subfolder, up to 8 levels deep.
 - Drag a conversation onto a folder to file it, or onto **Unfiled** to take it out. A conversation lives in one folder.
 - To move several, `mod`-click to select them and drag any one of them.
 - Drag a folder onto another to nest it.

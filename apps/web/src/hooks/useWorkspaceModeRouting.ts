@@ -1,4 +1,4 @@
-import { type ThreadCapabilityMode } from "@t3tools/contracts";
+import { isListedThreadLineage, type ThreadCapabilityMode } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
@@ -67,7 +67,12 @@ export function useOpenWorkspaceMode() {
     if (mode === useWorkspaceMode.getState().mode) return;
     useWorkspaceMode.getState().setMode(mode);
     const latest = readThreadShells()
-      .filter((thread) => thread.archivedAt === null && (thread.capabilityMode ?? "code") === mode)
+      .filter(
+        (thread) =>
+          thread.archivedAt === null &&
+          (thread.capabilityMode ?? "code") === mode &&
+          isListedThreadLineage(thread.lineage),
+      )
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
     if (latest !== undefined) {
       await navigate({
