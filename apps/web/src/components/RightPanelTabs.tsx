@@ -633,6 +633,8 @@ function surfaceTitle(
       return "Documents";
     case "teamwork":
       return "Team";
+    case "team-sheet":
+      return "Team sheet";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -731,6 +733,7 @@ function SurfaceIcon({
     case "document":
       return <FileTextIcon className="size-3 shrink-0" />;
     case "teamwork":
+    case "team-sheet":
       return <UsersIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (

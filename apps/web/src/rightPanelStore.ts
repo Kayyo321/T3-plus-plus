@@ -27,6 +27,7 @@ const RIGHT_PANEL_KINDS = [
   "git-graph",
   "documents",
   "teamwork",
+  "team-sheet",
   "document",
   "computer-use",
 ] as const;
@@ -87,6 +88,7 @@ export type RightPanelSurface =
   | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId }
   | { id: "documents"; kind: "documents" }
   | { id: "teamwork"; kind: "teamwork" }
+  | { id: `team-sheet:${string}`; kind: "team-sheet"; sheetId: string }
   | { id: `document:${string}`; kind: "document"; documentId: string }
   | { id: `computer-use:${string}`; kind: "computer-use"; threadId: ThreadId };
 
@@ -138,11 +140,18 @@ interface RightPanelStoreState {
     ref: ScopedThreadRef,
     kind: Exclude<
       RightPanelKind,
-      "file" | "terminal" | "pull-request" | "side-chat" | "document" | "computer-use"
+      | "file"
+      | "terminal"
+      | "pull-request"
+      | "side-chat"
+      | "document"
+      | "team-sheet"
+      | "computer-use"
     >,
   ) => void;
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDocument: (ref: ScopedThreadRef, documentId: string) => void;
+  openTeamSheet: (ref: ScopedThreadRef, sheetId: string) => void;
   /** `threadId` is the conversation the steps belong to, which a side chat's parent panel is not. */
   openComputerUse: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
@@ -215,7 +224,13 @@ interface RightPanelStoreState {
     ref: ScopedThreadRef,
     kind: Exclude<
       RightPanelKind,
-      "file" | "terminal" | "pull-request" | "side-chat" | "document" | "computer-use"
+      | "file"
+      | "terminal"
+      | "pull-request"
+      | "side-chat"
+      | "document"
+      | "team-sheet"
+      | "computer-use"
     >,
   ) => void;
   setThreadPanelOpen: (
@@ -241,7 +256,14 @@ const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
 const singletonSurface = (
   kind: Exclude<
     RightPanelKind,
-    "file" | "preview" | "terminal" | "pull-request" | "side-chat" | "document" | "computer-use"
+    | "file"
+    | "preview"
+    | "terminal"
+    | "pull-request"
+    | "side-chat"
+    | "document"
+    | "team-sheet"
+    | "computer-use"
   >,
 ): RightPanelSurface => {
   switch (kind) {
@@ -270,7 +292,8 @@ const SINGLETON_KINDS: ReadonlySet<string> = new Set<string>(
       kind !== "preview" &&
       kind !== "terminal" &&
       kind !== "pull-request" &&
-      kind !== "side-chat",
+      kind !== "side-chat" &&
+      kind !== "team-sheet",
   ),
 );
 export const isSingletonKind = (kind: string): kind is SingletonKind => SINGLETON_KINDS.has(kind);
@@ -573,6 +596,13 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                       return [];
                     }
                     if (
+                      surface.kind === "team-sheet" &&
+                      (typeof surface.sheetId !== "string" ||
+                        surface.id !== `team-sheet:${surface.sheetId}`)
+                    ) {
+                      return [];
+                    }
+                    if (
                       surface.kind === "computer-use" &&
                       (typeof surface.threadId !== "string" ||
                         surface.id !== `computer-use:${surface.threadId}`)
@@ -820,6 +850,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) =>
             upsertSurface(current, { id: `document:${documentId}`, kind: "document", documentId }),
+          ),
+        ),
+      openTeamSheet: (ref, sheetId) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, { id: `team-sheet:${sheetId}`, kind: "team-sheet", sheetId }),
           ),
         ),
       openComputerUse: (ref, threadId) =>

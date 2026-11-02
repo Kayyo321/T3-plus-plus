@@ -142,6 +142,9 @@ export async function reopenClosedView(
     case "document":
       panels.openDocument(ref, surface.documentId);
       break;
+    case "team-sheet":
+      panels.openTeamSheet(ref, surface.sheetId);
+      break;
     case "computer-use":
       panels.openComputerUse(ref, surface.threadId);
       break;

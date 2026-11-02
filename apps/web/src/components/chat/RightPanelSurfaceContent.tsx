@@ -9,7 +9,7 @@ import type {
   ThreadLinkedPullRequest,
   ThreadPullRequestLink,
 } from "@t3tools/contracts";
-import { ConversationDocumentId } from "@t3tools/contracts";
+import { ConversationDocumentId, TeamSheetId } from "@t3tools/contracts";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { lazy, Suspense } from "react";
 import SideChatPane from "./SideChatPane";
@@ -47,6 +47,9 @@ const DocumentsPanel = lazy(() =>
   import("../documents/DocumentsPanel").then((module) => ({ default: module.DocumentsPanel })),
 );
 
+const TeamSheetEditor = lazy(() =>
+  import("../teamwork/TeamSheetEditor").then((module) => ({ default: module.TeamSheetEditor })),
+);
 const TeamworkPanel = lazy(() =>
   import("../teamwork/TeamworkPanel").then((module) => ({ default: module.TeamworkPanel })),
 );
@@ -247,6 +250,16 @@ export function RightPanelSurfaceContent(props: {
       return (
         <Suspense fallback={null}>
           <TeamworkPanel threadRef={threadRef} />
+        </Suspense>
+      );
+    case "team-sheet":
+      return (
+        <Suspense fallback={null}>
+          <TeamSheetEditor
+            key={surface.id}
+            threadRef={threadRef}
+            sheetId={TeamSheetId.make(surface.sheetId)}
+          />
         </Suspense>
       );
     case "device":
