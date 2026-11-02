@@ -1,10 +1,24 @@
 import {
   TeamRun,
+  TeamRosterInput,
+  TeamRosterResult,
+  TeamReplaceSlotInput,
+  TeamSheet,
+  TeamSheetCreateInput,
+  TeamSheetDeleteInput,
+  TeamSheetDuplicateInput,
+  TeamSheetGetInput,
+  TeamSheetListResult,
+  TeamSheetUpdateInput,
   TeamStartInput,
   TeamActInput,
   TeamStartMemberInput,
   TeamListInput,
   TeamListResult,
+  TeamThreadSheet,
+  TeamThreadSheetInput,
+  TeamThreadSheetSetInput,
+  TeamworkChange,
   TeamworkError,
 } from "./teamwork.ts";
 import {
@@ -704,6 +718,16 @@ export const WS_METHODS = {
   teamworkStartMember: "teamwork.startMember",
   teamworkList: "teamwork.list",
   teamworkSubscribe: "teamwork.subscribe",
+  teamworkSheetList: "teamwork.sheetList",
+  teamworkSheetGet: "teamwork.sheetGet",
+  teamworkSheetCreate: "teamwork.sheetCreate",
+  teamworkSheetUpdate: "teamwork.sheetUpdate",
+  teamworkSheetDuplicate: "teamwork.sheetDuplicate",
+  teamworkSheetDelete: "teamwork.sheetDelete",
+  teamworkThreadSheetGet: "teamwork.threadSheetGet",
+  teamworkThreadSheetSet: "teamwork.threadSheetSet",
+  teamworkRoster: "teamwork.roster",
+  teamworkReplaceSlot: "teamwork.replaceSlot",
   auditList: "audit.list",
   auditSubscribe: "audit.subscribe",
   threadRewindPreview: "threadBranch.previewRewind",
@@ -2245,9 +2269,59 @@ const WsTeamworkListRpc = Rpc.make(WS_METHODS.teamworkList, {
 });
 const WsTeamworkSubscribeRpc = Rpc.make(WS_METHODS.teamworkSubscribe, {
   payload: Schema.Struct({}),
-  success: TeamRun,
+  success: TeamworkChange,
   error: teamworkErrors,
   stream: true,
+});
+const WsTeamworkSheetListRpc = Rpc.make(WS_METHODS.teamworkSheetList, {
+  payload: Schema.Struct({}),
+  success: TeamSheetListResult,
+  error: teamworkErrors,
+});
+const WsTeamworkSheetGetRpc = Rpc.make(WS_METHODS.teamworkSheetGet, {
+  payload: TeamSheetGetInput,
+  success: TeamSheet,
+  error: teamworkErrors,
+});
+const WsTeamworkSheetCreateRpc = Rpc.make(WS_METHODS.teamworkSheetCreate, {
+  payload: TeamSheetCreateInput,
+  success: TeamSheet,
+  error: teamworkErrors,
+});
+const WsTeamworkSheetUpdateRpc = Rpc.make(WS_METHODS.teamworkSheetUpdate, {
+  payload: TeamSheetUpdateInput,
+  success: TeamSheet,
+  error: teamworkErrors,
+});
+const WsTeamworkSheetDuplicateRpc = Rpc.make(WS_METHODS.teamworkSheetDuplicate, {
+  payload: TeamSheetDuplicateInput,
+  success: TeamSheet,
+  error: teamworkErrors,
+});
+const WsTeamworkSheetDeleteRpc = Rpc.make(WS_METHODS.teamworkSheetDelete, {
+  payload: TeamSheetDeleteInput,
+  success: Schema.Struct({}),
+  error: teamworkErrors,
+});
+const WsTeamworkThreadSheetGetRpc = Rpc.make(WS_METHODS.teamworkThreadSheetGet, {
+  payload: TeamThreadSheetInput,
+  success: TeamThreadSheet,
+  error: teamworkErrors,
+});
+const WsTeamworkThreadSheetSetRpc = Rpc.make(WS_METHODS.teamworkThreadSheetSet, {
+  payload: TeamThreadSheetSetInput,
+  success: TeamThreadSheet,
+  error: teamworkErrors,
+});
+const WsTeamworkRosterRpc = Rpc.make(WS_METHODS.teamworkRoster, {
+  payload: TeamRosterInput,
+  success: TeamRosterResult,
+  error: teamworkErrors,
+});
+const WsTeamworkReplaceSlotRpc = Rpc.make(WS_METHODS.teamworkReplaceSlot, {
+  payload: TeamReplaceSlotInput,
+  success: TeamRosterResult,
+  error: teamworkErrors,
 });
 
 const WsAuditListRpc = Rpc.make(WS_METHODS.auditList, {
@@ -2719,6 +2793,16 @@ export const WsRpcGroup = RpcGroup.make(
   WsTeamworkStartMemberRpc,
   WsTeamworkListRpc,
   WsTeamworkSubscribeRpc,
+  WsTeamworkSheetListRpc,
+  WsTeamworkSheetGetRpc,
+  WsTeamworkSheetCreateRpc,
+  WsTeamworkSheetUpdateRpc,
+  WsTeamworkSheetDuplicateRpc,
+  WsTeamworkSheetDeleteRpc,
+  WsTeamworkThreadSheetGetRpc,
+  WsTeamworkThreadSheetSetRpc,
+  WsTeamworkRosterRpc,
+  WsTeamworkReplaceSlotRpc,
   WsAuditListRpc,
   WsAuditSubscribeRpc,
   WsThreadRewindPreviewRpc,

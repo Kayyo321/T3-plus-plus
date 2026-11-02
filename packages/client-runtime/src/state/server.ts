@@ -1202,6 +1202,46 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:teamwork:member-start",
       tag: WS_METHODS.teamworkStartMember,
     }),
+    teamSheets: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:teamwork:sheets",
+      tag: WS_METHODS.teamworkSheetList,
+    }),
+    teamSheet: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:teamwork:sheet",
+      tag: WS_METHODS.teamworkSheetGet,
+    }),
+    threadTeamSheet: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:teamwork:thread-sheet",
+      tag: WS_METHODS.teamworkThreadSheetGet,
+    }),
+    teamRoster: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:teamwork:roster",
+      tag: WS_METHODS.teamworkRoster,
+    }),
+    createTeamSheet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:sheet-create",
+      tag: WS_METHODS.teamworkSheetCreate,
+    }),
+    updateTeamSheet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:sheet-update",
+      tag: WS_METHODS.teamworkSheetUpdate,
+    }),
+    duplicateTeamSheet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:sheet-duplicate",
+      tag: WS_METHODS.teamworkSheetDuplicate,
+    }),
+    deleteTeamSheet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:sheet-delete",
+      tag: WS_METHODS.teamworkSheetDelete,
+    }),
+    setThreadTeamSheet: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:thread-sheet-set",
+      tag: WS_METHODS.teamworkThreadSheetSet,
+    }),
+    replaceTeamSlot: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:teamwork:slot-replace",
+      tag: WS_METHODS.teamworkReplaceSlot,
+    }),
     configValueAtom,
     runStorageCleanup: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:run-storage-cleanup",

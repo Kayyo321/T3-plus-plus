@@ -147,6 +147,12 @@ describe("command permissions", () => {
     WS_METHODS.teamworkStart,
     WS_METHODS.teamworkAct,
     WS_METHODS.teamworkStartMember,
+    WS_METHODS.teamworkSheetCreate,
+    WS_METHODS.teamworkSheetUpdate,
+    WS_METHODS.teamworkSheetDuplicate,
+    WS_METHODS.teamworkSheetDelete,
+    WS_METHODS.teamworkThreadSheetSet,
+    WS_METHODS.teamworkReplaceSlot,
     WS_METHODS.scheduledTasksDelete,
     ORCHESTRATION_V2_WS_METHODS.stopWorkflow,
   ])("uses the target grant for both availability and execution of %s", (method) =>
