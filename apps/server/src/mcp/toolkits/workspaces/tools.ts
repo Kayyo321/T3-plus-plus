@@ -7,6 +7,7 @@ import {
   OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
   ProjectId,
+  ThreadCapabilityMode,
   ThreadId,
   WorkspaceName,
   WorkspaceId,
@@ -110,6 +111,7 @@ const FolderListTool = Tool.make("t3_folder_list", {
         parentId: Schema.NullOr(ConversationFolderId),
         name: ConversationFolderName,
         smartFilter: Schema.optional(ConversationSmartFilter),
+        capabilityMode: ThreadCapabilityMode,
         threadCount: NonNegativeInt,
       }),
     ),
@@ -122,7 +124,7 @@ const FolderListTool = Tool.make("t3_folder_list", {
 const FolderUpdateTool = Tool.make("t3_folder_update", {
   ...shared,
   description:
-    "Reorganize conversation folders: create, rename, move, delete, restore, move-threads (bulk filing; `folderId: null` unfiles), or set-thread-tags. Deleting a folder never deletes conversations and can be restored.",
+    "Reorganize conversation folders: create (`capabilityMode` defaults to code; threads can only be filed in a folder of their own mode), rename, move, delete, restore, move-threads (bulk filing; `folderId: null` unfiles), or set-thread-tags. Deleting a folder never deletes conversations and can be restored.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
     mutation: ConversationFolderMutation,

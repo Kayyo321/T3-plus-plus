@@ -11,6 +11,7 @@ import {
   type ConversationFolderId,
   type ConversationSmartFilter,
   type EnvironmentId,
+  type ThreadCapabilityMode,
   ThreadId,
 } from "@t3tools/contracts";
 import { LegendList } from "@legendapp/list/react";
@@ -254,8 +255,11 @@ function FolderNameDialog(props: {
  * replaces a row's body for callers that want to compose one; it receives the same flat row.
  */
 /** The sidebar header's way to add folders, beside search so the tree keeps its full height. */
-export function SidebarFolderActions(props: { readonly environmentId: EnvironmentId }) {
-  const { environmentId } = props;
+export function SidebarFolderActions(props: {
+  readonly environmentId: EnvironmentId;
+  readonly capabilityMode: ThreadCapabilityMode;
+}) {
+  const { environmentId, capabilityMode } = props;
   const canOrganize = useAtomValue(
     serverEnvironment.mutateConversationFolders.permissionAtom(environmentId),
   );
@@ -287,6 +291,7 @@ export function SidebarFolderActions(props: { readonly environmentId: Environmen
                     type: "create",
                     name: preset.name as never,
                     parentId: null,
+                    capabilityMode,
                     smartFilter: preset.filter,
                   },
                 })
@@ -303,7 +308,7 @@ export function SidebarFolderActions(props: { readonly environmentId: Environmen
         onSubmit={async (_current, name) => {
           const result = await mutate({
             environmentId,
-            input: { type: "create", name: name as never, parentId: null },
+            input: { type: "create", name: name as never, parentId: null, capabilityMode },
           });
           if (result._tag === "Success") setDialog(null);
         }}
@@ -313,6 +318,7 @@ export function SidebarFolderActions(props: { readonly environmentId: Environmen
 }
 
 export function SidebarConversationFolders(props: {
+  readonly capabilityMode: ThreadCapabilityMode;
   readonly environmentId: EnvironmentId;
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly activeThreadKey: string | null;
@@ -336,13 +342,17 @@ export function SidebarConversationFolders(props: {
     label: "conversation folder change",
   });
   const [dialog, setDialog] = useState<FolderDialog | null>(null);
+  // Folders belong to one mode, but both modes have an Unfiled that collapses on its own.
+  const modeCollapseKey = (key: string) =>
+    key === conversationFolderCollapseKey(null) ? `${props.capabilityMode}:${key}` : key;
   // Smart folders follow the clock, but a minute is close enough for "this week".
   const nowMinute = useNowMinute();
 
   const rows = buildConversationFolderRows({
     state: folderState ?? emptyConversationFolderState,
     threads: props.threads.map((thread) => ({ ...thread, running: isThreadRunning(thread) })),
-    isCollapsed: (key) => collapsedKeys[key] === true,
+    capabilityMode: props.capabilityMode,
+    isCollapsed: (key) => collapsedKeys[modeCollapseKey(key)] === true,
     nowMs: Date.parse(nowMinute),
   });
 
@@ -446,10 +456,12 @@ export function SidebarConversationFolders(props: {
                 label="Unfiled"
                 count={row.count}
                 depth={0}
-                collapsed={collapsedKeys[row.key] === true}
+                collapsed={collapsedKeys[modeCollapseKey(row.key)] === true}
                 smart={false}
                 unfiled
-                onToggle={() => toggleCollapsed(conversationFolderCollapseKey(null))}
+                onToggle={() =>
+                  toggleCollapsed(modeCollapseKey(conversationFolderCollapseKey(null)))
+                }
                 onDropThreads={canOrganize ? dropOnto(null) : null}
                 onDragStart={null}
                 actions={null}

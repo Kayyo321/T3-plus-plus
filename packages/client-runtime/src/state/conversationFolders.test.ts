@@ -4,6 +4,7 @@ import {
   ConversationFolderId,
   type ConversationFolderStreamEvent,
   ProjectId,
+  type ThreadCapabilityMode,
   ThreadId,
   type Workspace,
   WorkspaceId,
@@ -13,6 +14,7 @@ import {
   buildConversationFolderRows,
   type ConversationFolderThread,
   conversationFolderChoices,
+  conversationFolderMode,
   emptyConversationFolderState,
   reduceConversationFolderEvent,
   threadMatchesSmartFilter,
@@ -63,12 +65,17 @@ const snapshot = (
 });
 
 const keys = (
-  input: Omit<Parameters<typeof buildConversationFolderRows>[0], "nowMs" | "isCollapsed"> & {
+  input: Omit<
+    Parameters<typeof buildConversationFolderRows>[0],
+    "nowMs" | "isCollapsed" | "capabilityMode"
+  > & {
     readonly collapsed?: ReadonlyArray<string>;
+    readonly capabilityMode?: ThreadCapabilityMode;
   },
 ) =>
   buildConversationFolderRows({
     ...input,
+    capabilityMode: input.capabilityMode ?? "code",
     nowMs: NOW,
     isCollapsed: (key) => input.collapsed?.includes(key) ?? false,
   }).map((row) => row.key);
@@ -97,6 +104,7 @@ describe("conversation folder rows", () => {
     const rows = buildConversationFolderRows({
       state,
       threads: [thread("t1"), thread("t2")],
+      capabilityMode: "code",
       nowMs: NOW,
       isCollapsed: (key) => key === "a",
     });
@@ -148,7 +156,7 @@ describe("conversation folder rows", () => {
         folder("Old", { deletedAt: "2026-10-30T00:00:00.000Z" }),
       ]),
     );
-    expect(conversationFolderChoices(state).map((choice) => choice.path)).toStrictEqual([
+    expect(conversationFolderChoices(state, "code").map((choice) => choice.path)).toStrictEqual([
       "Work",
       "Work / Client",
     ]);
@@ -166,6 +174,48 @@ describe("conversation folder rows", () => {
       "folder:Real",
       "Real:t1",
       "unfiled",
+    ]);
+  });
+
+  it("shows only the folders of the requested mode and unfiles threads filed in the other mode", () => {
+    const state = stateOf(
+      snapshot([folder("Work"), folder("Chat notes", { capabilityMode: "chat" })], {
+        "Chat notes": ["t1"],
+      }),
+    );
+    expect(keys({ state, threads: [thread("t1")], capabilityMode: "code" })).toStrictEqual([
+      "folder:Work",
+      "unfiled",
+      "unfiled:t1",
+    ]);
+    expect(keys({ state, threads: [thread("t1")], capabilityMode: "chat" })).toStrictEqual([
+      "folder:Chat notes",
+      "Chat notes:t1",
+      "unfiled",
+    ]);
+  });
+
+  it("reads a folder without a mode as code", () => {
+    const state = stateOf(snapshot([folder("Work")]));
+    expect(conversationFolderMode(folder("Work"))).toBe("code");
+    expect(conversationFolderMode(folder("Chat", { capabilityMode: "chat" }))).toBe("chat");
+    expect(keys({ state, threads: [], capabilityMode: "chat" })).toStrictEqual(["unfiled"]);
+  });
+
+  it("offers the folders of one mode by path", () => {
+    const state = stateOf(
+      snapshot([
+        folder("Work"),
+        folder("Client", { parentId: folderIdOf("Work") }),
+        folder("Chat notes", { capabilityMode: "chat" }),
+      ]),
+    );
+    expect(conversationFolderChoices(state, "code").map((choice) => choice.path)).toStrictEqual([
+      "Work",
+      "Work / Client",
+    ]);
+    expect(conversationFolderChoices(state, "chat").map((choice) => choice.path)).toStrictEqual([
+      "Chat notes",
     ]);
   });
 });

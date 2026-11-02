@@ -1,4 +1,4 @@
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { PackagePlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -137,7 +137,7 @@ export function SidebarThreadHeader({
             <>
               {projectScope}
               <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
-                <FolderPlusIcon />
+                <PackagePlusIcon />
               </SidebarHeaderIconButton>
             </>
           ) : null}

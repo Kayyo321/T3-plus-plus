@@ -4,10 +4,15 @@ import type {
   ConversationFolderStreamEvent,
   ConversationSmartFilter,
   ConversationTag,
+  ThreadCapabilityMode,
   ThreadId,
 } from "@t3tools/contracts";
 
 const DAY_MS = 86_400_000;
+
+/** A folder without a mode is Code, as a thread without one is. */
+export const conversationFolderMode = (folder: ConversationFolder): ThreadCapabilityMode =>
+  folder.capabilityMode ?? "code";
 
 /** Folder placement as a client holds it: the snapshot with every delta applied. */
 export interface ConversationFolderState {
@@ -118,11 +123,16 @@ const compareFolders = (left: ConversationFolder, right: ConversationFolder) =>
 export const buildConversationFolderRows = <Thread extends ConversationFolderThread>(input: {
   readonly state: ConversationFolderState;
   readonly threads: ReadonlyArray<Thread>;
+  /** Only folders of this mode show. A thread filed in another mode's folder lands in Unfiled. */
+  readonly capabilityMode: ThreadCapabilityMode;
   readonly isCollapsed: (key: string) => boolean;
   readonly nowMs: number;
 }): ReadonlyArray<ConversationFolderRow<Thread>> => {
   const { state, threads, isCollapsed, nowMs } = input;
-  const live = [...state.folders.values()].filter((folder) => folder.deletedAt === null);
+  const live = [...state.folders.values()].filter(
+    (folder) =>
+      folder.deletedAt === null && conversationFolderMode(folder) === input.capabilityMode,
+  );
   const childrenByParent = new Map<ConversationFolderId | null, Array<ConversationFolder>>();
   for (const folder of live) {
     const siblings = childrenByParent.get(folder.parentId);
@@ -198,13 +208,19 @@ export const buildConversationFolderRows = <Thread extends ConversationFolderThr
 /** Folders a conversation can move into, labelled by path, for a picker. */
 export const conversationFolderChoices = (
   state: ConversationFolderState,
+  capabilityMode: ThreadCapabilityMode,
 ): ReadonlyArray<{ readonly id: ConversationFolderId; readonly path: string }> => {
   const pathOf = (folder: ConversationFolder): string => {
     const parent = folder.parentId === null ? undefined : state.folders.get(folder.parentId);
     return parent === undefined ? folder.name : `${pathOf(parent)} / ${folder.name}`;
   };
   return [...state.folders.values()]
-    .filter((folder) => folder.deletedAt === null && folder.smartFilter === undefined)
+    .filter(
+      (folder) =>
+        folder.deletedAt === null &&
+        folder.smartFilter === undefined &&
+        conversationFolderMode(folder) === capabilityMode,
+    )
     .map((folder) => ({ id: folder.id, path: pathOf(folder) }))
     .sort((left, right) => left.path.localeCompare(right.path));
 };

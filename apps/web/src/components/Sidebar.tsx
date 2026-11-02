@@ -3229,7 +3229,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               onClearSearch={clearThreadSearch}
               folderActions={
                 folderEnvironmentId === null ? null : (
-                  <SidebarFolderActions environmentId={folderEnvironmentId} />
+                  <SidebarFolderActions
+                    environmentId={folderEnvironmentId}
+                    capabilityMode={workspaceMode}
+                  />
                 )
               }
             />
@@ -3311,6 +3314,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               <div className="absolute inset-0">
                 <SidebarConversationFolders
                   environmentId={folderEnvironmentId}
+                  capabilityMode={workspaceMode}
                   threads={threads.filter(
                     (thread) =>
                       thread.environmentId === folderEnvironmentId &&

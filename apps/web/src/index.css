@@ -304,12 +304,22 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
   --workspace-controls-right: calc(
-    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem +
-      var(--orchestrator-dock-width, 0px)
-  );
-  --workspace-native-controls-inset: calc(
     100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
   );
+  --workspace-window-controls-inset: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
+  --workspace-native-controls-inset: var(--workspace-window-controls-inset);
+}
+
+/* The dock sits under the window's controls, so only it clears them while it is open. */
+.wco:has([data-orchestrator-dock]) {
+  --workspace-controls-right: calc(0.75rem + var(--orchestrator-dock-width, 0px));
+  --workspace-native-controls-inset: 0.75rem;
+}
+
+.wco [data-orchestrator-dock] {
+  --workspace-native-controls-inset: var(--workspace-window-controls-inset);
 }
 
 /* The font tokens are declared outside the inline theme so utilities reference

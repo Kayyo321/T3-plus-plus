@@ -4,7 +4,7 @@ Folders organize conversations across projects. Every client connected to a serv
 
 ## Use them
 
-The sidebar lists conversations in folders. Conversations you have not filed are under **Unfiled**.
+The sidebar lists conversations in folders. Chat and Code each have their own folders, and a conversation can only be filed in a folder of its own mode. Conversations you have not filed are under **Unfiled**.
 
 - The folder icon beside the sidebar search adds a top-level folder, and the sparkle icon adds a smart folder. A folder's menu adds a subfolder, up to 8 levels deep.
 - Drag a conversation onto a folder to file it, or onto **Unfiled** to take it out. A conversation lives in one folder.

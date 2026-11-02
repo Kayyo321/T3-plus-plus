@@ -128,6 +128,7 @@ export const layer = McpToolAccess.toLayer(WorkspacesToolkit, {
             parentId: folder.parentId,
             name: folder.name,
             ...(folder.smartFilter === undefined ? {} : { smartFilter: folder.smartFilter }),
+            capabilityMode: folder.capabilityMode ?? "code",
             threadCount: counts.get(folder.id)?.length ?? 0,
           })),
         ...(params.folderId === undefined ? {} : { threadIds: counts.get(params.folderId) ?? [] }),

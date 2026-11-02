@@ -19,7 +19,7 @@ import {
 } from "@t3tools/contracts";
 import { resolveT3McpToolPresentation } from "@t3tools/shared/t3McpToolPresentation";
 import { useNavigate } from "@tanstack/react-router";
-import { ActivityIcon, ArrowUpIcon, CheckIcon, ShieldCheckIcon, XIcon } from "lucide-react";
+import { ActivityIcon, ArrowUpIcon, CheckIcon, MinusIcon, ShieldCheckIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -216,72 +216,71 @@ function Header(props: {
   const providerName = provider?.displayName ?? brain?.instanceId;
   const modelName = model?.shortName ?? model?.name ?? brain?.model;
   return (
-    <header className="relative z-10 flex shrink-0 items-center gap-2.5 border-b border-foreground/10 bg-background/55 px-3 pt-1.5 pb-1.5 backdrop-blur-xl wco:pt-0">
-      <span className="relative shrink-0">
-        <span className="flex size-9 items-center justify-center rounded-full border border-primary/40 bg-card/80 orchestrator-avatar-glow">
-          <OrchestratorGlyph size={26} motion={props.glyph} />
-        </span>
-        <span
-          aria-hidden
-          data-presence={props.presence}
-          className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-background bg-muted-foreground transition-colors duration-300 data-[presence=attention]:bg-warning data-[presence=online]:bg-success"
-        />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="flex items-center truncate text-sm leading-tight font-medium wco:h-(--workspace-topbar-height) wco:pr-(--workspace-native-controls-inset)">
-          Orchestrator
-        </span>
-        <div className="flex min-w-0 items-center gap-1">
-          <span className="flex min-w-0 flex-1 items-center gap-1 text-xs leading-tight text-muted-foreground">
-            {provider && brain ? (
-              <button
-                type="button"
-                className="flex max-w-[70%] min-w-0 shrink-0 items-center gap-1 rounded-sm transition-colors duration-150 hover:text-foreground"
-                aria-label={`Model: ${providerName} ${modelName}. Change it.`}
-                onClick={props.onChangeModel}
-              >
-                <ProviderInstanceIcon
-                  driverKind={provider.driver}
-                  displayName={providerName ?? provider.instanceId}
-                  size="compact"
-                  iconClassName="size-3"
-                  acpRegistryIconUrl={provider.iconUrl}
-                />
-                <span className="truncate">{modelName}</span>
-              </button>
-            ) : null}
-            <span key={props.status} className="orchestrator-fade-in truncate">
-              {provider && brain ? "· " : ""}
-              {props.status}
-            </span>
+    <header className="relative z-10 flex shrink-0 flex-col gap-0.5 border-b border-foreground/10 bg-background/55 px-3 pt-1.5 pb-1.5 backdrop-blur-xl wco:pt-0">
+      <div className="flex min-w-0 items-center gap-2.5 wco:h-(--workspace-topbar-height) wco:pr-(--workspace-native-controls-inset)">
+        <span className="relative shrink-0">
+          <span className="orchestrator-avatar-glow flex size-8 items-center justify-center rounded-full border border-primary/40 bg-card/80">
+            <OrchestratorGlyph size={23} motion={props.glyph} />
           </span>
-          {(
-            [
-              ["activity", "Activity", ActivityIcon],
-              ["grants", "Grants", ShieldCheckIcon],
-            ] as const
-          ).map(([target, label, Icon]) => (
-            <Button
-              key={target}
-              variant="ghost"
-              size="icon-xs"
-              aria-label={label}
-              title={label}
-              aria-pressed={props.view === target}
-              onClick={() => props.onView(props.view === target ? "conversation" : target)}
+          <span
+            aria-hidden
+            data-presence={props.presence}
+            className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-background bg-muted-foreground transition-colors duration-300 data-[presence=attention]:bg-warning data-[presence=online]:bg-success"
+          />
+        </span>
+        <span className="min-w-0 truncate text-sm leading-tight font-medium">Orchestrator</span>
+      </div>
+      <div className="flex min-w-0 items-center gap-1">
+        <span className="flex min-w-0 flex-1 items-center gap-1 text-xs leading-tight text-muted-foreground">
+          {provider && brain ? (
+            <button
+              type="button"
+              className="flex max-w-[70%] min-w-0 shrink-0 items-center gap-1 rounded-sm transition-colors duration-150 hover:text-foreground"
+              aria-label={`Model: ${providerName} ${modelName}. Change it.`}
+              onClick={props.onChangeModel}
             >
-              <Icon />
-            </Button>
-          ))}
+              <ProviderInstanceIcon
+                driverKind={provider.driver}
+                displayName={providerName ?? provider.instanceId}
+                size="compact"
+                iconClassName="size-3"
+                acpRegistryIconUrl={provider.iconUrl}
+              />
+              <span className="truncate">{modelName}</span>
+            </button>
+          ) : null}
+          <span key={props.status} className="orchestrator-fade-in truncate">
+            {provider && brain ? "· " : ""}
+            {props.status}
+          </span>
+        </span>
+        {(
+          [
+            ["activity", "Activity", ActivityIcon],
+            ["grants", "Grants", ShieldCheckIcon],
+          ] as const
+        ).map(([target, label, Icon]) => (
           <Button
+            key={target}
             variant="ghost"
             size="icon-xs"
-            aria-label="Close the orchestrator panel"
-            onClick={props.onClose}
+            aria-label={label}
+            title={label}
+            aria-pressed={props.view === target}
+            onClick={() => props.onView(props.view === target ? "conversation" : target)}
           >
-            <XIcon />
+            <Icon />
           </Button>
-        </div>
+        ))}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Minimize the orchestrator panel"
+          title="Minimize"
+          onClick={props.onClose}
+        >
+          <MinusIcon />
+        </Button>
       </div>
     </header>
   );

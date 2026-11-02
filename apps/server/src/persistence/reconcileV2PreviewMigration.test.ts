@@ -65,6 +65,7 @@ describe("V2 preview upgrade", () => {
         [84, "OrchestratorAgent"],
         [85, "CheckpointRefIndex"],
         [86, "Teamwork"],
+        [87, "ConversationFolderCapabilityMode"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -173,6 +174,7 @@ describe("V2 preview upgrade", () => {
         [84, "OrchestratorAgent"],
         [85, "CheckpointRefIndex"],
         [86, "Teamwork"],
+        [87, "ConversationFolderCapabilityMode"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

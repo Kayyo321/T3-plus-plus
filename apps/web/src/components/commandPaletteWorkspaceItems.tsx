@@ -109,19 +109,21 @@ export function useWorkspacePaletteItems(
           value: "folders",
           label: "Folders",
           items: [
-            ...conversationFolderChoices(folders).map((choice): CommandPaletteActionItem => ({
-              kind: "action",
-              value: `conversation-folder-move:${choice.id}`,
-              searchTerms: [choice.path],
-              title: choice.path,
-              icon: <FolderInputIcon className={ICON_CLASS} />,
-              run: async () => {
-                await mutateFolders({
-                  environmentId,
-                  input: { type: "move-threads", threadIds: [threadId], folderId: choice.id },
-                });
-              },
-            })),
+            ...conversationFolderChoices(folders, activeThread.capabilityMode ?? "code").map(
+              (choice): CommandPaletteActionItem => ({
+                kind: "action",
+                value: `conversation-folder-move:${choice.id}`,
+                searchTerms: [choice.path],
+                title: choice.path,
+                icon: <FolderInputIcon className={ICON_CLASS} />,
+                run: async () => {
+                  await mutateFolders({
+                    environmentId,
+                    input: { type: "move-threads", threadIds: [threadId], folderId: choice.id },
+                  });
+                },
+              }),
+            ),
             {
               kind: "action",
               value: "conversation-folder-move:unfiled",

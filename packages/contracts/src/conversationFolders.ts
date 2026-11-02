@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 
 import { IsoDateTime, PositiveInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { ThreadCapabilityMode } from "./providerPolicy.ts";
 
 export const CONVERSATION_FOLDER_MAX_DEPTH = 8;
 const CONVERSATION_FOLDER_BULK_MOVE_MAX = 1_000;
@@ -37,6 +38,8 @@ export const ConversationFolder = Schema.Struct({
   name: ConversationFolderName,
   smartFilter: Schema.optional(ConversationSmartFilter),
   systemKey: Schema.optional(ConversationFolderSystemKey),
+  /** Absent means Code. */
+  capabilityMode: Schema.optional(ThreadCapabilityMode),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   /** Set while it can be restored. Its conversations show as unfiled until then. */
@@ -80,6 +83,8 @@ export const ConversationFolderMutation = Schema.Union([
     /** Omitted or null creates a top-level folder. */
     parentId: Schema.optionalKey(Schema.NullOr(ConversationFolderId)),
     smartFilter: Schema.optional(ConversationSmartFilter),
+    /** Omitted means Code. A subfolder always takes its parent's mode. */
+    capabilityMode: Schema.optionalKey(ThreadCapabilityMode),
   }),
   Schema.Struct({
     type: Schema.Literal("rename"),
@@ -121,6 +126,7 @@ export const ConversationFolderErrorReason = Schema.Literals([
   "too_deep",
   "cycle",
   "smart_folder",
+  "wrong_mode",
   "storage_failed",
 ]);
 export type ConversationFolderErrorReason = typeof ConversationFolderErrorReason.Type;
@@ -131,6 +137,7 @@ const CONVERSATION_FOLDER_ERROR_MESSAGES: Record<ConversationFolderErrorReason, 
   too_deep: `Folders nest at most ${CONVERSATION_FOLDER_MAX_DEPTH} levels deep.`,
   cycle: "A folder cannot move inside itself.",
   smart_folder: "Smart folders show a saved filter and cannot hold conversations.",
+  wrong_mode: "This folder belongs to the other mode.",
   storage_failed: "The folder change could not be saved.",
 };
 

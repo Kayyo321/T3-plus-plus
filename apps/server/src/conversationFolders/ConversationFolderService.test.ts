@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
@@ -25,13 +26,44 @@ const TestLayer = ConversationFolderService.layer.pipe(
 const service = ConversationFolderService.ConversationFolderService;
 const threadA = ThreadId.make("thread-folder-a");
 const threadB = ThreadId.make("thread-folder-b");
+const threadChat = ThreadId.make("thread-folder-chat");
 const decodeMutation = Schema.decodeSync(ConversationFolderMutation);
 
-const create = (name: string, parentId: ConversationFolderId | null = null) =>
+const create = (
+  name: string,
+  parentId: ConversationFolderId | null = null,
+  capabilityMode?: "chat",
+) =>
   service.pipe(
-    Effect.flatMap((folders) => folders.mutate({ type: "create", name: name as never, parentId })),
+    Effect.flatMap((folders) =>
+      folders.mutate({
+        type: "create",
+        name: name as never,
+        parentId,
+        ...(capabilityMode === undefined ? {} : { capabilityMode }),
+      }),
+    ),
     Effect.map((result) => result.folder!.id),
   );
+
+/** Filing reads a thread's mode from the V2 projection, so the fixture writes one there. */
+const insertThread = (threadId: ThreadId, capabilityMode?: "chat") =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const payload = JSON.stringify({
+      id: threadId,
+      ...(capabilityMode === undefined ? {} : { capabilityMode }),
+    });
+    yield* sql`
+      INSERT INTO orchestration_v2_projection_threads (
+        thread_id, project_id, title, default_provider, runtime_mode, interaction_mode,
+        created_at, updated_at, payload_json
+      ) VALUES (
+        ${threadId}, 'project-1', ${threadId}, 'codex', 'full-access', 'default',
+        '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z', ${payload}
+      )
+    `;
+  });
 
 const mutate = (mutation: ConversationFolderMutation) =>
   service.pipe(Effect.flatMap((folders) => folders.mutate(mutation)));
@@ -205,6 +237,90 @@ it.layer(TestLayer)("ConversationFolderService", (it) => {
       assert.isUndefined(
         (yield* folders.snapshot).tags.find((entry) => entry.threadId === threadA),
       );
+    }),
+  );
+
+  it.effect("refuses to file a conversation in a folder of the other mode", () =>
+    Effect.gen(function* () {
+      yield* insertThread(threadChat, "chat");
+      const codeFolder = yield* create("Mode filing code");
+      const chatFolder = yield* create("Mode filing chat", null, "chat");
+      const wrong = yield* mutate({
+        type: "move-threads",
+        threadIds: [threadChat],
+        folderId: codeFolder,
+      }).pipe(Effect.flip);
+      assert.strictEqual(wrong.reason, "wrong_mode");
+      const mixed = yield* mutate({
+        type: "move-threads",
+        threadIds: [threadA, threadChat],
+        folderId: chatFolder,
+      }).pipe(Effect.flip);
+      assert.strictEqual(mixed.reason, "wrong_mode");
+      assert.deepStrictEqual([...(yield* threadsIn(chatFolder))], []);
+
+      yield* mutate({ type: "move-threads", threadIds: [threadChat], folderId: chatFolder });
+      assert.deepStrictEqual([...(yield* threadsIn(chatFolder))], [threadChat]);
+      yield* mutate({ type: "move-threads", threadIds: [threadChat], folderId: null });
+      assert.deepStrictEqual([...(yield* threadsIn(chatFolder))], []);
+    }),
+  );
+
+  it.effect("refuses to nest a folder under a parent of the other mode", () =>
+    Effect.gen(function* () {
+      const chatParent = yield* create("Mode nest chat", null, "chat");
+      const codeFolder = yield* create("Mode nest code");
+      const wrong = yield* mutate({
+        type: "move",
+        id: codeFolder,
+        parentId: chatParent,
+      }).pipe(Effect.flip);
+      assert.strictEqual(wrong.reason, "wrong_mode");
+      const chatChild = yield* create("Mode nest chat child", null, "chat");
+      yield* mutate({ type: "move", id: chatChild, parentId: chatParent });
+      const moved = (yield* live).find((folder) => folder.id === chatChild);
+      assert.strictEqual(moved?.parentId, chatParent);
+    }),
+  );
+
+  it.effect("gives a subfolder its parent's mode, whatever was asked for", () =>
+    Effect.gen(function* () {
+      const folders = yield* service;
+      const { folder: top } = yield* folders.mutate({
+        type: "create",
+        name: "Mode inherit" as never,
+      });
+      assert.strictEqual(top?.capabilityMode, "code");
+      const chatTop = yield* create("Mode inherit chat", null, "chat");
+      const { folder: child } = yield* folders.mutate({
+        type: "create",
+        name: "Mode inherit child" as never,
+        parentId: chatTop,
+        capabilityMode: "code",
+      });
+      assert.strictEqual(child?.capabilityMode, "chat");
+      const snapshot = yield* folders.snapshot;
+      assert.strictEqual(
+        snapshot.folders.find((folder) => folder.id === child?.id)?.capabilityMode,
+        "chat",
+      );
+    }),
+  );
+
+  it.effect("allows the same top-level name once per mode", () =>
+    Effect.gen(function* () {
+      yield* create("Mode shared");
+      yield* create("Mode shared", null, "chat");
+      const folders = yield* service;
+      const error = yield* folders
+        .mutate({
+          type: "create",
+          name: "Mode shared" as never,
+          parentId: null,
+          capabilityMode: "chat",
+        })
+        .pipe(Effect.flip);
+      assert.strictEqual(error.reason, "name_taken");
     }),
   );
 });

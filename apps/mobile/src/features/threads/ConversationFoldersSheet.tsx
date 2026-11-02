@@ -4,10 +4,11 @@ import {
   type ConversationFolderRow,
   conversationFolderChoices,
   emptyConversationFolderState,
+  UNFILED_FOLDER_KEY,
 } from "@t3tools/client-runtime/state/conversationFolders";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { StackActions } from "@react-navigation/native";
-import type { ConversationFolderId, EnvironmentId } from "@t3tools/contracts";
+import type { ConversationFolderId, EnvironmentId, ThreadCapabilityMode } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useState } from "react";
 import { FlatList, Modal, Pressable, View } from "react-native";
@@ -38,6 +39,22 @@ export const moveThreadToFolder = (thread: EnvironmentThreadShell) =>
 const closeFoldersSheet = () => appAtomRegistry.set(foldersSheetAtom, null);
 
 const ROW_CLASS = "flex-row items-center gap-2 rounded-lg px-5 py-3";
+const BROWSE_MODES: ReadonlyArray<{ readonly mode: ThreadCapabilityMode; readonly label: string }> =
+  [
+    { mode: "chat", label: "Chat" },
+    { mode: "code", label: "Code" },
+  ];
+// Each mode's Unfiled section collapses on its own, so the shared key is scoped by mode.
+const unfiledCollapseKey = (mode: ThreadCapabilityMode) => `${mode}:${UNFILED_FOLDER_KEY}`;
+
+type BrowseItem =
+  | { readonly kind: "header"; readonly key: string; readonly label: string }
+  | {
+      readonly kind: "row";
+      readonly key: string;
+      readonly mode: ThreadCapabilityMode;
+      readonly row: ConversationFolderRow<EnvironmentThreadShell>;
+    };
 
 function useFolderState(environmentId: EnvironmentId) {
   const result = useAtomValue(
@@ -92,7 +109,10 @@ function MoveToFolderSheet(props: { readonly thread: EnvironmentThreadShell }) {
   const choices: ReadonlyArray<{
     readonly id: ConversationFolderId | null;
     readonly path: string;
-  }> = [...conversationFolderChoices(state), { id: null, path: "Unfiled" }];
+  }> = [
+    ...conversationFolderChoices(state, thread.capabilityMode ?? "code"),
+    { id: null, path: "Unfiled" },
+  ];
   return (
     <SheetFrame title="Move to folder" onClose={closeFoldersSheet}>
       <FlatList
@@ -138,14 +158,30 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
         };
       },
     });
-  const rows = buildConversationFolderRows({
-    state,
-    threads: shells
-      .filter((thread) => thread.environmentId === props.environmentId)
-      .map((thread) => ({ ...thread, running: thread.runtime?.activeRunId != null })),
-    isCollapsed: (key) => collapsed.includes(key),
-    nowMs,
-  });
+  const sections = BROWSE_MODES.map(({ mode, label }) => {
+    const threads = shells
+      .filter(
+        (thread) =>
+          thread.environmentId === props.environmentId &&
+          (thread.capabilityMode ?? "code") === mode,
+      )
+      .map((thread) => ({ ...thread, running: thread.runtime?.activeRunId != null }));
+    const rows = buildConversationFolderRows({
+      state,
+      capabilityMode: mode,
+      threads,
+      isCollapsed: (key) =>
+        collapsed.includes(key === UNFILED_FOLDER_KEY ? unfiledCollapseKey(mode) : key),
+      nowMs,
+    });
+    const first = rows[0];
+    const isEmpty = rows.length === 1 && first?.kind === "unfiled" && first.count === 0;
+    return { mode, label, rows, isEmpty };
+  }).filter((section) => !section.isEmpty);
+  const items: ReadonlyArray<BrowseItem> = sections.flatMap(({ mode, label, rows }) => [
+    { kind: "header" as const, key: `header:${mode}`, label },
+    ...rows.map((row) => ({ kind: "row" as const, key: `${mode}/${row.key}`, mode, row })),
+  ]);
   const open = (thread: EnvironmentThreadShell) => {
     closeFoldersSheet();
     if (rootNavigationRef.isReady()) {
@@ -157,7 +193,10 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
       );
     }
   };
-  const renderRow = (row: ConversationFolderRow<EnvironmentThreadShell>) => {
+  const renderRow = (
+    row: ConversationFolderRow<EnvironmentThreadShell>,
+    mode: ThreadCapabilityMode,
+  ) => {
     if (row.kind === "thread") {
       return (
         <Pressable
@@ -174,7 +213,7 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
       );
     }
     const isFolder = row.kind === "folder";
-    const key = isFolder ? row.folder.id : row.key;
+    const key = isFolder ? row.folder.id : unfiledCollapseKey(mode);
     return (
       <Pressable
         accessibilityRole="button"
@@ -199,11 +238,19 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
   return (
     <SheetFrame title="Folders" onClose={closeFoldersSheet}>
       <FlatList
-        data={rows}
-        keyExtractor={(row) => row.key}
+        data={items}
+        keyExtractor={(item) => item.key}
         initialNumToRender={24}
         windowSize={7}
-        renderItem={({ item }) => renderRow(item)}
+        renderItem={({ item }) =>
+          item.kind === "header" ? (
+            <Text className="px-5 pb-1 pt-4 text-sm font-medium text-foreground-muted">
+              {item.label}
+            </Text>
+          ) : (
+            renderRow(item.row, item.mode)
+          )
+        }
       />
     </SheetFrame>
   );

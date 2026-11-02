@@ -12,6 +12,7 @@ import {
   type ConversationFolderSnapshot,
   type ConversationFolderStreamEvent,
   ConversationSmartFilter,
+  type ThreadCapabilityMode,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -37,12 +38,17 @@ const decodeSmartFilter = Schema.decodeUnknownOption(
 );
 const encodeSmartFilter = Schema.encodeSync(Schema.fromJsonString(ConversationSmartFilter));
 
+/** Absent or unknown means Code, as it does for thread shells. */
+const modeOf = (value: string | null | undefined): ThreadCapabilityMode =>
+  value === "chat" ? "chat" : "code";
+
 interface FolderRow {
   readonly id: string;
   readonly parentId: string | null;
   readonly name: string;
   readonly smartFilterJson: string | null;
   readonly systemKey: string | null;
+  readonly capabilityMode: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly deletedAt: string | null;
@@ -57,6 +63,7 @@ const toFolder = (row: FolderRow): ConversationFolder => {
     name: row.name as ConversationFolder["name"],
     ...(Option.isSome(smartFilter) ? { smartFilter: smartFilter.value } : {}),
     ...(row.systemKey === "scheduled" ? { systemKey: "scheduled" as const } : {}),
+    capabilityMode: modeOf(row.capabilityMode),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -100,8 +107,8 @@ const make = Effect.gen(function* () {
 
   const selectFolders = (where: Statement.Fragment) => sql<FolderRow>`
     SELECT id, parent_id AS "parentId", name, smart_filter_json AS "smartFilterJson",
-      system_key AS "systemKey", created_at AS "createdAt", updated_at AS "updatedAt",
-      deleted_at AS "deletedAt"
+      system_key AS "systemKey", capability_mode AS "capabilityMode", created_at AS "createdAt",
+      updated_at AS "updatedAt", deleted_at AS "deletedAt"
     FROM conversation_folders
     ${where}
   `;
@@ -156,6 +163,18 @@ const make = Effect.gen(function* () {
         cause.reason._tag === "UniqueViolation" ? failWith("name_taken") : storageFailed(),
       ),
     );
+
+  /** A thread's mode comes from its V2 projection. A thread the projection does not know is Code. */
+  const threadModes = Effect.fn("ConversationFolderService.threadModes")(function* (
+    threadIds: ReadonlyArray<ThreadId>,
+  ) {
+    const rows = yield* sql<{ readonly threadId: string; readonly capabilityMode: string | null }>`
+      SELECT thread_id AS "threadId", json_extract(payload_json, '$.capabilityMode') AS "capabilityMode"
+      FROM orchestration_v2_projection_threads
+      WHERE ${sql.in("thread_id", threadIds)}
+    `.pipe(Effect.mapError(storageFailed));
+    return new Map(rows.map((row) => [row.threadId, modeOf(row.capabilityMode)] as const));
+  });
 
   const requireHoldable = Effect.fn("ConversationFolderService.requireHoldable")(function* (
     id: string,
@@ -219,7 +238,9 @@ const make = Effect.gen(function* () {
       case "create": {
         const rows = yield* liveFolders;
         const parentId = mutation.parentId ?? null;
-        if (parentId !== null) yield* requireHoldable(parentId);
+        const parent = parentId === null ? null : yield* requireHoldable(parentId);
+        const capabilityMode =
+          parent === null ? modeOf(mutation.capabilityMode) : modeOf(parent.capabilityMode);
         if (depthOf(rows, parentId) + 1 > CONVERSATION_FOLDER_MAX_DEPTH) {
           return yield* failWith("too_deep");
         }
@@ -232,6 +253,7 @@ const make = Effect.gen(function* () {
             smart_filter_json:
               mutation.smartFilter === undefined ? null : encodeSmartFilter(mutation.smartFilter),
             system_key: null,
+            capability_mode: capabilityMode,
             created_at: now,
             updated_at: now,
             deleted_at: null,
@@ -251,8 +273,13 @@ const make = Effect.gen(function* () {
       }
       case "move": {
         const rows = yield* liveFolders;
-        yield* readLive(mutation.id);
-        if (mutation.parentId !== null) yield* requireHoldable(mutation.parentId);
+        const row = yield* readLive(mutation.id);
+        if (mutation.parentId !== null) {
+          const parent = yield* requireHoldable(mutation.parentId);
+          if (modeOf(parent.capabilityMode) !== modeOf(row.capabilityMode)) {
+            return yield* failWith("wrong_mode");
+          }
+        }
         const { ids, height } = subtreeOf(rows, mutation.id);
         if (mutation.parentId !== null && ids.includes(mutation.parentId)) {
           return yield* failWith("cycle");
@@ -309,7 +336,15 @@ const make = Effect.gen(function* () {
         return folder === undefined ? {} : { folder };
       }
       case "move-threads": {
-        if (mutation.folderId !== null) yield* requireHoldable(mutation.folderId);
+        if (mutation.folderId !== null) {
+          const folder = yield* requireHoldable(mutation.folderId);
+          const modes = yield* threadModes(mutation.threadIds);
+          const folderMode = modeOf(folder.capabilityMode);
+          const misfiled = mutation.threadIds.some(
+            (threadId) => (modes.get(threadId) ?? "code") !== folderMode,
+          );
+          if (misfiled) return yield* failWith("wrong_mode");
+        }
         yield* placeThreads(mutation.threadIds, mutation.folderId);
         return {};
       }
@@ -412,6 +447,7 @@ const make = Effect.gen(function* () {
           name: SCHEDULED_FOLDER_NAME,
           smart_filter_json: null,
           system_key: "scheduled",
+          capability_mode: "code",
           created_at: now,
           updated_at: now,
           deleted_at: null,
@@ -424,7 +460,7 @@ const make = Effect.gen(function* () {
       );
       if (row === undefined) {
         const [named] = yield* selectFolders(
-          sql`WHERE parent_id IS NULL AND name = ${SCHEDULED_FOLDER_NAME} COLLATE NOCASE AND deleted_at IS NULL`,
+          sql`WHERE parent_id IS NULL AND capability_mode = 'code' AND name = ${SCHEDULED_FOLDER_NAME} COLLATE NOCASE AND deleted_at IS NULL`,
         ).pipe(Effect.mapError(storageFailed));
         if (named === undefined) return yield* storageFailed();
         yield* sql`

@@ -155,7 +155,15 @@ it.effect("counts a folder's threads and lists them only when asked", () =>
     const attached = yield* Ref.make<ReadonlyArray<WorkspaceAttachInput>>([]);
     yield* Effect.gen(function* () {
       expect(yield* call("t3_folder_list")).toStrictEqual({
-        folders: [{ id: folderId, parentId: null, name: "Inbox", threadCount: 1 }],
+        folders: [
+          {
+            id: folderId,
+            parentId: null,
+            name: "Inbox",
+            capabilityMode: "code",
+            threadCount: 1,
+          },
+        ],
       });
       expect(yield* call("t3_folder_list", { folderId })).toMatchObject({ threadIds: [threadId] });
     }).pipe(Effect.provide(layerFor(attached)));
