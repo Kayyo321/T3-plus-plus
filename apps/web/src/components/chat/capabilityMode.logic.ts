@@ -116,13 +116,3 @@ export function capabilityModeSwitch(input: {
         : null,
   };
 }
-
-export const CAPABILITY_MODE_LABELS: Record<ThreadCapabilityMode, string> = {
-  chat: "Chat",
-  code: "Code",
-};
-
-export const CAPABILITY_MODE_DESCRIPTIONS: Record<ThreadCapabilityMode, string> = {
-  chat: "Talk, research and write documents. No project files or commands.",
-  code: "Read and edit files and run commands.",
-};

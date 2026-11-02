@@ -207,4 +207,26 @@ it.layer(layerTest)("RuntimePolicyV2", (it) => {
       assert.equal(refused._tag, "ChatModeUnavailableError");
     }),
   );
+
+  it.effect("keeps a Chat thread on approval-required whatever mode it stores", () =>
+    Effect.gen(function* () {
+      const policy = yield* RuntimePolicy.RuntimePolicyV2;
+      const now = yield* DateTime.now;
+      const modeFor = (capabilityMode: ThreadCapabilityMode) =>
+        policy
+          .resolve({
+            thread: makeThread({
+              now,
+              worktreePath: null,
+              runtimeMode: "full-access",
+              capabilityMode,
+            }),
+            modelSelection,
+          })
+          .pipe(Effect.map((resolved) => resolved.runtimeMode));
+
+      assert.equal(yield* modeFor("chat"), "approval-required");
+      assert.equal(yield* modeFor("code"), "full-access");
+    }),
+  );
 });

@@ -259,7 +259,8 @@ describe("chat canvas layout", () => {
       expect(density(compact)).toBe("compact");
       expectClear(compact);
       expect(density(layout(500))).toBe("compact");
-      expect(density(layout(520))).toBe("essential");
+      expect(density(layout(520))).toBe("compact");
+      expect(density(layout(530))).toBe("essential");
       expect(density(layout(540))).toBe("hidden");
       expect(layout(600).frame!.width).toBe(600);
       expect(layout(460)).toEqual(compact);

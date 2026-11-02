@@ -76,10 +76,15 @@ export class RuntimePolicyV2 extends Context.Service<RuntimePolicyV2, RuntimePol
   "t3pp/orchestration-v2/RuntimePolicy/RuntimePolicyV2",
 ) {}
 
+// Chat threads never run with approvals off, whatever mode the draft stored.
+function chatRuntimeMode(thread: OrchestrationV2AppThread, runtimeMode: RuntimeMode): RuntimeMode {
+  return thread.capabilityMode === "chat" ? "approval-required" : runtimeMode;
+}
+
 export const layer: Layer.Layer<RuntimePolicyV2> = Layer.succeed(RuntimePolicyV2, {
   resolve: Effect.fn("RuntimePolicyV2.resolve")(function (input) {
     return Effect.succeed({
-      runtimeMode: input.thread.runtimeMode,
+      runtimeMode: chatRuntimeMode(input.thread, input.thread.runtimeMode),
       interactionMode: input.thread.interactionMode,
       ...(input.thread.capabilityMode === undefined
         ? {}
@@ -164,7 +169,10 @@ export const layerFromProjectStore: Layer.Layer<
           ));
         return ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
           runtimeMode: providerRuntimeMode(
-            runtimeModeWithinWorkspace(input.thread.runtimeMode, workspace?.settings.runtimeMode),
+            chatRuntimeMode(
+              input.thread,
+              runtimeModeWithinWorkspace(input.thread.runtimeMode, workspace?.settings.runtimeMode),
+            ),
             supportedRuntimeModes,
           ),
           interactionMode: input.thread.interactionMode,

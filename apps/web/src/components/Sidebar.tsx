@@ -266,6 +266,7 @@ import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarT
 import { TooltipProvider } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+import { startThreadInWorkspaceMode, useWorkspaceMode } from "../state/workspaceMode";
 import {
   SidebarSearchResultRow,
   SortableThreadRow,
@@ -1127,7 +1128,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             ),
           ),
         );
-  const threads = useQuietThreadShells();
+  const workspaceMode = useWorkspaceMode((state) => state.mode);
+  const chatWorkspace = workspaceMode === "chat";
+  const threads = useQuietThreadShells().filter(
+    (thread) => (thread.capabilityMode ?? "code") === workspaceMode,
+  );
   const nestedSessions = nestedSessionsByParent(threads);
   const conversationFoldersVisible = useConversationFolderViewStore(
     (state) => state.foldersVisible,
@@ -1371,12 +1376,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     threads,
     delegatedUnderParent,
     routeRowThreadKey,
-    folderGroups: boringSidebarEnabled
-      ? scopedProjectGroups.length === 0
-        ? // An archived project keeps a folder for its active threads, below the rest.
-          [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
-        : scopedProjectGroups
-      : null,
+    folderGroups:
+      boringSidebarEnabled && !chatWorkspace
+        ? scopedProjectGroups.length === 0
+          ? // An archived project keeps a folder for its active threads, below the rest.
+            [...scopeGroups, ...projectGroups.filter((project) => project.archived)]
+          : scopedProjectGroups
+        : null,
     keepEmptyFolders: (group) =>
       scopedProjectGroups.length > 0 || (group.pinned && !group.archived),
   });
@@ -2969,13 +2975,22 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   );
   const showJumpHints = useThreadJumpHintsVisible(shouldShowJumpHintsNow);
 
+  // Scratch holds Chat, so it never makes Code ask which project a new thread belongs to.
+  const codeScopeCount = scopeGroups.filter((group) => !group.isScratch).length;
+  const codeProjectCount = projectGroups.filter((group) => !group.isScratch).length;
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
+    if (isMobile) setOpenMobile(false);
+    const startedChat = startThreadInWorkspaceMode();
+    if (startedChat !== null) {
+      void startedChat;
+      return;
+    }
     if (
       boringSidebarEnabled ||
       shouldCreateNewThreadInCurrentProject(
         event?.shiftKey ?? false,
-        scopeGroups.length,
-        projectGroups.length,
+        codeScopeCount,
+        codeProjectCount,
       )
     ) {
       if (isMobile) setOpenMobile(false);
@@ -2996,7 +3011,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
 
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.new") ??
-    (shouldCreateNewThreadInCurrentProject(false, scopeGroups.length, projectGroups.length)
+    (shouldCreateNewThreadInCurrentProject(false, codeScopeCount, codeProjectCount)
       ? shortcutLabelForCommand(keybindings, "chat.newLocal")
       : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
@@ -3011,7 +3026,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           <SidebarGroup className="z-[1]">
             <SidebarThreadHeader
               searchFieldRef={headerSearchRef}
-              hasProjects={projectGroups.length > 0}
+              hasProjects={projectGroups.length > 0 && !chatWorkspace}
               projectScope={
                 <Combobox
                   items={projectScopeItems}
@@ -3199,16 +3214,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               }
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
-              newThreadDisabled={projects.length === 0}
+              newThreadDisabled={projects.length === 0 && !chatWorkspace}
               newThreadShortcutLabel={newThreadShortcutLabel}
               newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
               showNewThreadInProjectHint={
                 !boringSidebarEnabled &&
-                !shouldCreateNewThreadInCurrentProject(
-                  false,
-                  scopeGroups.length,
-                  projectGroups.length,
-                )
+                !shouldCreateNewThreadInCurrentProject(false, codeScopeCount, codeProjectCount)
               }
               searchInputRef={threadSearchInputRef}
               searchQuery={threadSearchQuery}
@@ -3437,13 +3448,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               }
                               scratchMachineLabel={scratchMachineLabelFor(thread)}
                               project={
-                                projectByKey.get(`${thread.environmentId}:${thread.projectId}`) ??
-                                null
+                                chatWorkspace
+                                  ? null
+                                  : (projectByKey.get(
+                                      `${thread.environmentId}:${thread.projectId}`,
+                                    ) ?? null)
                               }
                               projectDisplayName={
-                                projectDisplayNameByKey.get(
-                                  `${thread.environmentId}:${thread.projectId}`,
-                                ) ?? null
+                                chatWorkspace
+                                  ? null
+                                  : (projectDisplayNameByKey.get(
+                                      `${thread.environmentId}:${thread.projectId}`,
+                                    ) ?? null)
                               }
                               providerEntryByInstanceId={
                                 providerEntriesByEnvironment.get(thread.environmentId) ??
@@ -3482,6 +3498,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       const items: ReactNode[] = [
                         <SidebarDraftBlock
                           key="draft-sessions"
+                          workspaceMode={workspaceMode}
                           projectByKey={projectByKey}
                           projectDisplayNameByKey={projectDisplayNameByKey}
                           scopedProjectKeys={scopedProjectKeys}

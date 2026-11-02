@@ -30,6 +30,8 @@ export const THREAD_DETAILS_PANEL_LOCKED_ROW_CLASS = `h-8 w-full min-w-0 justify
 
 export const THREAD_DETAILS_PANEL_ICON_CLASS = "size-4 shrink-0 text-muted-foreground";
 
+export const THREAD_DETAILS_PANEL_ROW_TEXT_CLASS = `min-w-0 truncate text-[13px] font-medium text-foreground/80 ${THREAD_DETAILS_PANEL_LABEL_CLASS}`;
+
 export const THREAD_DETAILS_PANEL_CHEVRON_CLASS = "size-4 shrink-0 text-muted-foreground";
 
 export const THREAD_DETAILS_PANEL_ICON_ACTION_CLASS = `size-6 justify-center rounded-md border-transparent bg-transparent p-0 sm:size-6 ${THREAD_DETAILS_PANEL_ROW_SURFACE_CLASS}`;

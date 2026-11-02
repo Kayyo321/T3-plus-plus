@@ -115,11 +115,12 @@ export function ThreadDetailsCard({
   const card = (
     <div
       className={cn(
-        "dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl",
-        mode === "popover" &&
-          "max-h-[min(calc(100dvh-6.5rem),calc(var(--available-height,100dvh)-1rem))]",
+        "isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden",
+        mode === "popover"
+          ? "dropdown-glass max-h-[min(calc(100dvh-6.5rem),calc(var(--available-height,100dvh)-1rem))] rounded-2xl"
+          : "border-l border-border bg-background",
       )}
-      style={placement ? { maxHeight: height } : undefined}
+      style={placement ? { height } : undefined}
       onContextMenu={onContextMenu}
       data-thread-details-card
     >

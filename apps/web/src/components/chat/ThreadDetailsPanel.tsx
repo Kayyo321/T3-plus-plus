@@ -4,6 +4,7 @@ import type {
   ProjectId,
   ProjectScript,
   ResolvedKeybindingsConfig,
+  ThreadCapabilityMode,
   ThreadId,
 } from "@t3tools/contracts";
 
@@ -12,6 +13,7 @@ import { useT3ProjectFileScripts } from "../../hooks/useT3ProjectFileScripts";
 import { type EnvMode, type EnvironmentOption } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
 import BaseGitActionsControl from "../GitActionsControl";
+import { RemoteControlDetailsRow } from "./RemoteControlControls";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
@@ -37,6 +39,7 @@ import { SlidersHorizontalIcon } from "lucide-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import {
   THREAD_DETAILS_PANEL_ICON_CLASS,
+  THREAD_DETAILS_PANEL_ROW_TEXT_CLASS,
   THREAD_DETAILS_PANEL_LABEL_CLASS,
 } from "./threadDetailsPanelStyles";
 import { Menu, MenuPopup } from "../ui/menu";
@@ -48,6 +51,7 @@ interface ThreadDetailsPanelProps extends Pick<
   "anchor" | "handle"
 > {
   forceNewWorktree?: boolean;
+  capabilityMode: ThreadCapabilityMode;
   environmentId: EnvironmentId;
   threadId: ThreadId;
   projectId: ProjectId;
@@ -95,6 +99,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     props.activeProjectScripts && visible.scripts ? props.gitCwd : null,
   );
   const activeThreadRef = { environmentId: props.environmentId, threadId: props.threadId };
+  const chat = props.capabilityMode === "chat";
   const branchToolbarProps = {
     showGitControls: props.isGitRepo,
     environmentId: props.environmentId,
@@ -150,12 +155,15 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
     >
       {(density) => {
         // Section flags follow the rows that will render, so no empty section steals the divider rule.
+        const code = !chat;
+        const showRemoteControl = density !== "essential";
         const show = {
-          environment: density === "full" && visible.environment,
-          openIn: density !== "essential" && visible.openIn && props.showOpenInPicker,
-          scripts: visible.scripts && props.activeProjectScripts !== undefined,
-          branch: props.gitCwd !== null && props.isGitRepo && visible.branch,
+          environment: code && density === "full" && visible.environment,
+          openIn: code && density !== "essential" && visible.openIn && props.showOpenInPicker,
+          scripts: code && visible.scripts && props.activeProjectScripts !== undefined,
+          branch: code && props.gitCwd !== null && props.isGitRepo && visible.branch,
           git:
+            code &&
             props.gitCwd !== null &&
             props.activeProjectName !== undefined &&
             (visible.gitActions || (visible.changes && props.isGitRepo)),
@@ -163,7 +171,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
         return (
           <>
             <div className="group/details-items">
-              {show.environment || show.openIn || show.scripts ? (
+              {show.environment || show.openIn || show.scripts || showRemoteControl ? (
                 <ThreadDetailsSection
                   headingId="thread-details-workspace-heading"
                   title="Workspace"
@@ -209,6 +217,13 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                         onDeleteScript={props.onDeleteProjectScript}
                       />
                     ) : null}
+
+                    <RemoteControlDetailsRow
+                      threadRef={activeThreadRef}
+                      threadStarted={props.isServerThread}
+                      iconClassName={THREAD_DETAILS_PANEL_ICON_CLASS}
+                      labelClassName={THREAD_DETAILS_PANEL_ROW_TEXT_CLASS}
+                    />
                   </div>
                 </ThreadDetailsSection>
               ) : null}
@@ -239,11 +254,11 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 </ThreadDetailsSection>
               ) : null}
 
-              {density === "full" && !props.draftId && visible.servers ? (
+              {code && density === "full" && !props.draftId && visible.servers ? (
                 <ThreadServersPanel environmentId={props.environmentId} threadId={props.threadId} />
               ) : null}
 
-              {density === "full" && !props.draftId && visible.automations ? (
+              {code && density === "full" && !props.draftId && visible.automations ? (
                 <ThreadAutomationsPanel
                   environmentId={props.environmentId}
                   threadId={props.threadId}

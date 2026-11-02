@@ -3,7 +3,7 @@
 
 declare module 'uniwind' {
     export interface UniwindConfig {
-        themes: readonly ['light', 'dark', 't3-chat-light', 't3-chat-dark', 'grove-light', 'grove-dark', 'ocean-light', 'ocean-dark', 'ember-light', 'ember-dark', 'iris-light', 'iris-dark']
+        themes: readonly ['light', 'dark', 't3-chat-light', 't3-chat-dark', 'grove-light', 'grove-dark', 'ocean-light', 'ocean-dark', 'ember-light', 'ember-dark', 'iris-light', 'iris-dark', 'void-light', 'void-dark', 'nova-light', 'nova-dark', 'luna-light', 'luna-dark', 'orbit-light', 'orbit-dark', 'nebula-light', 'nebula-dark', 'sol-light', 'sol-dark', 'eclipse-light', 'eclipse-dark', 'astral-light', 'astral-dark', 'aether-light', 'aether-dark']
     }
 }
 

@@ -28,6 +28,7 @@ import {
   IRIS_THEME,
   OCEAN_THEME,
 } from "../../themePalette";
+import { COSMIC_THEMES } from "@t3tools/shared/themePalettes";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -53,6 +54,41 @@ import {
   type ThemeMode,
 } from "./ThemePreviewCircles";
 import { ThemeWireframe } from "./ThemeWireframe";
+
+function CosmicThemeCard({
+  theme,
+  active,
+  onSelect,
+}: {
+  theme: ThemeDefinition;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        "flex cursor-pointer flex-col gap-3.5 rounded-xl p-3.5 text-left outline-none transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none",
+        active ? "ring-2 ring-inset ring-ring" : "ring-1 ring-inset ring-border",
+      )}
+      style={{ backgroundColor: theme.colors.canvas, color: theme.colors.accent }}
+      onClick={onSelect}
+    >
+      <span className="text-sm font-medium">{theme.label}</span>
+      <span aria-hidden className="flex flex-col gap-2">
+        <span className="flex gap-1">
+          <span className="h-1 w-3/5 rounded-full bg-current" />
+          <span className="h-1 w-1/4 rounded-full bg-current" />
+        </span>
+        <span className="flex gap-1">
+          <span className="h-1 w-3/10 rounded-full bg-current" />
+          <span className="h-1 w-1/2 rounded-full bg-current" />
+        </span>
+      </span>
+    </button>
+  );
+}
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   T3_CHAT_THEME,
@@ -856,6 +892,16 @@ export function ThemeLibrary({
             Add theme
           </Button>
         </div>
+      </div>
+      <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
+        {COSMIC_THEMES.map((cosmicTheme) => (
+          <CosmicThemeCard
+            key={cosmicTheme.id}
+            theme={cosmicTheme}
+            active={baseCardId === cosmicTheme.id && themeHalves === null}
+            onSelect={() => persistTheme(cosmicTheme.id)}
+          />
+        ))}
       </div>
       {renderPairGrid()}
       <ThemeImportDialog

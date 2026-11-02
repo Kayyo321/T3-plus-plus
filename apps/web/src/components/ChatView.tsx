@@ -283,6 +283,7 @@ import {
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { AsciiLanding } from "./ascii/AsciiLanding";
+import { OrchestratorLauncher } from "./orchestrator/OrchestratorEntries";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
 import {
@@ -1619,6 +1620,9 @@ export default function ChatView(props: ChatViewProps) {
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
+  const capabilityMode =
+    (isServerThread ? activeThreadShell?.capabilityMode : draftThread?.capabilityMode) ?? "code";
+  const isChatMode = capabilityMode === "chat";
   const isDraftHeroState = resolveDraftHeroState({
     isLocalDraftThread,
     hasTimelineEntries: !timelineEmpty,
@@ -1781,6 +1785,7 @@ export default function ChatView(props: ChatViewProps) {
         );
   const showComposerContextStrip =
     !embedded &&
+    !isChatMode &&
     shouldShowComposerContextStrip({
       isDraftHeroState,
       persistInActiveThreads: settings.persistComposerContextStrip,
@@ -3341,7 +3346,8 @@ export default function ChatView(props: ChatViewProps) {
     />
   ) : null;
   const panelToggleControlProps = {
-    terminalAvailable: activeProject !== null,
+    showTerminalControl: !isChatMode,
+    terminalAvailable: activeProject !== null && !isChatMode,
     terminalOpen: terminalUiState.terminalOpen,
     terminalShortcutLabel: shortcutLabelForCommand(keybindings, "terminal.toggle"),
     threadPanelOpen,
@@ -3412,9 +3418,10 @@ export default function ChatView(props: ChatViewProps) {
     onAddDevice: addDeviceSurfaceStable,
     onAddSideChat: sideChatsOffered ? openSideChatStable : undefined,
     browserAvailable: canOperatePreview && browserAvailable,
-    terminalAvailable: activeProject !== null && canOperateTerminal,
+    terminalAvailable: activeProject !== null && canOperateTerminal && !isChatMode,
+    chatSurfacesOnly: isChatMode,
     diffAvailable: isServerThread && isGitRepo,
-    filesAvailable: activeProject !== null,
+    filesAvailable: activeProject !== null && !isChatMode,
     pullRequestAvailable: pullRequestSurfaceAvailable,
     pullRequestsAvailable: pullRequestsSurfaceAvailable,
     deviceAvailable: activeThreadRef !== null,
@@ -3464,7 +3471,7 @@ export default function ChatView(props: ChatViewProps) {
             ref={threadPanelPopoverAnchorRef}
             data-chat-header
             className={cn(
-              "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
+              "relative border-b border-border bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
               isElectron
                 ? cn(
                     "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
@@ -3491,6 +3498,7 @@ export default function ChatView(props: ChatViewProps) {
               activeThreadTitle={activeThread.title}
               activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
               activeProject={activeProject ?? null}
+              showProjectBreadcrumb={!isChatMode}
               parentThreadLink={headerParentThreadLink}
               onOpenThread={onOpenRelatedThreadStable}
               rightPanelOpen={inlineRightPanelOwnsTitleBar}
@@ -3522,6 +3530,11 @@ export default function ChatView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
+            <AsciiLanding
+              seedText={activeProject?.id ?? "t3pp"}
+              active={isDraftHeroState}
+              threadId={activeThread.id}
+            />
             <ThreadFind onClose={focusComposerStable} />
             {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
             <ChatBannerLane
@@ -3668,14 +3681,13 @@ export default function ChatView(props: ChatViewProps) {
                   : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
               }
             >
-              {isDraftHeroState ? <AsciiLanding seedText={activeProject?.id ?? "t3pp"} /> : null}
               <div ref={draftHeroTransitionGroupRef} className="chat-composer-lane w-full">
                 <div
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
                 >
                   {isDraftHeroState ? (
-                    <div className="absolute inset-x-0 bottom-full">
+                    <div className="absolute inset-x-0 bottom-full" data-draft-hero-headline>
                       <div
                         className="pb-4 group-has-data-[composer-shoulder-tab]/composer-stack:pb-0"
                         style={
@@ -3685,6 +3697,7 @@ export default function ChatView(props: ChatViewProps) {
                         }
                       >
                         <DraftHeroHeadline
+                          capabilityMode={capabilityMode}
                           draftId={draftId}
                           activeProjectRef={activeProjectRef}
                           activeProjectTitle={activeProject?.title ?? null}
@@ -3753,11 +3766,7 @@ export default function ChatView(props: ChatViewProps) {
                               activeThreadId={activeThreadId}
                               activeThread={activeThread}
                               activeThreadShell={activeThreadShell}
-                              capabilityMode={
-                                (isServerThread
-                                  ? activeThreadShell?.capabilityMode
-                                  : draftThread?.capabilityMode) ?? "code"
-                              }
+                              capabilityMode={capabilityMode}
                               promptHistoryMessages={timelineMessages}
                               forceExpandedOnMobile={
                                 forceExpandedMobileComposer && isDraftHeroState
@@ -3962,10 +3971,17 @@ export default function ChatView(props: ChatViewProps) {
                           )}
                         </div>
                       </div>
-                      {isDraftHeroState && composerBannerItems.length > 0 ? (
-                        // Out of flow, like the headline, so a notice never moves the centered composer.
-                        <div className="absolute inset-x-0 top-full flex flex-col gap-1 pt-4">
-                          <ComposerBannerStack items={composerBannerItems} detached />
+                      {isDraftHeroState ? (
+                        // Out of flow, like the headline, so these never move the centered composer.
+                        <div className="absolute inset-x-0 top-full flex flex-col gap-3 pt-5">
+                          {composerBannerItems.length > 0 ? (
+                            <ComposerBannerStack items={composerBannerItems} detached />
+                          ) : null}
+                          {isChatMode ? null : (
+                            <div className="hidden sm:block">
+                              <OrchestratorLauncher />
+                            </div>
+                          )}
                         </div>
                       ) : null}
                     </ComposerSurface.Shell>
@@ -3999,6 +4015,7 @@ export default function ChatView(props: ChatViewProps) {
                 />
 
                 <ThreadDetailsPanel
+                  capabilityMode={capabilityMode}
                   anchor={threadPanelPopoverAnchorRef}
                   handle={threadPanelPopoverHandle}
                   forceNewWorktree={multipleModelSelections !== null}

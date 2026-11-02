@@ -5,6 +5,15 @@ appearance or stay in light or dark mode. To use different themes for light and 
 the corresponding preview within each theme. Appearance preferences are saved separately on each
 device or browser.
 
+T3++ opens in **Void**. Void, Nova, Luna, Orbit, Nebula, Sol, Eclipse, Astral, and Aether each bring
+their own animated ASCII background to the new thread screen, and the T3++ mark takes on the theme.
+Choosing one switches to the appearance on its card; change the mode afterward to see its other
+variant. Classic and custom themes share one background that follows their colors. The background
+pauses when the window loses focus, and it stands still if your system asks for reduced motion or
+your browser has no WebGL2.
+
+On web and desktop, clicking the new thread background sends a ripple through it, and the background drifts between ASCII and Unicode characters. When a conversation starts, the T3++ mark dissolves into the background, which then fades away so you work on a blank background. Reduced motion skips all of this.
+
 On web and desktop, use **Change theme** in the command palette to select a theme without leaving chat.
 Press **Cmd+Option+A** on macOS or **Ctrl+Alt+A** on Windows/Linux to open the theme picker directly.
 Use **Change appearance** in the command palette to choose System, Light, or Dark independently of
@@ -43,9 +52,9 @@ preference is saved separately on each device.
 
 ## Motion
 
-The main sidebar, right panel, and terminal drawer open and close immediately by default. Move the
-**Panel animations** slider above 0 ms to add motion, up to 400 ms, unless reduced motion is enabled
-in your operating system. Moving between threads always snaps to the selected thread's panel state
+The main sidebar, right panel, and terminal drawer animate open and closed. Set the **Panel
+animations** slider anywhere from 0 ms, which makes them immediate, to 400 ms. Reduced motion in your
+operating system turns this off. Moving between threads always snaps to the selected thread's panel state
 without replaying its transitions.
 
 ## Custom themes

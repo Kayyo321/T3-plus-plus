@@ -69,7 +69,7 @@ client; gaps are named in the row. Mobile and desktop were not run for this tabl
 3. **Secrets never enter the chat.** Credentials live in environments and are injected at the process
    boundary, not the prompt.
 4. **Every door has a way back.** Rewind next to fork, unshare next to share, unpause next to pause.
-5. **No dropped frames.** Animation is event-driven and short. Nothing repaints continuously.
+5. **No dropped frames.** Animation is event-driven and short. Only the budgeted ASCII landing repaints continuously.
 6. **Remote is not an afterthought.** Each feature states how it behaves over a relay, on a phone,
    and with multiple devices.
 

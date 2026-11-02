@@ -4,7 +4,6 @@ import type { ProviderInstanceEntry } from "../../providerInstances";
 import { type AppModelOption } from "../../modelSelection";
 import { CircleAlertIcon } from "lucide-react";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
-import { ComposerCapabilityModeControl } from "./ComposerCapabilityModeControl";
 import { ComposerControl } from "./ComposerControl";
 import {
   ComposerFooterModeControls,
@@ -92,7 +91,6 @@ export function ComposerControlsBar(props: {
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
   getInstanceNotice: ((instanceId: ProviderInstanceId) => string | null) | undefined;
   capabilityMode: ThreadCapabilityMode;
-  capabilityModeRunActive: boolean;
   canOperateThread: boolean;
 }) {
   const {
@@ -173,27 +171,29 @@ export function ComposerControlsBar(props: {
     planModeEnabled,
   });
   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
-  const restingBlockDefs = showModeBlock
-    ? [
-        {
-          id: "mode",
-          content: (
-            <ComposerFooterModeControls
-              showInteractionModeToggle={planModeUiEnabled}
-              interactionMode={interactionMode}
-              runtimeMode={compatibleRuntimeMode}
-              runtimeModeOptions={compatibleRuntimeModeOptions}
-              size={controlSize}
-              hidden={composerControlsHidden || restingHiddenBlockCount > 0}
-              accessDisplay={accessDisplay}
-              emphasized={!accessMatchesDefault}
-              onToggleInteractionMode={toggleInteractionMode}
-              onRuntimeModeChange={handleRuntimeModeChange}
-            />
-          ),
-        },
-      ]
-    : [];
+  const chatMode = props.capabilityMode === "chat";
+  const restingBlockDefs =
+    showModeBlock && !chatMode
+      ? [
+          {
+            id: "mode",
+            content: (
+              <ComposerFooterModeControls
+                showInteractionModeToggle={planModeUiEnabled}
+                interactionMode={interactionMode}
+                runtimeMode={compatibleRuntimeMode}
+                runtimeModeOptions={compatibleRuntimeModeOptions}
+                size={controlSize}
+                hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+                accessDisplay={accessDisplay}
+                emphasized={!accessMatchesDefault}
+                onToggleInteractionMode={toggleInteractionMode}
+                onRuntimeModeChange={handleRuntimeModeChange}
+              />
+            ),
+          },
+        ]
+      : [];
   // Its own element, so typing (which rebuilds the controls around it) leaves it cached.
   const composerModelPicker = (
     <ComposerModelPicker
@@ -241,6 +241,7 @@ export function ComposerControlsBar(props: {
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           onRuntimeModeChange={handleRuntimeModeChange}
+          showPermissions={!chatMode}
         />
       }
       terminalOpen={terminalOpen}
@@ -276,15 +277,6 @@ export function ComposerControlsBar(props: {
     </ComposerControl>
   ) : (
     <>
-      <ComposerCapabilityModeControl
-        threadRef={routeKind === "server" ? routeThreadRef : null}
-        draftId={routeKind === "draft" ? draftId : null}
-        mode={props.capabilityMode}
-        runActive={props.capabilityModeRunActive}
-        canOperate={props.canOperateThread}
-        size={controlSize}
-        hidden={composerControlsHidden}
-      />
       {composerModelPicker}
 
       <>

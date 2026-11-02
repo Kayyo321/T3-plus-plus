@@ -16,7 +16,7 @@ import { readThreadShell } from "~/state/entities";
 import { readEnvironmentScope } from "~/state/session";
 import { threadEnvironment } from "~/state/threads";
 
-export async function setThreadCapabilityMode(
+async function setThreadCapabilityMode(
   threadRef: ScopedThreadRef,
   capabilityMode: ThreadCapabilityMode,
 ): Promise<void> {

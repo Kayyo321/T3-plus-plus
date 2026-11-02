@@ -1494,6 +1494,27 @@ it.effect("creates the thread in the capability mode the launch asks for", () =>
   }),
 );
 
+it.effect("launches a Chat request at the root, never in a worktree", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const launched = yield* launches.launch({
+      ...launchInput({
+        command: "command:launch:chat-worktree",
+        thread: "thread:launch:chat-worktree",
+        message: "Explain the repo",
+        workspace: worktreeStrategy,
+      }),
+      capabilityMode: "chat",
+    });
+    const chat = yield* preparationSettled(launched.threadId);
+    assert.isNull(chat.thread.worktreePath);
+    assert.isNull(chat.thread.branch);
+    assert.equal(chat.runs[0]?.workspacePreparation?.type, "root");
+    assert.equal(harness.createWorktree.mock.calls.length, 0);
+  }).pipe(Effect.provide(harness.layer));
+});
+
 it.effect("replays a server-allocated launch", () =>
   Effect.gen(function* () {
     const setupEntered = yield* Deferred.make<void>();

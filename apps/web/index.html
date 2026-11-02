@@ -51,6 +51,132 @@
         // Keep this small boot-time copy in sync with the built-in palettes so
         // the selected theme is visible before the app has mounted.
         const BUILT_IN_THEME_PALETTES = {
+          void: {
+            light: {
+              background: "oklch(0.975 0 0)",
+              foreground: "oklch(0.24 0 0)",
+              accent: "oklch(0.42 0 0)",
+              chrome: "oklch(0.975 0 0)",
+            },
+            dark: {
+              background: "oklch(0.205 0 0)",
+              foreground: "oklch(0.93 0 0)",
+              accent: "oklch(0.78 0 0)",
+              chrome: "oklch(0.205 0 0)",
+            },
+          },
+          nova: {
+            light: {
+              background: "oklch(0.975 0.011 292)",
+              foreground: "oklch(0.24 0.006599999999999999 292)",
+              accent: "oklch(0.54 0.19 293)",
+              chrome: "oklch(0.975 0.011 292)",
+            },
+            dark: {
+              background: "oklch(0.205 0.022 292)",
+              foreground: "oklch(0.93 0.013199999999999998 292)",
+              accent: "oklch(0.72 0.16 293)",
+              chrome: "oklch(0.205 0.022 292)",
+            },
+          },
+          luna: {
+            light: {
+              background: "oklch(0.975 0.006 265)",
+              foreground: "oklch(0.24 0.0036 265)",
+              accent: "oklch(0.52 0.06 265)",
+              chrome: "oklch(0.975 0.006 265)",
+            },
+            dark: {
+              background: "oklch(0.205 0.012 265)",
+              foreground: "oklch(0.93 0.0072 265)",
+              accent: "oklch(0.72 0.05 265)",
+              chrome: "oklch(0.205 0.012 265)",
+            },
+          },
+          orbit: {
+            light: {
+              background: "oklch(0.975 0.016 248)",
+              foreground: "oklch(0.24 0.0096 248)",
+              accent: "oklch(0.54 0.14 240)",
+              chrome: "oklch(0.975 0.016 248)",
+            },
+            dark: {
+              background: "oklch(0.205 0.032 248)",
+              foreground: "oklch(0.93 0.0192 248)",
+              accent: "oklch(0.75 0.13 235)",
+              chrome: "oklch(0.205 0.032 248)",
+            },
+          },
+          nebula: {
+            light: {
+              background: "oklch(0.975 0.015 318)",
+              foreground: "oklch(0.24 0.009 318)",
+              accent: "oklch(0.56 0.19 328)",
+              chrome: "oklch(0.975 0.015 318)",
+            },
+            dark: {
+              background: "oklch(0.205 0.03 318)",
+              foreground: "oklch(0.93 0.018 318)",
+              accent: "oklch(0.76 0.16 328)",
+              chrome: "oklch(0.205 0.03 318)",
+            },
+          },
+          sol: {
+            light: {
+              background: "oklch(0.975 0.008 75)",
+              foreground: "oklch(0.24 0.0048 75)",
+              accent: "oklch(0.54 0.14 58)",
+              chrome: "oklch(0.975 0.008 75)",
+            },
+            dark: {
+              background: "oklch(0.205 0.016 75)",
+              foreground: "oklch(0.93 0.0096 75)",
+              accent: "oklch(0.83 0.14 70)",
+              chrome: "oklch(0.205 0.016 75)",
+            },
+          },
+          eclipse: {
+            light: {
+              background: "oklch(0.975 0.009 15)",
+              foreground: "oklch(0.24 0.005399999999999999 15)",
+              accent: "oklch(0.54 0.18 18)",
+              chrome: "oklch(0.975 0.009 15)",
+            },
+            dark: {
+              background: "oklch(0.205 0.018 15)",
+              foreground: "oklch(0.93 0.010799999999999999 15)",
+              accent: "oklch(0.68 0.16 15)",
+              chrome: "oklch(0.205 0.018 15)",
+            },
+          },
+          astral: {
+            light: {
+              background: "oklch(0.975 0.017 268)",
+              foreground: "oklch(0.24 0.0102 268)",
+              accent: "oklch(0.52 0.12 275)",
+              chrome: "oklch(0.975 0.017 268)",
+            },
+            dark: {
+              background: "oklch(0.205 0.034 268)",
+              foreground: "oklch(0.93 0.0204 268)",
+              accent: "oklch(0.76 0.09 275)",
+              chrome: "oklch(0.205 0.034 268)",
+            },
+          },
+          aether: {
+            light: {
+              background: "oklch(0.975 0.006 220)",
+              foreground: "oklch(0.24 0.0036 220)",
+              accent: "oklch(0.52 0.08 228)",
+              chrome: "oklch(0.975 0.006 220)",
+            },
+            dark: {
+              background: "oklch(0.205 0.012 220)",
+              foreground: "oklch(0.93 0.0072 220)",
+              accent: "oklch(0.74 0.08 225)",
+              chrome: "oklch(0.205 0.012 220)",
+            },
+          },
           "t3-chat": {
             light: {
               background: "oklch(0.982446 0.010114 325.653)",
@@ -122,6 +248,18 @@
             },
           },
         };
+        const BUILT_IN_THEME_APPEARANCES = {
+          void: "dark",
+          nova: "dark",
+          luna: "light",
+          orbit: "dark",
+          nebula: "dark",
+          sol: "dark",
+          eclipse: "dark",
+          astral: "dark",
+          aether: "light",
+        };
+        const DEFAULT_THEME_ID = "void";
         const BUILT_IN_THEME_MODES = Object.fromEntries(
           Object.entries(BUILT_IN_THEME_PALETTES).map(([id, palettes]) => [
             id,
@@ -132,6 +270,15 @@
           "system",
           "light",
           "dark",
+          "void",
+          "nova",
+          "luna",
+          "orbit",
+          "nebula",
+          "sol",
+          "eclipse",
+          "astral",
+          "aether",
           "t3-chat",
           "grove",
           "ocean",
@@ -213,7 +360,7 @@
         };
 
         try {
-          const storedTheme = window.localStorage.getItem("t3code:theme");
+          const storedTheme = window.localStorage.getItem("t3code:theme") ?? DEFAULT_THEME_ID;
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           const LEGACY_THEME_IDS = {
             "t3-chat-dark": "t3-chat",
@@ -223,8 +370,7 @@
             "t3-iris": "iris",
           };
           const isLegacyT3ChatDark = storedTheme === "t3-chat-dark";
-          const themeId =
-            storedTheme === null ? "" : (LEGACY_THEME_IDS[storedTheme] ?? storedTheme);
+          const themeId = LEGACY_THEME_IDS[storedTheme] ?? storedTheme;
           const legacyMode = isLegacyT3ChatDark ? "dark" : null;
           const builtInModes = BUILT_IN_THEME_MODES[themeId] ?? null;
           const customTheme = builtInModes ? null : findCustomTheme(themeId);
@@ -240,9 +386,11 @@
             storedTheme === "dark" ||
             storedTheme === "system" ||
             themeModes !== null;
-          const theme = isKnownTheme && storedTheme ? storedTheme : "system";
+          const theme = isKnownTheme ? storedTheme : "system";
           const isThemed = isKnownTheme && themeModes !== null;
-          const baseAppearance = customTheme ? customTheme.appearance : "light";
+          const baseAppearance = customTheme
+            ? customTheme.appearance
+            : (BUILT_IN_THEME_APPEARANCES[themeId] ?? "light");
           const systemMode = prefersDark ? "dark" : "light";
           const storedAppearanceMode = window.localStorage.getItem(
             THEME_APPEARANCE_MODE_STORAGE_KEY,
@@ -348,7 +496,7 @@
           }
           // A resolved half is a selection even when the base theme is gone
           // (deleting the base leaves the mix pointing at a real theme).
-          const hasSelection = halfThemeId !== null || (isKnownTheme && storedTheme !== null);
+          const hasSelection = halfThemeId !== null || isKnownTheme;
           if (hasSelection) {
             document.documentElement.dataset.themeSelected = "true";
           } else {

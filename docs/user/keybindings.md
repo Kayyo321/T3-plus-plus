@@ -175,6 +175,9 @@ through the pages you have visited, like a browser's back and forward buttons.
 [new-thread defaults](./thread-sidebar.md#start-a-thread). `chat.newWithoutProject`
 (`mod+alt+n`) starts a thread [without a project](./thread-sidebar.md#start-without-a-project).
 
+`chat.toggleCapabilityMode` (`mod+alt+c`) moves the open conversation between
+[Chat and Code](./thread-sidebar.md#chat-and-code).
+
 `workspaceBundle.switch` (`mod+alt+w` by default) opens the
 [workspace](./workspaces.md) picker in the thread header. `conversationFolders.toggleView` has no
 default shortcut; it switches the sidebar between projects and

@@ -1,4 +1,25 @@
-export const BUILT_IN_THEME_IDS = ["t3-chat", "grove", "ocean", "ember", "iris"] as const;
+export const COSMIC_THEME_IDS = [
+  "void",
+  "nova",
+  "luna",
+  "orbit",
+  "nebula",
+  "sol",
+  "eclipse",
+  "astral",
+  "aether",
+] as const;
+
+export const BUILT_IN_THEME_IDS = [
+  ...COSMIC_THEME_IDS,
+  "t3-chat",
+  "grove",
+  "ocean",
+  "ember",
+  "iris",
+] as const;
+
+export const DEFAULT_THEME_ID = "void";
 
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 
@@ -102,6 +123,8 @@ export type ThemeDefinition = Readonly<{
   variants?: ThemeVariants;
   collection?: Readonly<{ id: string; label: string }>;
   sidebarArtwork?: boolean;
+  /** Choosing this theme switches to `appearance`, so it opens looking like its card. */
+  pinAppearance?: boolean;
   managed?: boolean;
 }>;
 
@@ -908,7 +931,198 @@ export const IRIS_THEME: ThemeDefinition = {
   sidebarArtwork: true,
 };
 
+type CosmicSeed = Readonly<{
+  id: (typeof COSMIC_THEME_IDS)[number];
+  label: string;
+  appearance: ThemeAppearance;
+  hue: number;
+  /** Chroma of the neutral surfaces. Zero gives a true grey. */
+  tint: number;
+  accent: Readonly<Record<ThemeAppearance, string>>;
+}>;
+
+/**
+ * Every pane shares one flat surface and only rows and controls step away from it, so adjacent
+ * panes read as one window split by hairlines instead of cards floating on a backdrop.
+ */
+function cosmicColors(seed: CosmicSeed, appearance: ThemeAppearance): ThemeColors {
+  const dark = appearance === "dark";
+  const tone = (darkLightness: number, lightLightness: number, chroma = seed.tint) =>
+    `oklch(${dark ? darkLightness : lightLightness} ${dark ? chroma : chroma * 0.5} ${seed.hue})`;
+  const accent = seed.accent[appearance];
+  const accentForeground = dark ? tone(0.17, 0.17, seed.tint) : "oklch(0.99 0 0)";
+  const flat = tone(0.205, 0.975);
+  const raised = tone(0.235, 0.99);
+  const overlay = tone(0.25, 0.995);
+  const hover = tone(0.245, 0.95);
+  const active = tone(0.285, 0.92);
+  const hairline = tone(0.3, 0.9);
+  const text = tone(0.93, 0.24, seed.tint * 0.6);
+  const muted = tone(0.71, 0.5);
+  const standard = dark ? T3_CODE_DARK_THEME_COLORS : T3_CODE_LIGHT_THEME_COLORS;
+  return {
+    ...standard,
+    canvas: flat,
+    chrome: flat,
+    toolbar: flat,
+    toolbarForeground: text,
+    toolbarBorder: hairline,
+    toolbarControl: raised,
+    toolbarControlForeground: text,
+    toolbarControlHover: hover,
+    surface: raised,
+    surfaceRaised: raised,
+    surfaceOverlay: overlay,
+    text,
+    textMuted: muted,
+    border: hairline,
+    input: tone(0.34, 0.86),
+    focus: accent,
+    accent,
+    accentForeground,
+    secondary: hover,
+    secondaryForeground: text,
+    muted: hover,
+    mutedForeground: muted,
+    placeholder: muted,
+    secondaryLabel: muted,
+    iconMuted: muted,
+    update: accent,
+    updateForeground: accent,
+    updateSurface: active,
+    accentSurface: hover,
+    accentSurfaceForeground: text,
+    messageSurface: hover,
+    messageForeground: text,
+    messageAction: accent,
+    messageActionForeground: accentForeground,
+    messageActionHover: `color-mix(in oklch, ${accent} 88%, ${text})`,
+    codeBackground: raised,
+    codeForeground: text,
+    sidebar: flat,
+    sidebarForeground: text,
+    sidebarMutedForeground: muted,
+    sidebarControlSurface: raised,
+    sidebarRowHover: hover,
+    sidebarRowActive: active,
+    sidebarRowSelected: hover,
+    sidebarBorder: hairline,
+    terminalBackground: flat,
+    terminalForeground: text,
+    terminalCursor: accent,
+    terminalSelection: active,
+    terminalScrollbar: hairline,
+    terminalScrollbarHover: tone(0.42, 0.78),
+  };
+}
+
+function cosmicTheme(seed: CosmicSeed): ThemeDefinition {
+  const other = seed.appearance === "dark" ? "light" : "dark";
+  return {
+    id: seed.id,
+    label: seed.label,
+    appearance: seed.appearance,
+    colors: cosmicColors(seed, seed.appearance),
+    variants: { [other]: cosmicColors(seed, other) },
+    pinAppearance: true,
+  };
+}
+
+const VOID_THEME = cosmicTheme({
+  id: "void",
+  label: "Void",
+  appearance: "dark",
+  hue: 0,
+  tint: 0,
+  accent: { dark: "oklch(0.78 0 0)", light: "oklch(0.42 0 0)" },
+});
+
+const NOVA_THEME = cosmicTheme({
+  id: "nova",
+  label: "Nova",
+  appearance: "dark",
+  hue: 292,
+  tint: 0.022,
+  accent: { dark: "oklch(0.72 0.16 293)", light: "oklch(0.54 0.19 293)" },
+});
+
+const LUNA_THEME = cosmicTheme({
+  id: "luna",
+  label: "Luna",
+  appearance: "light",
+  hue: 265,
+  tint: 0.012,
+  accent: { dark: "oklch(0.72 0.05 265)", light: "oklch(0.52 0.06 265)" },
+});
+
+const ORBIT_THEME = cosmicTheme({
+  id: "orbit",
+  label: "Orbit",
+  appearance: "dark",
+  hue: 248,
+  tint: 0.032,
+  accent: { dark: "oklch(0.75 0.13 235)", light: "oklch(0.54 0.14 240)" },
+});
+
+const NEBULA_THEME = cosmicTheme({
+  id: "nebula",
+  label: "Nebula",
+  appearance: "dark",
+  hue: 318,
+  tint: 0.03,
+  accent: { dark: "oklch(0.76 0.16 328)", light: "oklch(0.56 0.19 328)" },
+});
+
+const SOL_THEME = cosmicTheme({
+  id: "sol",
+  label: "Sol",
+  appearance: "dark",
+  hue: 75,
+  tint: 0.016,
+  accent: { dark: "oklch(0.83 0.14 70)", light: "oklch(0.54 0.14 58)" },
+});
+
+const ECLIPSE_THEME = cosmicTheme({
+  id: "eclipse",
+  label: "Eclipse",
+  appearance: "dark",
+  hue: 15,
+  tint: 0.018,
+  accent: { dark: "oklch(0.68 0.16 15)", light: "oklch(0.54 0.18 18)" },
+});
+
+const ASTRAL_THEME = cosmicTheme({
+  id: "astral",
+  label: "Astral",
+  appearance: "dark",
+  hue: 268,
+  tint: 0.034,
+  accent: { dark: "oklch(0.76 0.09 275)", light: "oklch(0.52 0.12 275)" },
+});
+
+const AETHER_THEME = cosmicTheme({
+  id: "aether",
+  label: "Aether",
+  appearance: "light",
+  hue: 220,
+  tint: 0.012,
+  accent: { dark: "oklch(0.74 0.08 225)", light: "oklch(0.52 0.08 228)" },
+});
+
+export const COSMIC_THEMES: ReadonlyArray<ThemeDefinition> = [
+  VOID_THEME,
+  NOVA_THEME,
+  LUNA_THEME,
+  ORBIT_THEME,
+  NEBULA_THEME,
+  SOL_THEME,
+  ECLIPSE_THEME,
+  ASTRAL_THEME,
+  AETHER_THEME,
+];
+
 export const BUILT_IN_THEMES: ReadonlyArray<ThemeDefinition> = [
+  ...COSMIC_THEMES,
   T3_CHAT_THEME,
   GROVE_THEME,
   OCEAN_THEME,

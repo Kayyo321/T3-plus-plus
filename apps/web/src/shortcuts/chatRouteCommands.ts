@@ -14,6 +14,7 @@ import { createNewThreadHandler, resolveDefaultProjectRef } from "../hooks/useHa
 import { createScratchProjectActions } from "../hooks/useScratchProject";
 import { getClientSettings } from "../hooks/useSettings";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
+import { startThreadInWorkspaceMode } from "../state/workspaceMode";
 import { selectProjectGroupingSettings } from "@t3tools/client-runtime/state/project-grouping";
 import { selectActiveRightPanel, useRightPanelStore } from "../rightPanelStore";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -173,10 +174,16 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
         void scratch.startScratchThread(environmentId);
       },
       "chat.new": (event) => {
+        const startedChat = startThreadInWorkspaceMode();
+        if (startedChat !== null) {
+          claim(event);
+          void startedChat;
+          return;
+        }
         // The boring sidebar's folders already show the context, so it starts in
         // the current project like the legacy sidebar did.
         const { boringSidebarEnabled, legacySidebarEnabled } = getClientSettings();
-        const groups = readProjectGroups();
+        const groups = readProjectGroups().filter((group) => !group.isScratch);
         if (
           !boringSidebarEnabled &&
           !legacySidebarEnabled &&

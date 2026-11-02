@@ -1,3 +1,4 @@
+import { startThreadInWorkspaceMode } from "../state/workspaceMode";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type {
   EnvironmentId,
@@ -85,6 +86,8 @@ export function resolveThreadActionProjectRef(
 export async function startNewThreadFromContext(
   context: ChatThreadActionContext,
 ): Promise<boolean> {
+  const startedChat = startThreadInWorkspaceMode();
+  if (startedChat !== null) return startedChat;
   const projectRef = resolveThreadActionProjectRef(context);
   if (!projectRef) {
     return false;

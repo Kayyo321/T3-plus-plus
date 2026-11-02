@@ -38,6 +38,21 @@ Build new UI the same way. Compose or extend a component instead of copying its 
 When a call site repeats a treatment another one already uses, make it a variant or a slot on the
 shared component. A new composer banner or notice uses the `ComposerBanner` slots.
 
+## ASCII landing
+
+The new thread background is the one continuously repainting surface. It holds that exception by
+staying cheap: each theme's field shader runs once per character cell, not per pixel, and a second
+pass only looks glyphs up in an atlas. It runs at 30 fps or less, and stops once the draft screen
+is gone, in a hidden or unfocused window, and under reduced motion. Keep new motion out of the always-visible chrome; the
+sidebar's orchestrator glyph only moves while the orchestrator is doing something.
+
+Browsers run GLSL and WGSL, not HLSL, so [`prelude.hlsl`](../../apps/web/src/components/ascii/shaders/prelude.hlsl)
+maps HLSL names onto GLSL ES 3.0 with macros. A shader's `field` returns density, accent, and the
+energy that drives the mark. The theme morph lives in `composite.hlsl`, so adding a theme needs only
+a `field`, a ramp, and an entry in [`asciiShaderEngine.ts`](../../apps/web/src/components/ascii/asciiShaderEngine.ts).
+
+A shader failure must never reach React: the engine logs it and the screen shows no background. The canvas stays mounted past the empty state so the mark can dissolve, and it is keyed on the thread id, so navigating to another thread cuts instead.
+
 ## Handlers in large components
 
 V8 gives every closure created in one render a single shared scope. A memoized handler keeps

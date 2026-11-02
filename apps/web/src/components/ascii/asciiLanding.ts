@@ -1,12 +1,15 @@
 /** Block letters in the terminal-banner style, so the mark reads as a place to start. */
-const LOGO = [
+export const ASCII_LOGO = [
   "████████╗ ██████╗          ",
-  "╚══██╔══╝ ╚════██╗   ██╗   ██╗",
+  "╚══██╔══╝ ╚════██╗   ██╗    ██╗",
   "   ██║     █████╔╝ ██████╗██████╗",
   "   ██║     ╚═══██╗ ╚═██╔═╝╚═██╔═╝",
   "   ██║    ██████╔╝   ╚═╝    ╚═╝",
   "   ╚═╝    ╚═════╝",
 ].map((line) => line.padEnd(33));
+
+/** Solid cells come first so the shader can swap them through the shades as the mark shimmers. */
+export const ASCII_LOGO_GLYPHS = "█▓▒╗╔═╝╚║";
 
 const FIELD_RAMP = " ··∙∙:::--==";
 
@@ -48,14 +51,16 @@ export const asciiLandingCells = (
   columns: number,
   rows: number,
   seed: number,
+  logo: { readonly bottomRow: number; readonly centerColumn: number } | null,
 ): ReadonlyArray<AsciiCell> => {
-  const logoWidth = LOGO[0]?.length ?? 0;
-  const logoLeft = Math.floor((columns - logoWidth) / 2);
-  const logoTop = Math.max(1, Math.floor(rows * 0.1));
+  const logoWidth = ASCII_LOGO[0]?.length ?? 0;
+  const logoLeft = Math.floor((logo?.centerColumn ?? columns / 2) - logoWidth / 2);
+  const logoTop = (logo?.bottomRow ?? 0) - ASCII_LOGO.length;
+  const showLogo = logoTop >= 1 && logoLeft >= 2 && logoLeft + logoWidth <= columns - 2;
   const cells: Array<AsciiCell> = [];
   for (let row = 0; row < rows; row += 1) {
     for (let column = 0; column < columns; column += 1) {
-      const logoCharacter = LOGO[row - logoTop]?.[column - logoLeft];
+      const logoCharacter = showLogo ? ASCII_LOGO[row - logoTop]?.[column - logoLeft] : undefined;
       const dx = (column - columns / 2) / (columns / 2);
       const dy = (row - logoTop - 3) / rows;
       const distance = Math.min(1, Math.hypot(dx, dy * 2));

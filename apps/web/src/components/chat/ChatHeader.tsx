@@ -53,6 +53,7 @@ interface ChatHeaderProps {
   activeThreadLinkOrigin?: string | null | undefined;
   isServerThread: boolean;
   activeProject: EnvironmentProject | null;
+  showProjectBreadcrumb: boolean;
   parentThreadLink: { threadId: ThreadId; title: string } | null;
   onOpenThread: (threadId: ThreadId) => void;
   rightPanelOpen: boolean;
@@ -80,6 +81,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadLinkOrigin,
   isServerThread,
   activeProject,
+  showProjectBreadcrumb,
   parentThreadLink,
   onOpenThread,
   rightPanelOpen,
@@ -295,7 +297,7 @@ export const ChatHeader = memo(function ChatHeader({
         ariaLabel="Thread breadcrumb"
         className="flex-1 overflow-clip [overflow-clip-margin:2px]"
       >
-        {activeProject ? (
+        {activeProject && showProjectBreadcrumb ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink">
               <Tooltip>

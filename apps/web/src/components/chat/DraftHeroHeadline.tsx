@@ -1,6 +1,10 @@
 import type { DraftId } from "~/composerDraftStore";
 import { composerDraftHasUserContent, useComposerDraftStore } from "~/composerDraftStore";
-import { resolveEnvironmentMachineKind, type ScopedProjectRef } from "@t3tools/contracts";
+import {
+  resolveEnvironmentMachineKind,
+  type ScopedProjectRef,
+  type ThreadCapabilityMode,
+} from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { FolderPlusIcon } from "lucide-react";
@@ -64,12 +68,14 @@ interface PickerItem {
 }
 
 interface DraftHeroHeadlineProps {
+  readonly capabilityMode: ThreadCapabilityMode;
   readonly draftId: DraftId | null;
   readonly activeProjectRef: ScopedProjectRef | null;
   readonly activeProjectTitle: string | null;
 }
 
 export function DraftHeroHeadline({
+  capabilityMode,
   draftId,
   activeProjectRef,
   activeProjectTitle,
@@ -409,6 +415,14 @@ export function DraftHeroHeadline({
         machineLabel={environment?.label ?? null}
         serverVersion={environment?.serverConfig?.environment.serverVersion ?? null}
       />
+    );
+  }
+
+  if (capabilityMode === "chat") {
+    return (
+      <h1 className="w-full text-center font-normal text-2xl text-foreground tracking-tight sm:text-3xl">
+        What&apos;s on your mind?
+      </h1>
     );
   }
 

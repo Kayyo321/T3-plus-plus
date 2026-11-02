@@ -9,9 +9,11 @@ machine. A remote device reaches one conversation and nothing else.
 
 ## Turn it on
 
-1. Open the conversation and choose the remote control button in its header. It is also in the
-   command palette as **Remote control**, and on `Ctrl+Alt+R` (`Cmd+Option+R` on a Mac).
-2. Pick an access level and how devices pair, then choose **Turn on**.
+1. Open the conversation's thread details panel and switch on **Remote Control**. The switch needs a
+   conversation that has started. The header button and the command palette's **Remote control**
+   (`Ctrl+Alt+R`, `Cmd+Option+R` on a Mac) also work.
+2. Turning it on uses Chat access and **Approve on this device** pairing, and opens the sheet with the
+   link. Change access or pairing in that sheet.
 3. Scan the QR code on the other device, or send it the link.
 
 If no other device can reach this machine, the sheet says what you can set up instead of showing a
@@ -64,7 +66,7 @@ To end access sooner:
 
 - **Disconnect** removes one device.
 - **Replace link** kills an unused link and any request waiting on it. Paired devices stay.
-- **Turn off** ends every device and the link at once. You can also do this from the mobile app,
+- **Turn off** ends every device and the link at once, asking first if any device is connected. You can also do this from the mobile app,
   above the composer of the conversation.
 
 Archiving a conversation turns its remote control off, and unarchiving does not bring it back. A

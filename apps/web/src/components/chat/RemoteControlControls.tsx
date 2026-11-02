@@ -19,7 +19,7 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { CheckIcon, CopyIcon, RadioTowerIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, MousePointer2Icon, RadioTowerIcon } from "lucide-react";
 import { Atom } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
@@ -47,6 +47,7 @@ import { Input } from "../ui/input";
 import { QRCodeSvg } from "../ui/qr-code";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatPairingCode, formatRemaining } from "../remote/remoteStream.logic";
 
 const sheetThreadAtom = Atom.make<ScopedThreadRef | null>(null).pipe(
@@ -125,6 +126,101 @@ export function RemoteControlButton({ threadRef }: { readonly threadRef: ScopedT
       <RadioTowerIcon />
       {connected.length > 0 ? <span>{connected.length}</span> : null}
     </Button>
+  );
+}
+
+/**
+ * The details panel's switch. On, it starts at the safest settings and opens the sheet so the link
+ * is one glance away; off, every device is out at once. The label reaches the sheet in both states.
+ */
+export function RemoteControlDetailsRow({
+  threadRef,
+  threadStarted,
+  iconClassName,
+  labelClassName,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly threadStarted: boolean;
+  readonly iconClassName: string;
+  readonly labelClassName: string;
+}) {
+  const { environmentId, threadId } = threadRef;
+  const supported =
+    useAtomValue(environmentPresentations.serverConfigsAtom).get(environmentId)?.environment
+      .capabilities.remoteControl === true;
+  const remote = useRemoteControlSwitch(threadRef);
+  const canEnable = useAtomValue(
+    serverEnvironment.enableRemoteControl.permissionAtom(environmentId),
+  );
+  const enable = useAtomCommand(serverEnvironment.enableRemoteControl, { reportFailure: false });
+  const disable = useAtomCommand(serverEnvironment.disableRemoteControl, {
+    label: "turn off remote control",
+  });
+  const [busy, setBusy] = useState(false);
+  if (!supported) return null;
+  const connected = remote?.devices.filter((device) => device.connected).length ?? 0;
+  const disabled = !threadStarted || !canEnable || busy;
+
+  const flip = async (on: boolean) => {
+    if (!on && connected > 0) {
+      const who = connected === 1 ? "the connected device" : `${connected} connected devices`;
+      if (!(await requestConfirmDialog(`Turn off remote control?\nThis disconnects ${who}.`))) {
+        return;
+      }
+    }
+    setBusy(true);
+    if (on) {
+      await enable({
+        environmentId,
+        input: {
+          threadId,
+          accessLevel: "chat",
+          pairingMode: "approve",
+          ownerReview: false,
+          confirmRaise: false,
+        },
+      });
+      // Success shows the link; failure shows why no device can reach this machine.
+      openRemoteControlSheet(threadRef);
+    } else {
+      await disable({ environmentId, input: { threadId } });
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <div className="flex h-8 min-w-0 items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-accent/50" />
+        }
+      >
+        <button
+          type="button"
+          disabled={!threadStarted}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left outline-none focus-visible:underline disabled:cursor-default"
+          onClick={() => openRemoteControlSheet(threadRef)}
+        >
+          <MousePointer2Icon className={iconClassName} aria-hidden />
+          <span className={labelClassName}>Remote Control</span>
+          {connected > 0 ? (
+            <span className="truncate text-muted-foreground text-xs">{connected} connected</span>
+          ) : null}
+        </button>
+        <Switch
+          size="sm"
+          aria-label="Remote Control"
+          checked={remote !== null}
+          disabled={disabled}
+          onCheckedChange={(checked) => void flip(checked)}
+        />
+      </TooltipTrigger>
+      <TooltipPopup side="left">
+        {threadStarted
+          ? "Reach this conversation from a phone or another computer."
+          : "Send a message first. Remote control follows one conversation."}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 

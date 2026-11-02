@@ -30,7 +30,9 @@ import ChatMarkdown from "../ChatMarkdown";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import OrchestratorActivity from "./OrchestratorActivity";
+import { OrchestratorGlyph } from "./OrchestratorGlyph";
 import OrchestratorGrantsEditor from "./OrchestratorGrantsEditor";
+import { useOrchestratorStatus } from "./useOrchestratorStatus";
 
 const VISIBLE_ITEM_LIMIT = 200;
 
@@ -225,6 +227,7 @@ export default function OrchestratorPanel(props: {
   const setOpen = useOrchestratorDock((state) => state.setOpen);
   const liveResult = useAtomValue(orchestratorEnvironment.live({ environmentId, input: {} }));
   const snapshot = liveResult._tag === "Success" ? liveResult.value : null;
+  const status = useOrchestratorStatus(environmentId);
   const providers = useEnvironmentProviders().get(environmentId) ?? [];
   const canAnswer = useEnvironmentScope(environmentId, AuthAccessWriteScope);
   const setBrain = useAtomCommand(orchestratorEnvironment.setBrain);
@@ -286,10 +289,9 @@ export default function OrchestratorPanel(props: {
       data-orchestrator-dock
       className="flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col border-l border-border bg-background"
     >
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-3 wco:pr-(--workspace-native-controls-inset)">
-        <span className="font-mono text-2xs tracking-wide text-muted-foreground uppercase">
-          Orchestrator
-        </span>
+      <header className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center gap-2 border-b border-border px-3 wco:pr-(--workspace-native-controls-inset)">
+        <OrchestratorGlyph size={18} motion={status.motion === "working" ? "working" : "still"} />
+        <span className="text-sm font-medium">Orchestrator</span>
         {snapshot?.brain ? (
           <button
             type="button"

@@ -1,6 +1,7 @@
 import { pipe } from "effect/Function";
 import type { DesktopBridge } from "@t3tools/contracts";
 import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import { DEFAULT_THEME_ID } from "@t3tools/shared/themePalettes";
 import * as Schema from "effect/Schema";
 import { useSyncExternalStore } from "react";
 import {
@@ -8,6 +9,7 @@ import {
   CUSTOM_THEMES_STORAGE_KEY,
   invalidateCustomThemes,
   canonicalThemePreference,
+  getThemeDefinition,
   isKnownThemePreference,
   getThemePreferenceMode,
   getThemePreviewAppearance,
@@ -41,11 +43,11 @@ type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
-  theme: "system",
-  resolvedTheme: "light",
+  theme: DEFAULT_THEME_ID,
+  resolvedTheme: "dark",
   systemDark: false,
-  followSystem: true,
-  appearanceMode: "system",
+  followSystem: false,
+  appearanceMode: "dark",
   themeHalves: null,
 };
 
@@ -303,6 +305,24 @@ export function syncBrowserChromeTheme() {
   }
 }
 
+/** The page cross-fades while the landing shader morphs; both finish together. */
+function morphTheme(apply: () => void) {
+  const root = document.documentElement;
+  if (
+    typeof document.startViewTransition !== "function" ||
+    document.visibilityState !== "visible" ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    apply();
+    return;
+  }
+  root.dataset.themeMorph = "true";
+  const transition = document.startViewTransition(apply);
+  void transition.finished.finally(() => {
+    delete root.dataset.themeMorph;
+  });
+}
+
 function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview = true } = {}) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
   if (preservePreview && document.documentElement.dataset?.themeId === THEME_PREVIEW_ID) {
@@ -520,6 +540,8 @@ export function setTheme(next: Theme): boolean {
   try {
     // Save the current mode first; inferring it from the new theme can switch dark to light.
     pipe(getStored(), readAppearanceModePreference, writeAppearanceModePreference);
+    const definition = getThemeDefinition(next);
+    if (definition?.pinAppearance) writeAppearanceModePreference(definition.appearance);
     // A whole theme replaces the mix; retain it to restore on a failed preference write.
     const previousHalvesRaw = window.localStorage.getItem(THEME_HALVES_STORAGE_KEY);
     window.localStorage.removeItem(THEME_HALVES_STORAGE_KEY);
@@ -550,8 +572,10 @@ export function setTheme(next: Theme): boolean {
     });
     return false;
   }
-  applyTheme(next, { suppressTransitions: true });
-  emitChange();
+  morphTheme(() => {
+    applyTheme(next, { suppressTransitions: true });
+    emitChange();
+  });
   return true;
 }
 
@@ -575,8 +599,10 @@ export function setAppearanceMode(nextAppearanceMode: ThemePreferenceMode): bool
     return false;
   }
   themeStorageReadFailure = null;
-  applyTheme(getStored(), { suppressTransitions: true });
-  emitChange();
+  morphTheme(() => {
+    applyTheme(getStored(), { suppressTransitions: true });
+    emitChange();
+  });
   return true;
 }
 
@@ -605,8 +631,10 @@ function setThemeHalf(appearance: ThemeAppearance, themeId: string | null): bool
     });
     return false;
   }
-  applyTheme(getStored(), { suppressTransitions: true });
-  emitChange();
+  morphTheme(() => {
+    applyTheme(getStored(), { suppressTransitions: true });
+    emitChange();
+  });
   return true;
 }
 
@@ -627,8 +655,10 @@ function clearThemeHalves(): boolean {
     });
     return false;
   }
-  applyTheme(getStored(), { suppressTransitions: true });
-  emitChange();
+  morphTheme(() => {
+    applyTheme(getStored(), { suppressTransitions: true });
+    emitChange();
+  });
   return true;
 }
 

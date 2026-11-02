@@ -55,6 +55,19 @@ in a new thread's model picker to add or remove them. A regular click returns to
 single model. Choose a base branch and send. Each selection starts a separate thread
 and worktree while you stay in the new thread composer. This requires a Git project.
 
+## Chat and Code
+
+The sidebar has a **Chat** tab and a **Code** tab. Each conversation belongs to exactly one of them,
+and the sidebar shows only that tab's conversations. Opening a conversation switches to its tab.
+Choose **New thread** on the Chat tab to start a chat.
+
+Chats belong to no project. They cannot read or change files or run commands, so they have no
+permission setting, branch, worktree, terminal, or diff. A provider that T3++ can only restrict on a
+best-effort basis shows a warning in Chat, and a provider that cannot run Chat is unavailable there.
+
+To move a conversation to the other tab, run **Continue in Code mode** or **Switch to Chat** from the
+command palette, or use its keybinding. Stop the current run first.
+
 ## Pin and reorder threads
 
 Pin a thread from its menu to keep it above your active work.

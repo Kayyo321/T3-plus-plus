@@ -11,6 +11,7 @@ import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../threadRoute
 import { retainThreadFindForRoute } from "../components/chat/threadFindStore";
 import { ThreadLinkPrompt } from "../components/promptLinks/ThreadLinkPrompt";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
+import { useWorkspaceModeRouting } from "../hooks/useWorkspaceModeRouting";
 
 function threadRouteTargetKey(target: ThreadRouteTarget | null) {
   if (!target) return null;
@@ -18,6 +19,7 @@ function threadRouteTargetKey(target: ThreadRouteTarget | null) {
 }
 
 function ChatRouteLayout() {
+  useWorkspaceModeRouting();
   // Render both routes here so draft promotion keeps the same ChatView mounted.
   const threadTarget = useThreadRouteTarget();
   // Read matches, not location, so this agrees with the params useThreadRouteTarget reads.
