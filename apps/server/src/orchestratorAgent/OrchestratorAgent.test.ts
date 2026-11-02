@@ -81,6 +81,7 @@ const harness = (options: { readonly holdSends?: boolean } = {}) =>
       [],
     );
     const created = yield* Ref.make(0);
+    const deleted = yield* Ref.make<ReadonlyArray<ThreadId>>([]);
     const active = yield* Ref.make<{ id: ThreadId; activeRunId: RunId } | null>(null);
     const activeMessage = yield* Ref.make<MessageId | null>(null);
     const ownerMessages = yield* Ref.make<ReadonlyArray<OwnerMessage>>([]);
@@ -127,7 +128,11 @@ const harness = (options: { readonly holdSends?: boolean } = {}) =>
           ),
       }),
       Layer.mock(Orchestrator.OrchestratorV2)({
-        dispatch: () => Ref.update(created, (count) => count + 1).pipe(Effect.as({} as never)),
+        dispatch: (command) =>
+          (command.type === "thread.delete"
+            ? Ref.update(deleted, (threadIds) => [...threadIds, command.threadId])
+            : Ref.update(created, (count) => count + 1)
+          ).pipe(Effect.as({} as never)),
       }),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
@@ -148,6 +153,7 @@ const harness = (options: { readonly holdSends?: boolean } = {}) =>
       providers,
       sends,
       created,
+      deleted,
       active,
       activeMessage,
       ownerMessages,
@@ -196,6 +202,49 @@ it.effect("refuses to send while blocked, and starts nothing elsewhere", () =>
         status: "needs_attention",
         reason: failure.message,
       });
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
+it.effect("clearing deletes the conversation and starts the next message on a new one", () =>
+  Effect.gen(function* () {
+    const { attempted, created, deleted, shells, sends, layer } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      const { threadId } = yield* agent.send(sendInput);
+      yield* Ref.update(shells, (known) => new Map(known).set(threadId, shell({ id: threadId })));
+      yield* agent.react({ messageId: "item-1", emoji: "👍" });
+      yield* agent.markRead({ through: "2026-11-02T12:00:00.000Z" as never });
+      const fiber = yield* agent
+        .governTool("t3_project_delete", { projectId: "p" }, Effect.void)
+        .pipe(Effect.exit, Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+      assert.lengthOf((yield* agent.snapshot).pendingApprovals, 1);
+
+      yield* agent.clearConversation;
+
+      assert.deepStrictEqual(yield* Ref.get(deleted), [threadId]);
+      assert.isTrue(Exit.isFailure(yield* Fiber.join(fiber)));
+      const cleared = yield* agent.snapshot;
+      assert.equal(cleared.threadId, null);
+      assert.deepStrictEqual(cleared.reactions, {});
+      assert.equal(cleared.ownerReadAt, null);
+      assert.lengthOf(cleared.pendingApprovals, 0);
+      assert.deepStrictEqual(cleared.brain, brain);
+
+      yield* Ref.set(sends, []);
+      const beforeNext = yield* Ref.get(created);
+      const next = yield* agent.send({ ...sendInput, commandId: CommandId.make("command-2") });
+      assert.notEqual(next.threadId, threadId);
+      assert.equal(yield* Ref.get(created), beforeNext + 1);
+
+      yield* Ref.set(deleted, []);
+      yield* Ref.update(shells, (known) => new Map(known).set(next.threadId, null));
+      yield* agent.clearConversation;
+      assert.equal((yield* agent.snapshot).threadId, null);
+      assert.deepStrictEqual(yield* Ref.get(deleted), []);
     }).pipe(Effect.provide(layer));
   }),
 );

@@ -95,6 +95,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.orchestratorAgentSend]: "orchestratorAgent",
   [WS_METHODS.orchestratorAgentReact]: "orchestratorAgent",
   [WS_METHODS.orchestratorAgentMarkRead]: "orchestratorAgent",
+  [WS_METHODS.orchestratorAgentClearConversation]: "orchestratorAgent",
   [WS_METHODS.orchestratorAgentInterrupt]: "orchestratorAgent",
   [WS_METHODS.orchestratorAgentAnswerApproval]: "orchestratorAgent",
   [WS_METHODS.orchestratorAgentSubscribeDirectives]: "orchestratorAgent",

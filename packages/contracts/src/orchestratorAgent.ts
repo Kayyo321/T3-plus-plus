@@ -373,10 +373,63 @@ export const OrchestratorAnswerApprovalInput = Schema.Struct({
 });
 export type OrchestratorAnswerApprovalInput = typeof OrchestratorAnswerApprovalInput.Type;
 
+export const RIGHT_PANEL_KINDS = [
+  "diff",
+  "files",
+  "file",
+  "preview",
+  "device",
+  "terminal",
+  "pull-request",
+  "pull-requests",
+  "side-chat",
+  "git-graph",
+  "documents",
+  "teamwork",
+  "team-sheet",
+  "document",
+  "computer-use",
+] as const;
+export const RightPanelKind = Schema.Literals(RIGHT_PANEL_KINDS);
+export type RightPanelKind = typeof RightPanelKind.Type;
+
+/** A page of the app's settings, by the last part of its route. */
+export const OrchestratorSettingsPage = Schema.Literals([
+  "projects",
+  "general",
+  "diagnostics",
+  "appearance",
+  "chat",
+  "diffs",
+  "keybindings",
+  "snap-shot",
+  "layouts",
+  "providers",
+  "threads",
+  "browser",
+  "devices",
+  "scheduled-tasks",
+  "source-control",
+  "worktrees",
+  "connections",
+  "access",
+  "secrets",
+  "workspaces",
+  "maintenance",
+  "labs",
+  "about",
+  "archived",
+]);
+export type OrchestratorSettingsPage = typeof OrchestratorSettingsPage.Type;
+
 /** Requests the owner's clients act on, so the UI shows the orchestrator's hands. */
 export const OrchestratorUiDirective = Schema.Union([
-  Schema.Struct({ type: Schema.Literal("open-panel"), panel: TrimmedNonEmptyString }),
-  Schema.Struct({ type: Schema.Literal("close-panel"), panel: TrimmedNonEmptyString }),
+  Schema.Struct({ type: Schema.Literal("open-panel"), panel: RightPanelKind }),
+  Schema.Struct({ type: Schema.Literal("close-panel"), panel: RightPanelKind }),
+  Schema.Struct({
+    type: Schema.Literal("open-settings"),
+    page: Schema.optional(OrchestratorSettingsPage),
+  }),
   Schema.Struct({ type: Schema.Literal("apply-layout"), name: TrimmedNonEmptyString }),
   Schema.Struct({ type: Schema.Literal("open-thread"), threadId: ThreadId }),
   Schema.Struct({ type: Schema.Literal("split-thread"), threadId: ThreadId }),

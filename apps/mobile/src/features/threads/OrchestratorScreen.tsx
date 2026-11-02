@@ -1,7 +1,7 @@
 import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { CommandId, type EnvironmentId } from "@t3tools/contracts";
 import { useState } from "react";
-import { TextInput, View } from "react-native";
+import { Alert, TextInput, View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
@@ -24,6 +24,9 @@ function OrchestratorBody({ environmentId }: { readonly environmentId: Environme
   const live = useEnvironmentQuery(orchestratorEnvironment.live({ environmentId, input: {} }));
   const send = useAtomCommand(orchestratorEnvironment.send);
   const answer = useAtomCommand(orchestratorEnvironment.answerApproval);
+  const clearConversation = useAtomCommand(orchestratorEnvironment.clearConversation, {
+    label: "clear the conversation",
+  });
   const [text, setText] = useState("");
   const snapshot = live.data;
   if (snapshot === null) {
@@ -75,12 +78,31 @@ function OrchestratorBody({ environmentId }: { readonly environmentId: Environme
       />
       <View className="flex-row justify-end gap-2">
         {threadId !== null ? (
-          <Button
-            label="Open conversation"
-            onPress={() =>
-              navigation.dispatch(StackActions.push("Thread", { environmentId, threadId }))
-            }
-          />
+          <>
+            <Button
+              label="Clear conversation"
+              onPress={() =>
+                Alert.alert(
+                  "Clear this conversation?",
+                  "This permanently deletes it and stops anything the orchestrator is doing. Threads it started stay.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Clear",
+                      style: "destructive",
+                      onPress: () => void clearConversation({ environmentId, input: {} }),
+                    },
+                  ],
+                )
+              }
+            />
+            <Button
+              label="Open conversation"
+              onPress={() =>
+                navigation.dispatch(StackActions.push("Thread", { environmentId, threadId }))
+              }
+            />
+          </>
         ) : null}
         <Button
           label="Send"

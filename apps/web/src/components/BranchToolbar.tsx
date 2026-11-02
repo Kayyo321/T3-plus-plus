@@ -740,6 +740,22 @@ export const BranchToolbar = memo(function BranchToolbar({
   }
 
   const teamworkToggle = <TeamworkToggle threadRef={threadRef} capabilityMode={capabilityMode} />;
+  const projectFolder = (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className="inline-flex h-7 min-w-0 items-center gap-1.5 border border-transparent px-1.75 font-normal text-muted-foreground/70 text-sm sm:h-6 sm:text-xs"
+            data-composer-context-control
+          >
+            <FolderIcon className="size-3" />
+            <ComposerContextLabel>Project folder</ComposerContextLabel>
+          </span>
+        }
+      />
+      <TooltipPopup>{activeProject.workspaceRoot}</TooltipPopup>
+    </Tooltip>
+  );
 
   return (
     <ComposerSurface.ContextStrip
@@ -772,49 +788,47 @@ export const BranchToolbar = memo(function BranchToolbar({
           {teamworkToggle}
         </div>
       ) : null}
-      {showGitControls || showEnvironmentIndicator ? (
-        <div
-          className={cn(
-            "min-h-7 min-w-10 items-center gap-1 sm:min-h-6",
-            showGitControls ? "hidden @xl/composer-surface:flex" : "flex",
-            "flex-1",
-          )}
-        >
-          {showEnvironmentIndicator && availableEnvironments && (
-            <>
-              <BranchToolbarEnvironmentSelector
-                autoEnvironmentLabel={autoEnvironmentLabel}
-                onAutoEnvironment={onAutoEnvironment}
-                envLocked={envLocked}
-                environmentId={environmentId}
-                availableEnvironments={availableEnvironments}
-                {...(showEnvironmentPicker ? { onEnvironmentChange } : {})}
-                {...(addTargets.length > 0 ? { onAddToMachine: () => onAddToMachine(null) } : {})}
-              />
-              {showGitControls ? (
-                <Separator
-                  orientation="vertical"
-                  className="mx-0.5 h-3.5!"
-                  data-composer-context-control
-                />
-              ) : null}
-            </>
-          )}
-          {showGitControls ? (
-            <BranchToolbarEnvModeSelector
-              forceNewWorktree={forceNewWorktree}
-              envLocked={envModeLocked}
-              effectiveEnvMode={effectiveEnvMode}
-              activeWorktreePath={activeWorktreePath}
-              onEnvModeChange={onEnvModeChange}
-              previousWorktreeLabel={previousWorktreeLabel}
-              previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
-              onUsePreviousWorktree={onUsePreviousWorktree}
+      <div
+        className={cn(
+          "min-h-7 min-w-10 items-center gap-1 sm:min-h-6",
+          showGitControls ? "hidden @xl/composer-surface:flex" : "flex",
+          "flex-1",
+        )}
+      >
+        {showEnvironmentIndicator && availableEnvironments && (
+          <>
+            <BranchToolbarEnvironmentSelector
+              autoEnvironmentLabel={autoEnvironmentLabel}
+              onAutoEnvironment={onAutoEnvironment}
+              envLocked={envLocked}
+              environmentId={environmentId}
+              availableEnvironments={availableEnvironments}
+              {...(showEnvironmentPicker ? { onEnvironmentChange } : {})}
+              {...(addTargets.length > 0 ? { onAddToMachine: () => onAddToMachine(null) } : {})}
             />
-          ) : null}
-          {teamworkToggle}
-        </div>
-      ) : null}
+            <Separator
+              orientation="vertical"
+              className="mx-0.5 h-3.5!"
+              data-composer-context-control
+            />
+          </>
+        )}
+        {showGitControls ? (
+          <BranchToolbarEnvModeSelector
+            forceNewWorktree={forceNewWorktree}
+            envLocked={envModeLocked}
+            effectiveEnvMode={effectiveEnvMode}
+            activeWorktreePath={activeWorktreePath}
+            onEnvModeChange={onEnvModeChange}
+            previousWorktreeLabel={previousWorktreeLabel}
+            previousWorktreeBranch={previousWorktreeSeed?.branch ?? null}
+            onUsePreviousWorktree={onUsePreviousWorktree}
+          />
+        ) : (
+          projectFolder
+        )}
+        {teamworkToggle}
+      </div>
 
       {showGitControls ? (
         <BranchToolbarBranchSelector

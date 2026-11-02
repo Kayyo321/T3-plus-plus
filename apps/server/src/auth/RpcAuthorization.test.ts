@@ -45,10 +45,11 @@ describe("RPC authorization scopes", () => {
     }
   });
 
-  it("keeps orchestrator reactions and read position behind operate scope", () => {
+  it("keeps orchestrator reactions, read position, and clearing behind operate scope", () => {
     for (const method of [
       WS_METHODS.orchestratorAgentReact,
       WS_METHODS.orchestratorAgentMarkRead,
+      WS_METHODS.orchestratorAgentClearConversation,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationOperateScope);
     }

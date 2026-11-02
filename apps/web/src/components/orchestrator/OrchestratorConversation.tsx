@@ -20,9 +20,10 @@ import {
   TimerIcon,
   WrenchIcon,
 } from "lucide-react";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { useAssistantMessageText, useTimelineVisibleTurnItems } from "../../state/entities";
+import { observeResize } from "../../lib/observeResize";
 import { cn } from "../../lib/utils";
 import { formatShortTimestamp } from "../../timestampFormat";
 import ChatMarkdown from "../ChatMarkdown";
@@ -177,7 +178,7 @@ function Bubble(props: {
         className={cn(
           "relative min-w-0 rounded-2xl border px-3 py-1.5 text-sm wrap-anywhere shadow-sm backdrop-blur-xl",
           props.mine
-            ? "border-primary/40 bg-primary/80 text-primary-foreground"
+            ? "orchestrator-bubble-mine border-primary/40 text-primary-foreground"
             : "border-foreground/10 bg-card/60 text-foreground",
           props.tail && (props.mine ? "rounded-br-md" : "rounded-bl-md"),
         )}
@@ -297,6 +298,39 @@ function TypingBubble() {
   );
 }
 
+/** Keeps the owner's on-screen bubbles aligned to one gradient, at most once a frame. */
+function useBubbleGradient(scroller: HTMLDivElement | null) {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows scroll position and layout, which live in the DOM
+  useEffect(() => {
+    if (scroller === null) return;
+    let frame = 0;
+    const align = () => {
+      frame = 0;
+      const { top, bottom, height } = scroller.getBoundingClientRect();
+      scroller.style.setProperty("--orchestrator-gradient-height", `${height}px`);
+      for (const bubble of scroller.querySelectorAll<HTMLElement>(".orchestrator-bubble-mine")) {
+        const rect = bubble.getBoundingClientRect();
+        if (rect.bottom < top || rect.top > bottom) continue;
+        bubble.style.backgroundPositionY = `${top - rect.top}px`;
+      }
+    };
+    const schedule = () => {
+      if (frame === 0) frame = requestAnimationFrame(align);
+    };
+    schedule();
+    scroller.addEventListener("scroll", schedule, { passive: true });
+    const stopScroller = observeResize(scroller, schedule);
+    const log = scroller.firstElementChild;
+    const stopLog = log === null ? undefined : observeResize(log, schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      scroller.removeEventListener("scroll", schedule);
+      stopScroller();
+      stopLog?.();
+    };
+  }, [scroller]);
+}
+
 export function useOrchestratorFeed(
   environmentId: EnvironmentId,
   threadId: ThreadId,
@@ -313,6 +347,7 @@ export function OrchestratorConversation(props: {
   readonly feed: ReturnType<typeof orchestratorFeed>;
   readonly reactions: Readonly<Record<string, ReadonlyArray<OrchestratorReaction>>>;
   readonly timestampFormat: TimestampFormat;
+  readonly clearing?: boolean;
   readonly onReact: (bubbleKey: string, emoji: string, excerpt: string) => void;
 }) {
   const { rows, typing } = props.feed;
@@ -323,6 +358,7 @@ export function OrchestratorConversation(props: {
   if (baseline === null && rows.length > 0) setBaseline(new Set(rows.map((row) => row.key)));
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  useBubbleGradient(scroller);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -332,7 +368,14 @@ export function OrchestratorConversation(props: {
         // A reversed column measures scrollTop as a negative distance from the newest message.
         onScroll={(event) => setAwayFromLatest(event.currentTarget.scrollTop < -JUMP_THRESHOLD_PX)}
       >
-        <div className="flex flex-col gap-1 px-3 pt-10 pb-3" role="log" aria-label="Conversation">
+        <div
+          className={cn(
+            "flex flex-col gap-1 px-3 pt-10 pb-3",
+            props.clearing && "orchestrator-clearing",
+          )}
+          role="log"
+          aria-label="Conversation"
+        >
           {rows.map((row) => {
             const animate = baseline !== null && !baseline.has(row.key);
             switch (row.kind) {

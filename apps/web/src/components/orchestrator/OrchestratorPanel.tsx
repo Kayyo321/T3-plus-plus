@@ -19,10 +19,18 @@ import {
 } from "@t3tools/contracts";
 import { resolveT3McpToolPresentation } from "@t3tools/shared/t3McpToolPresentation";
 import { useNavigate } from "@tanstack/react-router";
-import { ActivityIcon, ArrowUpIcon, CheckIcon, MinusIcon, ShieldCheckIcon } from "lucide-react";
+import {
+  ActivityIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 
-import { useEnvironmentSettings } from "../../hooks/useSettings";
+import { useClientSettings, useEnvironmentSettings } from "../../hooks/useSettings";
+import { readLocalApi } from "../../localApi";
 import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironmentProviders } from "../../state/environments";
 import { orchestratorEnvironment, useOrchestratorDock } from "../../state/orchestratorAgent";
@@ -31,6 +39,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { randomUUID } from "../../lib/utils";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { Button } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import OrchestratorActivity from "./OrchestratorActivity";
 import { OrchestratorBackdrop } from "./OrchestratorBackdrop";
 import { OrchestratorConversation, useOrchestratorFeed } from "./OrchestratorConversation";
@@ -39,6 +48,9 @@ import OrchestratorGrantsEditor from "./OrchestratorGrantsEditor";
 import { useOrchestratorStatus } from "./useOrchestratorStatus";
 
 type OrchestratorView = "conversation" | "activity" | "grants";
+
+// Matches the last row of `.orchestrator-clearing` in index.css.
+const CLEAR_ANIMATION_MS = 460;
 
 function ProviderOption(props: {
   readonly provider: ServerProvider;
@@ -200,6 +212,26 @@ function ApprovalCard(props: {
   );
 }
 
+function MinimizeTab(props: { readonly onMinimize: () => void }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label="Minimize the orchestrator panel"
+            className="absolute top-1/2 -left-5 flex h-12 w-5 -translate-y-1/2 items-center justify-center rounded-l-lg border border-r-0 border-border bg-background text-muted-foreground transition-colors duration-150 outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            onClick={props.onMinimize}
+          />
+        }
+      >
+        <ChevronRightIcon className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="left">Minimize</TooltipPopup>
+    </Tooltip>
+  );
+}
+
 function Header(props: {
   readonly provider: ServerProvider | undefined;
   readonly brain: ModelSelection | null;
@@ -209,7 +241,9 @@ function Header(props: {
   readonly view: OrchestratorView;
   readonly onChangeModel: () => void;
   readonly onView: (view: OrchestratorView) => void;
-  readonly onClose: () => void;
+  readonly canClear: boolean;
+  readonly clearing: boolean;
+  readonly onClear: () => void;
 }) {
   const { provider, brain } = props;
   const model = provider?.models.find((candidate) => candidate.slug === brain?.model);
@@ -275,11 +309,12 @@ function Header(props: {
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label="Minimize the orchestrator panel"
-          title="Minimize"
-          onClick={props.onClose}
+          aria-label="Clear the conversation"
+          title="Clear the conversation"
+          disabled={!props.canClear}
+          onClick={props.onClear}
         >
-          <MinusIcon />
+          <Trash2Icon className={props.clearing ? "orchestrator-trash-gulp" : undefined} />
         </Button>
       </div>
     </header>
@@ -361,6 +396,7 @@ function ConversationBody(props: {
   readonly reactions: Parameters<typeof OrchestratorConversation>[0]["reactions"];
   readonly latestMessageAt: string | null;
   readonly ownerReadAt: string | null;
+  readonly clearing: boolean;
   readonly onStatus: (status: string | null) => void;
 }) {
   const { environmentId, threadId, activeRunId, onStatus } = props;
@@ -382,6 +418,7 @@ function ConversationBody(props: {
       feed={feed}
       reactions={props.reactions}
       timestampFormat={timestampFormat}
+      clearing={props.clearing}
       onReact={(messageId, emoji, excerpt) =>
         void react({ environmentId, input: { messageId, emoji, excerpt } })
       }
@@ -405,6 +442,13 @@ export default function OrchestratorPanel(props: {
   const setBrain = useAtomCommand(orchestratorEnvironment.setBrain);
   const send = useAtomCommand(orchestratorEnvironment.send);
   const answerApproval = useAtomCommand(orchestratorEnvironment.answerApproval);
+  const clearConversation = useAtomCommand(orchestratorEnvironment.clearConversation, {
+    label: "clear the conversation",
+  });
+  const canClear = useAtomValue(
+    orchestratorEnvironment.clearConversation.permissionAtom(environmentId),
+  );
+  const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
   const checkAvailability = useAtomCommand(orchestratorEnvironment.checkAvailability, {
     reportFailure: false,
   });
@@ -418,6 +462,8 @@ export default function OrchestratorPanel(props: {
   const [picking, setPicking] = useState(false);
   const [view, setView] = useState<OrchestratorView>("conversation");
   const [feedStatus, setFeedStatus] = useState<string | null>(null);
+  // Held by thread, so the old rows stay gone until the empty snapshot replaces them.
+  const [clearingThreadId, setClearingThreadId] = useState<ThreadId | null>(null);
 
   const checkOnOpen = useEffectEvent((target: EnvironmentId) => {
     void checkAvailability({ environmentId: target, input: {} });
@@ -465,13 +511,36 @@ export default function OrchestratorPanel(props: {
   };
 
   const conversationShown = !showPicker && view === "conversation";
+  const clearing = threadId !== null && clearingThreadId === threadId;
+
+  const clear = async () => {
+    if (threadId === null || clearing) return;
+    if (confirmThreadDelete) {
+      const confirmed = await readLocalApi()?.dialogs.confirm(
+        [
+          "Clear this conversation?",
+          "This permanently deletes it and stops anything the orchestrator is doing. Threads it started stay.",
+        ].join("\n"),
+        { variant: "destructive" },
+      );
+      if (confirmed === false) return;
+    }
+    setSendError(null);
+    if (conversationShown && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setClearingThreadId(threadId);
+      await new Promise((resolve) => setTimeout(resolve, CLEAR_ANIMATION_MS));
+    }
+    const result = await clearConversation({ environmentId, input: {} });
+    if (result._tag !== "Success") setClearingThreadId(null);
+  };
 
   return (
     <aside
       aria-label="Orchestrator"
       data-orchestrator-dock
-      className="orchestrator-panel-enter relative isolate flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+      className="orchestrator-panel-enter relative isolate z-30 flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col border-l border-border bg-background"
     >
+      <MinimizeTab onMinimize={() => setOpen(false)} />
       <OrchestratorBackdrop />
       <Header
         provider={provider}
@@ -482,7 +551,9 @@ export default function OrchestratorPanel(props: {
         view={view}
         onChangeModel={() => setPicking(true)}
         onView={setView}
-        onClose={() => setOpen(false)}
+        canClear={canClear && threadId !== null}
+        clearing={clearing}
+        onClear={() => void clear()}
       />
       {showPicker ? (
         <BrainPicker
@@ -508,6 +579,7 @@ export default function OrchestratorPanel(props: {
           reactions={snapshot?.reactions ?? {}}
           latestMessageAt={snapshot?.latestMessageAt ?? null}
           ownerReadAt={snapshot?.ownerReadAt ?? null}
+          clearing={clearing}
           onStatus={setFeedStatus}
         />
       ) : (

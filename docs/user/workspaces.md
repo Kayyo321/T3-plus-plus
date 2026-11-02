@@ -4,7 +4,7 @@ A workspace is a named answer to _where does this work happen, and with what cre
 
 ## Create one
 
-Open **Settings > Workspaces** and choose **New workspace**. List its folders and pick the working root, the folder processes start in. Then use **Add secret** on its row.
+Open **Settings > Workspaces** and choose **New workspace**. Use **+** to find and add its folders, then pick the default one, the working root that processes start in. Then use **Add secret** on its row.
 
 Each secret is an environment variable. Store the value encrypted on this server, or point at a secret provider such as 1Password (set one up in **Settings > Secrets**). T3++ never shows a saved value again, to you or to an agent. To change one, replace it.
 

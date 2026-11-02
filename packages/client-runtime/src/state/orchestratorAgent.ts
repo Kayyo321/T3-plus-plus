@@ -64,6 +64,10 @@ export function createOrchestratorAgentEnvironmentAtoms<R, E>(
       label: "environment-data:orchestrator:mark-read",
       tag: WS_METHODS.orchestratorAgentMarkRead,
     }),
+    clearConversation: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:orchestrator:clear-conversation",
+      tag: WS_METHODS.orchestratorAgentClearConversation,
+    }),
     setThreadSupervision: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:supervision:set-thread",
       tag: WS_METHODS.supervisionSetThread,

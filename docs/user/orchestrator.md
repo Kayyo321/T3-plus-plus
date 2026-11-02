@@ -4,8 +4,14 @@ The orchestrator is an agent docked beside your conversations that operates T3++
 start threads, tidy the sidebar, open a diff, run a scheduled check, or keep an eye on long work. It
 has its own conversation, separate from the one you are in, and keeps working while you do.
 
-Open it with **Orchestrator** in the command palette (`Cmd/Ctrl+K`) or `Cmd/Ctrl+Alt+O`. Closing the
-panel keeps its conversation and any work in progress.
+Open or close it with **Orchestrator** in the sidebar or command palette (`Cmd/Ctrl+K`), or with
+`Cmd/Ctrl+Alt+O`. The tab on the panel's left edge also minimizes it. Closing the panel keeps its
+conversation and any work in progress.
+
+The trash button in the panel header permanently clears the conversation, which also ends whatever
+the orchestrator was doing and what it remembered of the chat. Threads it started stay, and
+**Activity** keeps its record of what it did. On a phone, use **Clear conversation** on the
+orchestrator screen.
 
 ## Talk to it
 

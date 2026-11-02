@@ -10,6 +10,7 @@ import {
   resolveLocalCheckoutBranchMismatch,
   sanitizeNewRefName,
   shouldIncludeBranchPickerItem,
+  shouldShowComposerContextStrip,
 } from "./BranchToolbar.logic";
 
 describe("resolveDraftEnvModeAfterBranchChange", () => {
@@ -252,5 +253,16 @@ describe("sanitizeNewRefName", () => {
   it("does not collapse dashes the user typed", () => {
     expect(sanitizeNewRefName("new - branch")).toBe("new---branch");
     expect(sanitizeNewRefName("foo--bar")).toBe("foo--bar");
+  });
+});
+
+describe("shouldShowComposerContextStrip", () => {
+  it.each([
+    { isDraftHeroState: true, hideInActiveThreads: true, hasActiveProject: true, shown: true },
+    { isDraftHeroState: false, hideInActiveThreads: false, hasActiveProject: true, shown: true },
+    { isDraftHeroState: false, hideInActiveThreads: true, hasActiveProject: true, shown: false },
+    { isDraftHeroState: true, hideInActiveThreads: false, hasActiveProject: false, shown: false },
+  ])("is $shown for $isDraftHeroState/$hideInActiveThreads", ({ shown, ...input }) => {
+    expect(shouldShowComposerContextStrip(input)).toBe(shown);
   });
 });

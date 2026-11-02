@@ -62,17 +62,11 @@ export function shouldShowEnvironmentIndicator(input: {
 
 export function shouldShowComposerContextStrip(input: {
   isDraftHeroState: boolean;
-  persistInActiveThreads: boolean;
+  hideInActiveThreads: boolean;
   hasActiveProject: boolean;
-  isGitRepo: boolean;
-  showEnvironmentIndicator: boolean;
 }): boolean {
   // A new thread always shows the strip, since it names the permissions the first send uses.
-  return (
-    input.hasActiveProject &&
-    (input.isDraftHeroState ||
-      (input.persistInActiveThreads && (input.isGitRepo || input.showEnvironmentIndicator)))
-  );
+  return input.hasActiveProject && (input.isDraftHeroState || !input.hideInActiveThreads);
 }
 
 // Hysteresis prevents labels and icons from flapping at the width boundary.

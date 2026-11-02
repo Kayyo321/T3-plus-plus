@@ -527,16 +527,15 @@ export function AppearanceSettingsPanel() {
           />
           <SettingsRow
             {...searchableSetting("composer-context")}
-            description="Keep branch and worktree controls below the composer after a thread starts."
+            description="Hide workspace, teamwork, and branch controls below the composer after a thread starts."
             resetAction={
-              settings.persistComposerContextStrip !==
-              DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip ? (
+              settings.hideComposerContextStrip !==
+              DEFAULT_UNIFIED_SETTINGS.hideComposerContextStrip ? (
                 <SettingResetButton
                   label="composer context"
                   onClick={() =>
                     updateSettings({
-                      persistComposerContextStrip:
-                        DEFAULT_UNIFIED_SETTINGS.persistComposerContextStrip,
+                      hideComposerContextStrip: DEFAULT_UNIFIED_SETTINGS.hideComposerContextStrip,
                     })
                   }
                 />
@@ -544,11 +543,11 @@ export function AppearanceSettingsPanel() {
             }
             control={
               <Switch
-                checked={settings.persistComposerContextStrip}
+                checked={settings.hideComposerContextStrip}
                 onCheckedChange={(checked) =>
-                  updateSettings({ persistComposerContextStrip: Boolean(checked) })
+                  updateSettings({ hideComposerContextStrip: Boolean(checked) })
                 }
-                aria-label="Keep composer context visible in active threads"
+                aria-label="Hide composer context in active threads"
               />
             }
           />

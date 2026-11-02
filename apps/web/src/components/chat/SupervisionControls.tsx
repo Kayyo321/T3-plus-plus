@@ -174,7 +174,7 @@ export function SupervisionDetailsRow({
               : SUPERVISION_MODE_INFO[shown].description}
         </TooltipPopup>
       </Tooltip>
-      {source === "thread" ? (
+      {source === "thread" && shown !== settings.supervisionMode ? (
         <Tooltip>
           <TooltipTrigger
             render={

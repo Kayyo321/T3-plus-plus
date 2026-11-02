@@ -3,7 +3,14 @@ import {
   scopedThreadKey,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
-import { EnvironmentId, RunId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  RIGHT_PANEL_KINDS,
+  type RightPanelKind,
+  RunId,
+  ThreadId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -14,24 +21,7 @@ import { resolveStorage } from "./lib/storage";
 import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
 
-const RIGHT_PANEL_KINDS = [
-  "diff",
-  "files",
-  "file",
-  "preview",
-  "device",
-  "terminal",
-  "pull-request",
-  "pull-requests",
-  "side-chat",
-  "git-graph",
-  "documents",
-  "teamwork",
-  "team-sheet",
-  "document",
-  "computer-use",
-] as const;
-export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
+export type { RightPanelKind };
 
 export type PullRequestDetailTab = "summary" | "guide" | "timeline" | "code";
 

@@ -14,7 +14,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import * as Redacted from "effect/Redacted";
-import { KeyRoundIcon, PlusIcon, Trash2Icon, Undo2Icon } from "lucide-react";
+import { KeyRoundIcon, PlusIcon, Trash2Icon, Undo2Icon, XIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { useEnvironmentSettings } from "../../hooks/useSettings";
@@ -50,6 +50,7 @@ import { toastManager } from "../ui/toast";
 import { searchableSetting } from "./settingsSearch";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { WorkspaceFolderPicker } from "./WorkspaceFolderPicker";
 
 const lines = (text: string) =>
   text
@@ -92,7 +93,8 @@ function WorkspaceDialog(props: {
   const { workspace } = props;
   const upsert = useAtomCommand(serverEnvironment.upsertWorkspace, { label: "workspace save" });
   const [name, setName] = useState(workspace?.name ?? "");
-  const [folders, setFolders] = useState((workspace?.folders ?? []).join("\n"));
+  const [folders, setFolders] = useState<ReadonlyArray<string>>(workspace?.folders ?? []);
+  const [picking, setPicking] = useState(false);
   const [workingRoot, setWorkingRoot] = useState(workspace?.workingRoot ?? "");
   const [runtimeMode, setRuntimeMode] = useState<RuntimeMode | typeof NO_CEILING>(
     workspace?.settings.runtimeMode ?? NO_CEILING,
@@ -102,8 +104,7 @@ function WorkspaceDialog(props: {
   );
   const [mcpServers, setMcpServers] = useState(formatMcpServers(workspace?.settings.mcpServers));
   const [saving, setSaving] = useState(false);
-  const folderList = lines(folders);
-  const root = workingRoot.trim() || folderList[0] || "";
+  const root = folders.includes(workingRoot) ? workingRoot : (folders[0] ?? "");
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -115,7 +116,7 @@ function WorkspaceDialog(props: {
       input: {
         ...(workspace === null ? {} : { id: workspace.id }),
         name: name.trim() as Workspace["name"],
-        folders: folderList,
+        folders,
         workingRoot: root,
         settings: {
           ...workspace?.settings,
@@ -133,7 +134,7 @@ function WorkspaceDialog(props: {
   return (
     <Dialog open={props.open} onOpenChange={(open) => !open && props.onClose()}>
       <DialogPopup>
-        <form onSubmit={(event) => void save(event)}>
+        <form className="flex min-h-0 flex-col" onSubmit={(event) => void save(event)}>
           <DialogHeader>
             <DialogTitle>{workspace === null ? "New workspace" : "Edit workspace"}</DialogTitle>
             <DialogDescription>
@@ -146,23 +147,71 @@ function WorkspaceDialog(props: {
                 Name
                 <Input value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
-              <label className="flex flex-col gap-1 text-sm">
-                Folders, one absolute path per line
-                <Textarea
-                  value={folders}
-                  onChange={(event) => setFolders(event.target.value)}
-                  rows={3}
-                  required
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                Working root, where processes start
-                <Input
+              <div className="flex flex-col gap-1 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  Folders
+                  <Button
+                    type="button"
+                    size="icon-xs"
+                    variant="outline"
+                    aria-label="Add a folder"
+                    aria-expanded={picking}
+                    onClick={() => setPicking((open) => !open)}
+                  >
+                    <PlusIcon aria-hidden />
+                  </Button>
+                </div>
+                {folders.length === 0 && !picking ? (
+                  <p className="text-xs text-muted-foreground">No folders yet.</p>
+                ) : null}
+                {folders.map((folder) => (
+                  <div
+                    key={folder}
+                    className="flex min-w-0 items-center gap-1 rounded-md bg-muted/50 py-0.5 pr-0.5 pl-2"
+                  >
+                    <span className="min-w-0 flex-1 font-mono text-xs break-all">{folder}</span>
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant="ghost"
+                      aria-label={`Remove ${folder}`}
+                      onClick={() =>
+                        setFolders((current) => current.filter((entry) => entry !== folder))
+                      }
+                    >
+                      <XIcon aria-hidden />
+                    </Button>
+                  </div>
+                ))}
+                {picking ? (
+                  <WorkspaceFolderPicker
+                    environmentId={props.environmentId}
+                    added={folders}
+                    onAdd={(folder) => setFolders((current) => [...current, folder])}
+                  />
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-1 text-sm">
+                Default folder, where processes start
+                <Select
                   value={root}
-                  onChange={(event) => setWorkingRoot(event.target.value)}
-                  placeholder="The first folder"
-                />
-              </label>
+                  disabled={folders.length === 0}
+                  onValueChange={(value) => setWorkingRoot(value ?? "")}
+                >
+                  <SelectTrigger aria-label="Default folder">
+                    <SelectValue>
+                      {(value: string) => (value === "" ? "Add a folder first" : value)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {folders.map((folder) => (
+                      <SelectItem key={folder} value={folder}>
+                        {folder}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </div>
               <div className="flex flex-col gap-1 text-sm">
                 Most a conversation here may do
                 <Select
