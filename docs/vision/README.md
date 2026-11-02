@@ -26,7 +26,7 @@ set says **conversation** in places where the codebase says **thread**; they are
 | [Orchestrator](./orchestrator.md)                                         | A concurrent side-conversation with an agent that operates the editor and supervises stuck work |
 | [Remote control](./remote-control.md)                                     | A per-conversation switch that shares a live view through a link, with real auth                |
 | [Sessions and agents](./sessions-and-agents.md)                           | Nested sessions vs sub-agents, background tasks, fork and rewind                                |
-| [Teamwork](./teamwork.md)                                                 | A skill that runs work like a real team, with roles and review phases                           |
+| [Teamwork](./teamwork.md)                                                 | A flow-chart sheet of a Project Lead and build, review, and validate teams                      |
 | [Layouts, workspaces, and folders](./layouts-workspaces-and-folders.md)   | Saved layouts, split view, IDE mode, secret-holding workspaces, folders                         |
 | [Git and source control](./git-and-source-control.md)                     | A full, animated commit graph with commit, rollback, merge, and PR actions                      |
 | [Chat mode, scheduling, computer use](./modes-scheduling-computer-use.md) | Chat-only conversations, scheduled and repeating tasks, desktop control                         |
@@ -50,7 +50,7 @@ client; gaps are named in the row. Mobile and desktop were not run for this tabl
 | Background service              | Exists  | `t3 service` ([background service](../user/background-service.md)). Distinct from background _tasks_ inside a conversation.                                                    |
 | Terminal                        | Exists  | [Terminal](../user/terminal.md). Basis for IDE mode.                                                                                                                           |
 | Nested sessions                 | Partial | Services, MCP, and sidebar rows exist; not exercised in a real client.                                                                                                         |
-| Teamwork                        | Partial | Board, gates, budgets, web panel, and mobile board exist; members start by hand; real multi-provider run untested; mobile not run.                                             |
+| Teamwork                        | Partial | Being rebuilt as flow-chart sheets, durable rosters, and a run board; not yet exercised end to end; mobile not run.                                                            |
 | Split view                      | Partial | Implemented; layout controls seen, split not exercised in a real client.                                                                                                       |
 | Saved layouts                   | Partial | Implemented; settings page exists, not exercised end to end.                                                                                                                   |
 | Conversation folders            | Partial | Implemented with nested rows; not exercised end to end.                                                                                                                        |
