@@ -12,6 +12,7 @@ import type {
   TeamWorkKind,
   TeamWorkNode,
 } from "@t3tools/contracts";
+import type { RefObject } from "react";
 
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import { getAppModelOptionsForInstance, type AppModelOption } from "../../modelSelection";
@@ -195,10 +196,14 @@ function TeamConnections(props: {
   );
 }
 
-export function TeamSheetInspector(props: {
+export function TeamSheetInspector({
+  nameInputRef,
+  ...props
+}: {
   readonly environmentId: EnvironmentId;
   readonly sheet: Pick<TeamSheet, "nodes" | "edges">;
   readonly node: TeamSheetNode;
+  readonly nameInputRef: RefObject<HTMLInputElement | null>;
   readonly onChange: (change: TeamSheetChange) => void;
 }) {
   const { node } = props;
@@ -211,6 +216,7 @@ export function TeamSheetInspector(props: {
         Name
         <Input
           key={`${node.id}:${node.name}`}
+          ref={nameInputRef}
           size="sm"
           defaultValue={node.name}
           maxLength={80}

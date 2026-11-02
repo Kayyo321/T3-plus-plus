@@ -16,6 +16,7 @@ function LeadInspector(props: { readonly onChange: (change: TeamSheetChange) => 
       environmentId={EnvironmentId.make("environment")}
       sheet={DEFAULT_TEAM_SHEET}
       node={{ ...lead, growth }}
+      nameInputRef={{ current: null }}
       onChange={(change) => {
         props.onChange(change);
         if (change.type === "update_node" && change.growth) setGrowth(change.growth);

@@ -155,6 +155,7 @@ shortcut; assign one in **Settings → Keybindings**.
 the open thread. `thread.newNestedSession` (`mod+alt+j`) starts a
 [nested session](./nested-sessions.md), and `thread.runInBackground` (`mod+alt+u`) starts a
 [background task](./background-tasks.md).
+`teamSheet.recenter` (`mod+alt+h`) brings the open [team sheet](./teamwork.md) back to where it started.
 `computerUse.stop` (`mod+alt+shift+s` by default) ends computer use in the focused
 conversation, even while a terminal or the built-in browser has focus.
 `computerUse.showSteps` opens its step log and has no default shortcut.

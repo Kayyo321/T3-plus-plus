@@ -7,13 +7,16 @@ import {
   type TeamNodePosition,
   type TeamSheet,
   type TeamSheetChange,
+  type TeamSheetEdge,
   type TeamSheetId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { randomUUID } from "~/lib/utils";
 
+import { readLocalApi } from "../../localApi";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
@@ -31,8 +34,9 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { openTeamSheetEditor } from "./openTeamSheetEditor";
-import { TeamSheetCanvas } from "./TeamSheetCanvas";
+import { TeamSheetCanvas, type TeamMenuPoint } from "./TeamSheetCanvas";
 import { TeamSheetInspector } from "./TeamSheetInspector";
+import { teamNodeMenu } from "./teamSheetMenu";
 import {
   addTeamSheetChange,
   newestTeamSheet,
@@ -72,7 +76,8 @@ function TeamSheetBody(props: {
   );
   const closeSurface = useRightPanelStore((state) => state.closeSurface);
   const [edits, setEdits] = useState(NO_TEAM_SHEET_EDITS);
-  const [selectedId, setSelectedId] = useState<TeamNodeId | null>(null);
+  const [selectedIds, setSelectedIds] = useState<ReadonlyArray<TeamNodeId>>([]);
+  const nameInput = useRef<HTMLInputElement>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const saving = useRef(false);
 
@@ -80,7 +85,8 @@ function TeamSheetBody(props: {
   const draft = teamSheetDraft(server, edits);
   const problem = teamSheetEditProblem(server, edits);
   const toSend = teamSheetChangesToSend(server, edits);
-  const selected = draft.nodes.find((node) => node.id === selectedId) ?? draft.nodes[0] ?? null;
+  const liveSelection = draft.nodes.filter((node) => selectedIds.includes(node.id));
+  const selected = liveSelection.length > 1 ? null : (liveSelection[0] ?? draft.nodes[0] ?? null);
 
   const { onSaved, onStale } = props;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- saving talks to the server, and a re-read as well as an edit can make pending changes sendable.
@@ -111,10 +117,11 @@ function TeamSheetBody(props: {
   const change = (next: TeamSheetChange) =>
     setEdits((current) => addTeamSheetChange(current, next));
 
-  const move = (nodeId: TeamNodeId, position: TeamNodePosition) =>
-    change({ type: "update_node", nodeId, position });
+  const move = (moved: ReadonlyMap<TeamNodeId, TeamNodePosition>) => {
+    for (const [nodeId, position] of moved) change({ type: "update_node", nodeId, position });
+  };
 
-  const addTeam = () => {
+  const addTeam = (position?: TeamNodePosition) => {
     const id = TeamNodeId.make(randomUUID());
     const lowest = Math.max(...draft.nodes.map((node) => node.position.y));
     change({
@@ -124,11 +131,40 @@ function TeamSheetBody(props: {
         kind: "build",
         name: newTeamName(draft),
         instructions: "",
-        position: { x: 40, y: lowest + CARD_ROW },
+        position: position ?? { x: 40, y: lowest + CARD_ROW },
         modelChoice: { type: "lead" },
       },
     });
-    setSelectedId(id);
+    setSelectedIds([id]);
+  };
+
+  const openNodeMenu = async (nodeId: TeamNodeId, point: TeamMenuPoint) => {
+    const { items, actions } = teamNodeMenu(draft, nodeId);
+    const picked = await readLocalApi()?.contextMenu.show(items, point);
+    const action = picked ? actions.get(picked) : undefined;
+    if (action === undefined) return;
+    if (action.type !== "rename") {
+      change(action);
+      return;
+    }
+    flushSync(() => setSelectedIds([nodeId]));
+    nameInput.current?.select();
+  };
+
+  const openCanvasMenu = async (position: TeamNodePosition, point: TeamMenuPoint) => {
+    const picked = await readLocalApi()?.contextMenu.show(
+      [{ id: "create", label: "Create team" }],
+      point,
+    );
+    if (picked === "create") addTeam(position);
+  };
+
+  const openEdgeMenu = async (edge: TeamSheetEdge, point: TeamMenuPoint) => {
+    const picked = await readLocalApi()?.contextMenu.show(
+      [{ id: "delete", label: "Delete connection", destructive: true }],
+      point,
+    );
+    if (picked === "delete") change({ type: "disconnect", edge });
   };
 
   const duplicateSheet = async () => {
@@ -175,7 +211,7 @@ function TeamSheetBody(props: {
               />
               Run agents as nested sessions
             </label>
-            <Button size="xs" variant="outline" onClick={addTeam}>
+            <Button size="xs" variant="outline" onClick={() => addTeam()}>
               Add team
             </Button>
           </>
@@ -225,28 +261,31 @@ function TeamSheetBody(props: {
         <TeamSheetCanvas
           key={readOnly ? "read-only" : "editable"}
           sheet={draft}
-          selectedNodeId={selected?.id ?? null}
+          selectedNodeIds={selected === null ? liveSelection.map((node) => node.id) : [selected.id]}
           readOnly={readOnly}
-          onSelect={setSelectedId}
+          onSelect={(nodeId) => setSelectedIds([nodeId])}
+          onSelectMany={setSelectedIds}
           onMove={move}
+          onNodeMenu={(nodeId, point) => void openNodeMenu(nodeId, point)}
+          onCanvasMenu={(position, point) => void openCanvasMenu(position, point)}
+          onEdgeMenu={(edge, point) => void openEdgeMenu(edge, point)}
         />
-        {selected === null ? null : (
-          <div className="min-h-0 flex-1 overflow-y-auto border-t border-border @2xl:w-80 @2xl:flex-none @2xl:border-t-0 @2xl:border-s">
-            {readOnly ? (
-              <div className="flex flex-col gap-1 p-3 text-xs">
-                <h3 className="font-medium">{selected.name}</h3>
-                <p className="whitespace-pre-wrap text-muted-foreground">{selected.instructions}</p>
-              </div>
-            ) : (
-              <TeamSheetInspector
-                environmentId={environmentId}
-                sheet={draft}
-                node={selected}
-                onChange={change}
-              />
-            )}
-          </div>
-        )}
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-border @2xl:w-80 @2xl:flex-none @2xl:border-t-0 @2xl:border-s">
+          {selected === null ? null : readOnly ? (
+            <div className="flex flex-col gap-1 p-3 text-xs">
+              <h3 className="font-medium">{selected.name}</h3>
+              <p className="whitespace-pre-wrap text-muted-foreground">{selected.instructions}</p>
+            </div>
+          ) : (
+            <TeamSheetInspector
+              environmentId={environmentId}
+              sheet={draft}
+              node={selected}
+              nameInputRef={nameInput}
+              onChange={change}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

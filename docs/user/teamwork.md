@@ -19,8 +19,9 @@ goes to the lead, not to the team working at that moment.
 is read-only, so use **Duplicate** on it to make changes. You can edit, rename, or delete any other sheet
 from the picker's **Edit** action or the command palette.
 
-In the editor you add, remove, and rename teams, edit their role instructions, and connect them. The
-editor refuses a sheet the run could not execute, with a plain message: no lead, more than one lead, a team
+In the editor you add, remove, and rename teams, edit their role instructions, and connect them. Right-click
+a team, a connection, or an empty spot on the chart for the same actions. Drag across empty space to select several teams and move them together. Hold the middle mouse button to pan the chart, and
+use **Recenter** or `mod+alt+h` to bring it back. The editor refuses a sheet the run could not execute, with a plain message: no lead, more than one lead, a team
 the lead cannot reach, or no way to finish. Changes save as you go, and a problem stays on screen until
 you fix it or discard it.
 

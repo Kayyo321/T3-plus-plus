@@ -85,6 +85,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "pullRequest.copyNumber",
   "diff.toggle",
   "gitGraph.toggle",
+  "teamSheet.recenter",
   "preview.toggle",
   "preview.refresh",
   "preview.focusUrl",
