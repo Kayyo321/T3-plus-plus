@@ -53,6 +53,8 @@ import * as ServerSettings from "../../serverSettings.ts";
 import * as McpHttpServer from "../McpHttpServer.ts";
 import * as McpInvocationContext from "../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../McpToolAccess.testkit.ts";
+import * as OrchestratorAgent from "../../orchestratorAgent/OrchestratorAgent.ts";
+import * as SupervisionMonitor from "../../orchestratorAgent/SupervisionMonitor.ts";
 import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import { dispatchFailure } from "../threadAccess.ts";
 import * as EnvironmentHandlers from "./environment/handlers.ts";
@@ -296,6 +298,63 @@ it.effect("returns an HTML render reference that Codex and Claude tool rows both
     ),
   ),
 );
+
+it.effect("lets only the orchestrator delete a thread, never its own", () => {
+  const dispatched: Array<unknown> = [];
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const target = ThreadId.make("mcp-core-target");
+    const del = (
+      id: ThreadId,
+      capabilities: McpInvocationContext.McpInvocationScope["capabilities"],
+    ) =>
+      server.callTool({ name: "t3_thread_delete", arguments: { threadId: id } }).pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, {
+          ...scope,
+          capabilities,
+        }),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    const editor = new Set(["orchestration", "editor"] as const);
+    expect(declaredFailure(yield* del(target, scope.capabilities))).toMatchObject({
+      code: "capability_denied",
+    });
+    expect(declaredFailure(yield* del(threadId, editor))).toMatchObject({
+      code: "invalid_request",
+    });
+    expect(dispatched).toEqual([]);
+    expect((yield* del(target, editor)).isError).not.toBe(true);
+    expect(dispatched).toMatchObject([{ type: "thread.delete", threadId: target }]);
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerEditorToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: (id) => Effect.succeed(McpToolAccessTestkit.liveThreadShell(id)),
+            getProjectThreadRecords: ({ threadId: id }) =>
+              Effect.succeed(
+                McpToolAccessTestkit.idleThreadProjection(McpToolAccessTestkit.liveThreadShell(id)),
+              ),
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatched.push(command);
+                return { sequence: 1 } as never;
+              }),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(OrchestratorAgent.OrchestratorAgent)({
+            governTool: (_name, _params, run) => run,
+          }),
+        ),
+        Layer.provide(Layer.mock(SupervisionMonitor.SupervisionMonitor)({})),
+        Layer.provide(Layer.mock(AnalyticsService.AnalyticsService)({ record: () => Effect.void })),
+      ),
+    ),
+  );
+});
 
 it.effect("records only failed calls of tools that hand off no work", () => {
   // Recording runs detached from the tool response, so the first event is awaited.

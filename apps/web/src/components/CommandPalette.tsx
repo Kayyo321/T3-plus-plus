@@ -53,6 +53,7 @@ import {
   SourceControlProviderKind,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   resolveEnvironmentMachineKind,
+  resolveThreadSupervisionMode,
 } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
@@ -122,6 +123,7 @@ import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
 import { projectEnvironment } from "../state/projects";
 import { useEnvironmentQuery } from "../state/query";
+import { appAtomRegistry } from "../rpc/atomRegistry";
 import { serverEnvironment } from "../state/server";
 import { threadEnvironment } from "../state/threads";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
@@ -1372,7 +1374,16 @@ function OpenCommandPaletteDialog(props: {
     : null;
   if (activeThread) {
     for (const entry of [
-      { mode: "on", title: "Supervise this conversation", terms: ["watch", "stuck", "loop"] },
+      {
+        mode: "modest",
+        title: "Supervise this conversation",
+        terms: ["watch", "stuck", "loop", "modest"],
+      },
+      {
+        mode: "aggressive",
+        title: "Supervise this conversation aggressively",
+        terms: ["watch", "stuck", "loop", "aggressive", "hands-on"],
+      },
       { mode: "off", title: "Let this conversation run", terms: ["unwatch", "stop supervising"] },
     ] as const) {
       actionItems.push({
@@ -1383,6 +1394,21 @@ function OpenCommandPaletteDialog(props: {
         searchTitle: entry.title,
         icon: <EyeIcon className={ITEM_ICON_CLASS} />,
         run: async () => {
+          const settings = appAtomRegistry.get(
+            serverEnvironment.settingsValueAtom(activeThread.environmentId),
+          );
+          if (
+            settings != null &&
+            resolveThreadSupervisionMode(settings, activeThread.projectId, null).source ===
+              "project"
+          ) {
+            toastManager.add({
+              type: "info",
+              title: "Managed by project",
+              description: "Change this conversation's supervision in the project's settings.",
+            });
+            return;
+          }
           await setThreadSupervision({
             environmentId: activeThread.environmentId,
             input: { threadId: activeThread.id, mode: entry.mode },

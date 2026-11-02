@@ -31,7 +31,7 @@ import {
   OrchestratorUiDirective,
   SupervisionGetThreadInput,
   SupervisionSetThreadInput,
-  SupervisionThreadState,
+  SupervisionResolvedThreadState,
 } from "./orchestratorAgent.ts";
 import {
   GitGraphActInput,
@@ -2169,7 +2169,7 @@ const WsOrchestratorAgentMarkReadRpc = Rpc.make(WS_METHODS.orchestratorAgentMark
 
 const WsSupervisionGetThreadRpc = Rpc.make(WS_METHODS.supervisionGetThread, {
   payload: SupervisionGetThreadInput,
-  success: SupervisionThreadState,
+  success: SupervisionResolvedThreadState,
   error: EnvironmentAuthorizationError,
 });
 

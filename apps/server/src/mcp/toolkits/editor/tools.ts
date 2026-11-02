@@ -1,15 +1,20 @@
 import {
+  ORCHESTRATOR_SILENT_REPLY,
+  OrchestrationV2DispatchCommandResult,
   OrchestratorMcpFailure,
   OrchestratorReactionEmoji,
   OrchestratorUiDirective,
-  SupervisionThreadMode,
+  SupervisionMode,
+  SupervisionModeSource,
   SupervisionThreadState,
   ThreadId,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
+import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as OrchestratorAgent from "../../../orchestratorAgent/OrchestratorAgent.ts";
 import * as SupervisionMonitor from "../../../orchestratorAgent/SupervisionMonitor.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -34,18 +39,20 @@ const EditorUiTool = Tool.make("editor_ui", {
 
 const OrchestratorReactTool = Tool.make("orchestrator_react", {
   ...shared,
-  description:
-    "React to the owner's latest message with one emoji, as a quick acknowledgement instead of a message. The same emoji again removes it; a different one replaces yours.",
+  description: `React to the owner's latest message with one emoji. When their message needs no answer, such as thanks, this is your whole response: call it, then reply exactly ${ORCHESTRATOR_SILENT_REPLY}. The same emoji again removes it; a different one replaces yours.`,
   parameters: Schema.Struct({ emoji: OrchestratorReactionEmoji }),
   success: Schema.Struct({ emoji: OrchestratorReactionEmoji, reacted: Schema.Boolean }),
 });
 
 const SupervisionStatusTool = Tool.make("supervision_status", {
   ...shared,
-  description: "List the conversations under supervision, with their review counts.",
+  description:
+    "List the conversations under supervision, with their effective mode and review counts.",
   parameters: Tool.EmptyParams,
   success: Schema.Struct({
-    threads: Schema.Array(Schema.Struct({ threadId: ThreadId, state: SupervisionThreadState })),
+    threads: Schema.Array(
+      Schema.Struct({ threadId: ThreadId, mode: SupervisionMode, state: SupervisionThreadState }),
+    ),
   }),
 });
 
@@ -67,10 +74,25 @@ const SupervisionDecideTool = Tool.make("supervision_decide", {
 const SupervisionWatchTool = Tool.make("supervision_watch", {
   ...shared,
   description:
-    "Turn supervision on or off for a conversation. Off means let it run. Use it only when the owner asks.",
-  parameters: Schema.Struct({ threadId: ThreadId, mode: SupervisionThreadMode }),
-  success: Schema.Struct({ mode: SupervisionThreadMode }),
+    "Set a conversation's supervision: off (let it run), modest, or aggressive, or null to follow the default. A project's setting wins over this; the result says which mode applies and why. Use it only when the owner asks.",
+  parameters: Schema.Struct({ threadId: ThreadId, mode: Schema.NullOr(SupervisionMode) }),
+  success: Schema.Struct({ mode: SupervisionMode, source: SupervisionModeSource }),
 });
+
+const ThreadDeleteTool = Tool.make("t3_thread_delete", {
+  ...shared,
+  description:
+    "Delete a conversation and its side chats for good, stopping anything it is running. Its files and worktree stay on disk. This cannot be undone, so archive with t3_thread_organize unless the owner asked to delete. You cannot delete your own conversation.",
+  parameters: Schema.Struct({ threadId: ThreadId }),
+  success: OrchestrationV2DispatchCommandResult,
+  dependencies: [
+    ...shared.dependencies,
+    ThreadManagementService.ThreadManagementService,
+    Crypto.Crypto,
+  ],
+})
+  .annotate(Tool.Title, "Delete a thread")
+  .annotate(Tool.Destructive, true);
 
 export const EditorToolkit = Toolkit.make(
   EditorUiTool,
@@ -78,4 +100,5 @@ export const EditorToolkit = Toolkit.make(
   SupervisionStatusTool,
   SupervisionDecideTool,
   SupervisionWatchTool,
+  ThreadDeleteTool,
 );

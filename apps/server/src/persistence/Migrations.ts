@@ -6,6 +6,7 @@ import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 import Migration0086 from "./Migrations/086_Teamwork.ts";
 import Migration0087 from "./Migrations/087_ConversationFolderCapabilityMode.ts";
 import Migration0088 from "./Migrations/088_RemoteControlDeviceAccess.ts";
+import Migration0089 from "./Migrations/089_SupervisionModes.ts";
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
 import Migration0002 from "./Migrations/002_OrchestrationCommandReceipts.ts";
 import Migration0003 from "./Migrations/003_CheckpointDiffBlobs.ts";
@@ -180,6 +181,7 @@ const migrationEntries = [
   [86, "Teamwork", Migration0086],
   [87, "ConversationFolderCapabilityMode", Migration0087],
   [88, "RemoteControlDeviceAccess", Migration0088],
+  [89, "SupervisionModes", Migration0089],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

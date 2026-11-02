@@ -4,22 +4,29 @@ import {
   type OrchestrationV2ThreadShell,
   type OrchestrationV2TurnItem,
   RunId,
+  supervisionThresholdsFor,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import {
-  computeSignals,
-  ownerIsPresent,
-  trailingRepeats,
-  supervisionEnabled,
-} from "./supervisionSignals.ts";
+import { computeSignals, ownerIsPresent, trailingRepeats } from "./supervisionSignals.ts";
 
-it("supervises unattended work by default and honors explicit let-it-run choices", () => {
-  assert.equal(supervisionEnabled(undefined, true), true);
-  assert.equal(supervisionEnabled(undefined, false), false);
-  assert.equal(supervisionEnabled({ mode: "off" }, true), false);
-  assert.equal(supervisionEnabled({ mode: "on" }, false), true);
-  assert.equal(supervisionEnabled({ mode: "on", automatic: true }, false), false);
+it.each([
+  ["off", DEFAULT_SUPERVISION_THRESHOLDS],
+  ["modest", DEFAULT_SUPERVISION_THRESHOLDS],
+  [
+    "aggressive",
+    {
+      maxRunMinutes: 15,
+      silenceMinutes: 5,
+      repeatedActionLimit: 3,
+      retryLimit: 2,
+      waitingMinutes: 10,
+      nudgeCap: 6,
+      cooldownMinutes: 4,
+    },
+  ],
+] as const)("scales the owner's thresholds for %s", (mode, expected) => {
+  assert.deepStrictEqual(supervisionThresholdsFor(mode, DEFAULT_SUPERVISION_THRESHOLDS), expected);
 });
 
 const runId = RunId.make("run-1");

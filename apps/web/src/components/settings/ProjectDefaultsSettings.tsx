@@ -1,6 +1,9 @@
 import {
   DEFAULT_SERVER_SETTINGS,
+  DEFAULT_SUPERVISION_MODE,
   type ModelSelection,
+  SUPERVISION_MODE_INFO,
+  SUPERVISION_MODES,
   type WorktreeSubmodules,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -104,6 +107,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
   const PermissionIcon = runtimeModeConfig[settings.defaultRuntimeMode].icon;
   const mixedWorkspace = useScopedSettingsMixed(["defaultThreadEnvMode"]);
   const mixedAutoPull = useScopedSettingsMixed(["defaultAutoPull"]);
+  const mixedSupervision = useScopedSettingsMixed(["supervisionMode"]);
   const mixedAgentCredits = useScopedSettingsMixed(["removeAgentCreditsOnMerge"]);
   const mixedMergeMethod = useScopedSettingsMixed(["pullRequestMergeMethod"]);
   const modelSource = useScopedSettingSource(["defaultModelSelection"]);
@@ -322,6 +326,53 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
     />
   ) : null;
 
+  const supervisionRow = (
+    <SettingsRow
+      serverScoped
+      settingKeys={["supervisionMode"]}
+      mixed={mixedSupervision}
+      {...searchableSetting("supervision-mode")}
+      description={
+        isProjectScope
+          ? "How closely the orchestrator watches this project's threads. Setting it here replaces each thread's own choice."
+          : "How closely the orchestrator watches threads. Projects and threads can override it."
+      }
+      resetAction={
+        !isProjectScope && settings.supervisionMode !== DEFAULT_SUPERVISION_MODE ? (
+          <SettingResetButton
+            label="supervision"
+            onClick={() => updateSettings({ supervisionMode: DEFAULT_SUPERVISION_MODE })}
+          />
+        ) : null
+      }
+      control={
+        <Select
+          value={settings.supervisionMode}
+          onValueChange={(value) => {
+            if (value) updateSettings({ supervisionMode: value });
+          }}
+          items={SUPERVISION_MODES.map((mode) => ({
+            value: mode,
+            label: SUPERVISION_MODE_INFO[mode].label,
+          }))}
+        >
+          <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Supervision">
+            <SelectValue>
+              {mixedSupervision ? "Mixed" : SUPERVISION_MODE_INFO[settings.supervisionMode].label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {SUPERVISION_MODES.map((mode) => (
+              <SelectItem key={mode} value={mode}>
+                {SUPERVISION_MODE_INFO[mode].label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+      }
+    />
+  );
+
   return (
     <SettingsSection
       id={category === "source-control" ? "source-control-defaults" : "project-defaults"}
@@ -332,11 +383,13 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
           {modelRow}
           {fallbackRow}
           {workspaceRow}
+          {supervisionRow}
         </>
       ) : category === "general" ? (
         <>
           {modelRow}
           {fallbackRow}
+          {supervisionRow}
           <SettingsRow
             serverScoped
             settingKeys={["defaultRuntimeMode"]}

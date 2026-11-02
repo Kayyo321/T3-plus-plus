@@ -65,6 +65,7 @@ import { IconButton } from "../../components/ui/IconButton";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
+import { ThreadSupervisionRow, type ThreadSupervisionTarget } from "./ThreadSupervisionRow";
 import { useReduceMotionEnabled } from "../../lib/appState";
 import {
   buildModelOptions,
@@ -283,6 +284,8 @@ type ThreadSettingsSessionProps = {
   readonly onUpdateOptionSelections: (selections: ReadonlyArray<ProviderOptionSelection>) => void;
   readonly runtimeMode: RuntimeMode;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
+  /** Absent for a thread that does not exist yet. */
+  readonly supervision?: ThreadSupervisionTarget;
 };
 
 /** The composer draft the sheet edits: the thread's own, or a queued message being edited. */
@@ -306,6 +309,7 @@ type ThreadSettingsSessionValue = {
   readonly runtimeMode: RuntimeMode;
   readonly runtimeModeChoices: ReturnType<typeof runtimeModeChoicesForSupportedModes>;
   readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
+  readonly supervision: ThreadSupervisionTarget | null;
   readonly displayedDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   readonly promptTraits: ReturnType<typeof getPromptControlledTraits>;
   readonly displayedModelSelection: ModelSelection | null;
@@ -614,6 +618,7 @@ function ThreadSettingsSessionProvider(
     runtimeMode: compatibleRuntimeMode,
     runtimeModeChoices,
     onUpdateRuntimeMode: props.onUpdateRuntimeMode,
+    supervision: props.supervision ?? null,
     displayedDescriptors,
     promptTraits,
     displayedModelSelection: pendingModel?.selection ?? props.selectedModel,
@@ -902,6 +907,10 @@ function ThreadSettingsOptionsItem(props: {
           />
         </Animated.View>
       </Animated.View>
+
+      {session.environmentId !== null && session.supervision !== null ? (
+        <ThreadSupervisionRow environmentId={session.environmentId} target={session.supervision} />
+      ) : null}
 
       <Text className="px-5 pb-2 pt-7 text-sm font-t3-medium text-foreground-muted">Catalog</Text>
       <View className="mx-4 overflow-hidden rounded-2xl bg-grouped-card">
@@ -1566,6 +1575,15 @@ export function ExistingThreadSettingsRouteScreen({
       }}
       runtimeMode={draftSettings.runtimeMode ?? selectedThread.runtimeMode}
       onUpdateRuntimeMode={(runtimeMode) => updateComposerDraftSettings(threadKey, { runtimeMode })}
+      {...(serverConfig === null
+        ? {}
+        : {
+            supervision: {
+              threadId: selectedThread.id,
+              projectId: selectedThread.projectId,
+              settings: serverConfig.settings,
+            },
+          })}
       onClose={() => navigation.goBack()}
     />
   );

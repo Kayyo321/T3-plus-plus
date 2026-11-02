@@ -3,16 +3,11 @@ import type {
   OrchestrationV2TurnItem,
   SupervisionSignalKind,
   SupervisionThresholds,
-  SupervisionThreadState,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 const MINUTE_MS = 60_000;
 
-export const supervisionEnabled = (
-  state: Pick<SupervisionThreadState, "mode" | "automatic"> | undefined,
-  unattended: boolean,
-): boolean => (state === undefined || state.automatic === true ? unattended : state.mode === "on");
 /** The owner opened this thread this recently, so they are watching it themselves. */
 const OWNER_PRESENT_MS = 2 * MINUTE_MS;
 

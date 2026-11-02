@@ -28,6 +28,7 @@ import {
   type ServerProvider,
   type ScheduledTaskId,
   RunId,
+  type SupervisionMode,
   SupervisionThresholds,
   ThreadId,
 } from "@t3tools/contracts";
@@ -168,6 +169,10 @@ export class OrchestratorAgent extends Context.Service<
     readonly directives: Stream.Stream<OrchestratorUiDirective>;
     /** Reported by supervision, which owns the count. */
     readonly setWatching: (count: number) => Effect.Effect<void>;
+    /** Reported by supervision, which owns each thread's choice. */
+    readonly setSupervisionThreadModes: (
+      modes: Readonly<Record<string, SupervisionMode>>,
+    ) => Effect.Effect<void>;
   }
 >()("t3pp/orchestratorAgent/OrchestratorAgent") {}
 
@@ -195,6 +200,8 @@ const make = Effect.gen(function* () {
   );
   const pending = new Map<OrchestratorApprovalId, PendingApproval>();
   const watching = yield* Ref.make(0);
+  const supervisionThreadModes = yield* Ref.make<Readonly<Record<string, SupervisionMode>>>({});
+  const supervisionReviewing = yield* Ref.make<ThreadId | null>(null);
   const pushedLatestReplyAt = yield* Ref.make<string | null>(null);
   // The last real reply's time, kept through silent replies so one cannot clear an unread reply.
   const lastRealReplyAt = yield* Ref.make<string | null>(null);
@@ -294,6 +301,8 @@ const make = Effect.gen(function* () {
       reactions: current.reactions ?? {},
       ownerReadAt: current.ownerReadAt ?? null,
       latestMessageAt,
+      supervisionThreadModes: yield* Ref.get(supervisionThreadModes),
+      supervisionReviewing: yield* Ref.get(supervisionReviewing),
     } satisfies OrchestratorSnapshot;
   }).pipe(Effect.withSpan("OrchestratorAgent.snapshot"));
 
@@ -618,15 +627,17 @@ const make = Effect.gen(function* () {
 
   // A run settling pushes the reply at once. The tick keeps the same check as a backstop.
   yield* threads.streamDomainEvents.pipe(
-    Stream.filter(
-      (event) =>
-        event.type === "run.updated" &&
-        ThreadManagementService.isTerminalRunStatus(event.payload.status),
-    ),
+    Stream.filter((event) => event.type === "run.updated"),
     Stream.runForEach((event) =>
       Effect.gen(function* () {
         const { threadId } = yield* Ref.get(state);
-        if (event.threadId === threadId) yield* pushLatestReply;
+        if (event.threadId !== threadId) return;
+        if (ThreadManagementService.isTerminalRunStatus(event.payload.status)) {
+          yield* pushLatestReply;
+        }
+        const review = yield* supervisionReview.pipe(Effect.orElseSucceed(() => null));
+        const reviewing = review?.threadId ?? null;
+        if ((yield* Ref.getAndSet(supervisionReviewing, reviewing)) !== reviewing) yield* notify;
       }).pipe(
         Effect.catchCause((cause) => Effect.logWarning("Could not push the latest reply", cause)),
       ),
@@ -895,6 +906,13 @@ const make = Effect.gen(function* () {
     if (previous !== count) yield* notify;
   });
 
+  const setSupervisionThreadModes = Effect.fn("OrchestratorAgent.setSupervisionThreadModes")(
+    function* (modes: Readonly<Record<string, SupervisionMode>>) {
+      yield* Ref.set(supervisionThreadModes, modes);
+      yield* notify;
+    },
+  );
+
   return OrchestratorAgent.of({
     snapshot,
     changes,
@@ -916,6 +934,7 @@ const make = Effect.gen(function* () {
     directive,
     directives,
     setWatching,
+    setSupervisionThreadModes,
   });
 });
 

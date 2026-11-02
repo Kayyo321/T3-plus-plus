@@ -1167,7 +1167,7 @@ const layerEnvironmentToolkit = toolkitRegistration(
   EnvironmentHandlers.layer,
 ).pipe(Layer.provide(ThreadCommandExecutor.layer));
 
-const layerEditorToolkit = toolkitRegistration(EditorToolkit, EditorHandlers.layer);
+export const layerEditorToolkit = toolkitRegistration(EditorToolkit, EditorHandlers.layer);
 
 export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, ProjectHandlers.layer);
 

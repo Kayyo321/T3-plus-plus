@@ -191,6 +191,23 @@ export const DEFAULT_SUPERVISION_THRESHOLDS: SupervisionThresholds = {
   cooldownMinutes: 10,
 };
 
+/** Tighter thresholds and more nudges, scaled from the owner's own, plus a more hands-on review. */
+export const supervisionThresholdsFor = (
+  mode: SupervisionMode,
+  base: SupervisionThresholds,
+): SupervisionThresholds =>
+  mode !== "aggressive"
+    ? base
+    : {
+        maxRunMinutes: Math.ceil(base.maxRunMinutes / 3),
+        silenceMinutes: Math.ceil(base.silenceMinutes / 2),
+        repeatedActionLimit: Math.max(2, base.repeatedActionLimit - 1),
+        retryLimit: Math.max(1, base.retryLimit - 1),
+        waitingMinutes: Math.ceil(base.waitingMinutes / 3),
+        nudgeCap: base.nudgeCap * 2,
+        cooldownMinutes: Math.ceil(base.cooldownMinutes / 3),
+      };
+
 export const SupervisionSignalKind = Schema.Literals([
   "long_running",
   "silent",
@@ -202,13 +219,37 @@ export const SupervisionSignalKind = Schema.Literals([
 ]);
 export type SupervisionSignalKind = typeof SupervisionSignalKind.Type;
 
-/** Off means "let it run". Interactive threads start off, unattended work starts on. */
-export const SupervisionThreadMode = Schema.Literals(["on", "off"]);
-export type SupervisionThreadMode = typeof SupervisionThreadMode.Type;
+/** Off means "let it run". */
+export const SupervisionMode = Schema.Literals(["off", "modest", "aggressive"]);
+export type SupervisionMode = typeof SupervisionMode.Type;
+
+export const SUPERVISION_MODES = SupervisionMode.literals;
+export const DEFAULT_SUPERVISION_MODE: SupervisionMode = "modest";
+
+export const SUPERVISION_MODE_INFO: Record<
+  SupervisionMode,
+  { readonly label: string; readonly description: string }
+> = {
+  off: { label: "Off", description: "No automatic reviews." },
+  modest: { label: "Modest", description: "Steps in when a conversation looks stuck." },
+  aggressive: {
+    label: "Aggressive",
+    description: "Reviews sooner and steps in more often. Uses more of the orchestrator's model.",
+  },
+};
+
+/** Where a thread's effective mode came from: project, then thread, then the global default. */
+export const SupervisionModeSource = Schema.Literals(["project", "thread", "default"]);
+export type SupervisionModeSource = typeof SupervisionModeSource.Type;
+
+export interface ResolvedSupervisionMode {
+  readonly mode: SupervisionMode;
+  readonly source: SupervisionModeSource;
+}
 
 export const SupervisionThreadState = Schema.Struct({
-  mode: SupervisionThreadMode,
-  automatic: Schema.optional(Schema.Boolean),
+  /** The thread's own choice. Null follows its project and the global default. */
+  mode: Schema.NullOr(SupervisionMode),
   reviews: NonNegativeInt,
   nudges: Schema.optional(NonNegativeInt),
   lastNudgeAt: Schema.optional(Schema.NullOr(IsoDateTime)),
@@ -223,9 +264,17 @@ export type SupervisionThreadState = typeof SupervisionThreadState.Type;
 
 export const SupervisionSetThreadInput = Schema.Struct({
   threadId: ThreadId,
-  mode: SupervisionThreadMode,
+  /** Null clears the thread's choice. */
+  mode: Schema.NullOr(SupervisionMode),
 });
 export type SupervisionSetThreadInput = typeof SupervisionSetThreadInput.Type;
+
+export const SupervisionResolvedThreadState = Schema.Struct({
+  ...SupervisionThreadState.fields,
+  effectiveMode: SupervisionMode,
+  modeSource: SupervisionModeSource,
+});
+export type SupervisionResolvedThreadState = typeof SupervisionResolvedThreadState.Type;
 
 export const SupervisionGetThreadInput = Schema.Struct({ threadId: ThreadId });
 export type SupervisionGetThreadInput = typeof SupervisionGetThreadInput.Type;
@@ -279,6 +328,10 @@ export const OrchestratorSnapshot = Schema.Struct({
   ownerReadAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   /** The ISO time of the orchestrator's latest reply; null while it is silent or absent. */
   latestMessageAt: Schema.optional(Schema.NullOr(IsoDateTime)),
+  /** Each thread's own choice, so every client sees a change at once. */
+  supervisionThreadModes: Schema.optional(Schema.Record(Schema.String, SupervisionMode)),
+  /** The thread a review turn is working on right now. */
+  supervisionReviewing: Schema.optional(Schema.NullOr(ThreadId)),
 });
 export type OrchestratorSnapshot = typeof OrchestratorSnapshot.Type;
 

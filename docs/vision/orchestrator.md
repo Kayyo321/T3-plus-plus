@@ -124,8 +124,8 @@ something legitimate, stuck, or looping.
 
 **Guardrails**
 
-- **Opt-in per conversation, and on by default only for unattended work** (scheduled tasks,
-  background tasks, teamwork runs). Interactive conversations are watched only if you turn it on.
+- **Modest by default, and set per conversation, per project, or globally.** That covers interactive
+  conversations as well as scheduled tasks, background tasks, and teamwork runs.
 - **Bounded intervention.** A cap on nudges per run, and a cooldown between them, so the orchestrator
   and the agent cannot loop with each other. After the cap it escalates to you.
 - **Visible and attributed.** Every message it sends into a conversation is labeled as coming from the

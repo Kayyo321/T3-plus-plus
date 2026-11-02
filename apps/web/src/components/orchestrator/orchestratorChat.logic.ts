@@ -1,3 +1,4 @@
+import { splitOrchestratorMessage } from "@t3tools/client-runtime/state/orchestratorMessages";
 import type { OrchestrationV2ProjectedTurnItem, RunId } from "@t3tools/contracts";
 import {
   resolveT3McpSummaryAction,
@@ -72,6 +73,26 @@ const toolLabel = (toolName: string | null, input: unknown, active: boolean) => 
   return `${active ? running : action} ${detail}`;
 };
 
+const isReaction = (item: TurnItem) =>
+  item.type === "dynamic_tool" &&
+  resolveT3McpSummaryAction(item.toolName, item.input) === "message-react";
+
+const reactionEmoji = (item: TurnItem) => {
+  if (item.type !== "dynamic_tool" || typeof item.input !== "object" || item.input === null) {
+    return undefined;
+  }
+  const { emoji } = item.input as { readonly emoji?: unknown };
+  return typeof emoji === "string" ? emoji : undefined;
+};
+
+/** A reply that only repeats the run's reaction says nothing the reaction did not. */
+const isReactionEcho = (item: TurnItem, list: ReadonlyArray<TurnItem>) =>
+  item.type === "assistant_message" &&
+  list.some(
+    (other) =>
+      other.runId === item.runId && isReaction(other) && reactionEmoji(other) === item.text.trim(),
+  );
+
 const localDay = (at: DateTime.Utc) => new Date(DateTime.toEpochMillis(at)).toDateString();
 
 /**
@@ -91,6 +112,19 @@ export const orchestratorFeed = (
   }
   const lastOwnerItem = list.findLast(
     (item): item is UserMessageItem => item.type === "user_message" && isOwnerMessage(item),
+  );
+
+  // A run that only reacted leaves the reaction and nothing else, so its call stays out of view.
+  const runsWithReply = new Set<RunId | null>(
+    list
+      .filter(
+        (item) =>
+          item.type === "assistant_message" &&
+          !isActive(item) &&
+          splitOrchestratorMessage(item.text).length > 0 &&
+          !isReactionEcho(item, list),
+      )
+      .map((item) => item.runId),
   );
 
   const rows: Array<OrchestratorFeedRow> = [];
@@ -128,6 +162,7 @@ export const orchestratorFeed = (
         return;
       }
       case "assistant_message":
+        if (isReactionEcho(item, list)) return;
         openDay(at);
         rows.push({
           kind: "orchestrator",
@@ -141,6 +176,7 @@ export const orchestratorFeed = (
         return;
       case "dynamic_tool": {
         if (item.runId !== null && systemRuns.has(item.runId)) return;
+        if (isReaction(item) && !runsWithReply.has(item.runId)) return;
         const running = isActive(item);
         const call: OrchestratorToolCall = {
           id: item.id,

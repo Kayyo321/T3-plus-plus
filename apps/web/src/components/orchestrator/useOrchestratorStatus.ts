@@ -42,11 +42,15 @@ export function useOrchestratorStatus(environmentId: EnvironmentId): Orchestrato
   if (snapshot.supervision.status === "paused") {
     return { label: "Supervision paused", motion: "still", needsYou: false, unread };
   }
+  if (snapshot.supervisionReviewing != null) {
+    return { label: "Reviewing a thread", motion: "working", needsYou: false, unread };
+  }
+  // Every running thread counts as watched by default, so watching alone must not repaint.
   const watching = snapshot.supervision.watching;
   if (watching > 0) {
     return {
       label: watching === 1 ? "Watching 1 thread" : `Watching ${watching} threads`,
-      motion: "working",
+      motion: "idle",
       needsYou: false,
       unread,
     };
