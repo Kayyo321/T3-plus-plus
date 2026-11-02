@@ -1,8 +1,9 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { Outlet, createFileRoute, redirect, useMatches } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { OrchestratorDock } from "../components/orchestrator/OrchestratorDock";
+import { useComposerDraftStore } from "../composerDraftStore";
 import { SaveLayoutDialogHost } from "../components/layouts/SaveLayoutDialog";
 import { ThreadRouteView } from "../components/ThreadRouteView";
 import { isAppModalPage } from "../components/sidebar/mainAppLocation";
@@ -32,6 +33,15 @@ function ChatRouteLayout() {
     setBackgroundTarget(threadTarget);
   }
   const shownTarget = modalOpen ? backgroundTarget : threadTarget;
+  const shownDraft = useComposerDraftStore((store) =>
+    shownTarget?.kind === "draft" ? store.getDraftSession(shownTarget.draftId) : null,
+  );
+  const dockThreadRef =
+    shownTarget?.kind === "server"
+      ? shownTarget.threadRef
+      : shownDraft
+        ? scopeThreadRef(shownDraft.environmentId, shownDraft.threadId)
+        : null;
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (
@@ -45,7 +55,7 @@ function ChatRouteLayout() {
         <Outlet />
       )}
       {modalOpen ? <Outlet /> : null}
-      <OrchestratorDock threadRef={shownTarget?.kind === "server" ? shownTarget.threadRef : null} />
+      <OrchestratorDock threadRef={dockThreadRef} />
       <SaveLayoutDialogHost />
     </>
   );

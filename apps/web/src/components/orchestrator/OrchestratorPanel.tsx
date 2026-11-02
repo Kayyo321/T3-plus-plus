@@ -621,7 +621,13 @@ export default function OrchestratorPanel(props: {
         <OrchestratorComposer
           draft={draft}
           disabled={availability.status !== "available"}
-          placeholder={blocked ? "Unavailable" : "Message the orchestrator"}
+          placeholder={
+            blocked
+              ? "Unavailable"
+              : props.focus?.teamSheetId !== undefined
+                ? "Describe the teamwork sheet of your dreams"
+                : "Message the orchestrator"
+          }
           canSend={canSend}
           onDraft={setDraft}
           onSubmit={() => void submit()}

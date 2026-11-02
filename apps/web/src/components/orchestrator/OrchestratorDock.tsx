@@ -81,14 +81,15 @@ export function OrchestratorDock(props: { readonly threadRef: ScopedThreadRef | 
     return surface?.kind === "team-sheet" ? surface.sheetId : undefined;
   });
   if (environmentId === null) return null;
+  const sheetFocus = teamSheetId === undefined ? undefined : { teamSheetId };
   const focus =
     shell === null
-      ? undefined
+      ? sheetFocus
       : {
           threadId: shell.id,
           projectId: shell.projectId,
           ...(shell.branch === null ? {} : { branch: shell.branch }),
-          ...(teamSheetId === undefined ? {} : { teamSheetId }),
+          ...sheetFocus,
         };
   return (
     <>
