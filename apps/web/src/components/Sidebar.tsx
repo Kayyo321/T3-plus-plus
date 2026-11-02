@@ -3487,6 +3487,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                               activeThreadKey={
                                 routeThreadRef === null ? null : scopedThreadKey(routeThreadRef)
                               }
+                              onOpenThreadMenu={handleThreadContextMenu}
                             />
                           </Fragment>
                         );
