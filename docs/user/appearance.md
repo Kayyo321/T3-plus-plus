@@ -7,8 +7,8 @@ device or browser.
 
 T3++ opens in **Void**. Void, Nova, Luna, Orbit, Nebula, Sol, Eclipse, Astral, and Aether each bring
 their own animated ASCII background to the new thread screen, and the T3++ mark takes on the theme.
-Choosing one switches to the appearance on its card; change the mode afterward to see its other
-variant. Classic and custom themes share one background that follows their colors. The background
+In **Settings → Appearance**, click a theme to use it, or click its light or dark circle to use that
+appearance. Classic and custom themes share one background that follows their colors. The background
 pauses when the window loses focus, and it stands still if your system asks for reduced motion or
 your browser has no WebGL2.
 

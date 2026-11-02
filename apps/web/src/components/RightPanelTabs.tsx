@@ -1407,6 +1407,12 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}
+        // Embedded groups sit under the window's fixed controls, which start inside its edge.
+        style={
+          props.reserveTitlebarControls && !ownsDesktopTitleBar
+            ? { paddingRight: "calc(var(--workspace-controls-right) + 9rem)" }
+            : undefined
+        }
         data-right-panel-tabbar
       >
         <ScrollArea

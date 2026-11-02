@@ -47,48 +47,11 @@ import { useThemeEditorStore } from "./themeEditorStore";
 import {
   STANDARD_THEME_CARDS,
   getThemeCardDefinition,
-  previewColorsOf,
   ThemePreviewCircles,
   ThemePreviewCircle,
   type ThemeCardDefinition,
   type ThemeMode,
 } from "./ThemePreviewCircles";
-import { ThemeWireframe } from "./ThemeWireframe";
-
-function CosmicThemeCard({
-  theme,
-  active,
-  onSelect,
-}: {
-  theme: ThemeDefinition;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      className={cn(
-        "flex cursor-pointer flex-col gap-3.5 rounded-xl p-3.5 text-left outline-none transition-transform duration-150 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring motion-reduce:transition-none",
-        active ? "ring-2 ring-inset ring-ring" : "ring-1 ring-inset ring-border",
-      )}
-      style={{ backgroundColor: theme.colors.canvas, color: theme.colors.accent }}
-      onClick={onSelect}
-    >
-      <span className="text-sm font-medium">{theme.label}</span>
-      <span aria-hidden className="flex flex-col gap-2">
-        <span className="flex gap-1">
-          <span className="h-1 w-3/5 rounded-full bg-current" />
-          <span className="h-1 w-1/4 rounded-full bg-current" />
-        </span>
-        <span className="flex gap-1">
-          <span className="h-1 w-3/10 rounded-full bg-current" />
-          <span className="h-1 w-1/2 rounded-full bg-current" />
-        </span>
-      </span>
-    </button>
-  );
-}
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   T3_CHAT_THEME,
@@ -660,83 +623,17 @@ export function ThemeLibrary({
   const activeThemeForAppearance =
     getThemeDefinition((initialAppearance === "light" ? lightOwner : darkOwner) ?? "") ?? null;
 
-  const cardDefById = (id: string | null): ThemeCardDefinition => {
-    if (id === null) return STANDARD_THEME_CARDS[0]!;
-    const definition = getThemeDefinition(id);
-    return definition ? getThemeCardDefinition(definition) : STANDARD_THEME_CARDS[0]!;
-  };
-
-  const pickColors = (id: string | null, appearance: ThemeAppearance) => {
-    const card = cardDefById(id);
-    return previewColorsOf(card, appearance) ?? card.previews[0]!.colors;
-  };
-
-  const setMode = (mode: ThemeMode) => {
+  // A circle picks its theme and the appearance it shows, so one circle is ringed at a time.
+  const handlePairPick = (cardId: string | null) => (mode: ThemeMode) => {
+    if (mode === "system") return;
+    const definition = cardId === null ? undefined : getThemeDefinition(cardId);
+    if (definition && singleAppearanceOf(definition) !== null) assignHalf(mode, cardId);
+    else if (!persistTheme(cardId ?? mode)) return;
     if (!setAppearanceMode(mode)) notifyThemeSaveFailure();
   };
 
-  const handlePairPick = (cardId: string | null) => (mode: ThemeMode) => {
-    if (mode === "system") return;
-    assignHalf(mode, cardId);
-  };
-
-  const pickedModesFor = (cardId: string | null): ThemeMode[] => {
-    const rings: ThemeMode[] = [];
-    if (lightOwner === cardId) rings.push("light");
-    if (darkOwner === cardId) rings.push("dark");
-    return rings;
-  };
-
-  const wireframeColors = (appearance: ThemeAppearance) =>
-    pickColors(appearance === "light" ? lightOwner : darkOwner, appearance);
-
-  const renderWireframe = (mode: ThemeMode) => (
-    <ThemeWireframe
-      className="h-[8.75rem]"
-      panes={
-        mode === "system"
-          ? [
-              { clip: "left", colors: wireframeColors("light") },
-              { clip: "right", colors: wireframeColors("dark") },
-            ]
-          : [{ colors: wireframeColors(mode === "dark" ? "dark" : "light") }]
-      }
-    />
-  );
-
-  const renderModeTiles = () => (
-    <div aria-label="Appearance mode" className="grid w-full grid-cols-3 gap-3" role="group">
-      {(["system", "light", "dark"] as const).map((mode) => {
-        const isActive = appearanceMode === mode;
-        return (
-          <button
-            aria-label={mode === "system" ? "Follow the system appearance" : `Use ${mode} mode`}
-            aria-pressed={isActive}
-            className={cn(
-              // The accent ring marks the picked tile; focus is a neutral ring set inside it with a gap.
-              "flex cursor-pointer flex-col items-stretch gap-1.5 rounded-xl border p-2 outline-none transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-7 focus-visible:outline-foreground/60",
-              isActive
-                ? "border-transparent bg-accent/30 ring-2 ring-inset ring-ring"
-                : "border-border/70 bg-card/60 hover:bg-accent/10",
-            )}
-            key={mode}
-            onClick={() => setMode(mode)}
-            type="button"
-          >
-            {renderWireframe(mode)}
-            <span
-              className={cn(
-                "flex items-center justify-center text-xs font-medium",
-                isActive ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {mode === "system" ? "System" : mode === "light" ? "Light" : "Dark"}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
+  const pickedModesFor = (cardId: string | null): ThemeMode[] =>
+    (initialAppearance === "light" ? lightOwner : darkOwner) === cardId ? [initialAppearance] : [];
 
   const customThemeCollections = [
     ...customThemes
@@ -758,25 +655,7 @@ export function ThemeLibrary({
         className="grid w-full gap-2"
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 16rem), 1fr))" }}
       >
-        {STANDARD_THEME_CARDS.map((standardTheme) => (
-          <ThemeLibraryCard
-            activeModes={pickedModesFor(null)}
-            isActive={false}
-            key={standardTheme.id}
-            onDuplicate={() =>
-              openThemeEditor({
-                editingThemeId: null,
-                seedThemeId: null,
-                seedName: `${standardTheme.label} copy`,
-                initialAppearance,
-              })
-            }
-            onUse={() => persistTheme(appearanceMode === "system" ? "system" : appearanceMode)}
-            onUseMode={handlePairPick(null)}
-            theme={standardTheme}
-          />
-        ))}
-        {MAINTAINER_THEMES.map((maintainerTheme) => {
+        {[...COSMIC_THEMES, ...MAINTAINER_THEMES].map((maintainerTheme) => {
           const card = getThemeCardDefinition(maintainerTheme);
           return (
             <ThemeLibraryCard
@@ -797,6 +676,24 @@ export function ThemeLibrary({
             />
           );
         })}
+        {STANDARD_THEME_CARDS.map((standardTheme) => (
+          <ThemeLibraryCard
+            activeModes={pickedModesFor(null)}
+            isActive={false}
+            key={standardTheme.id}
+            onDuplicate={() =>
+              openThemeEditor({
+                editingThemeId: null,
+                seedThemeId: null,
+                seedName: `${standardTheme.label} copy`,
+                initialAppearance,
+              })
+            }
+            onUse={() => persistTheme(appearanceMode === "system" ? "system" : appearanceMode)}
+            onUseMode={handlePairPick(null)}
+            theme={standardTheme}
+          />
+        ))}
         {environmentThemes
           .filter(
             // Saved themes win id resolution; show only their card to avoid duplicate keys.
@@ -863,11 +760,7 @@ export function ThemeLibrary({
 
   return (
     <div className="space-y-3">
-      <h3 className="flex min-h-7 items-center px-3 text-base font-semibold text-foreground sm:px-4">
-        {searchableSetting("color-scheme").title}
-      </h3>
-      {renderModeTiles()}
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-3 px-3 pt-5 sm:px-4">
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-3 px-3 sm:px-4">
         <h3 className="text-base font-semibold text-foreground">
           {searchableSetting("theme").title}
         </h3>
@@ -892,16 +785,6 @@ export function ThemeLibrary({
             Add theme
           </Button>
         </div>
-      </div>
-      <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
-        {COSMIC_THEMES.map((cosmicTheme) => (
-          <CosmicThemeCard
-            key={cosmicTheme.id}
-            theme={cosmicTheme}
-            active={baseCardId === cosmicTheme.id && themeHalves === null}
-            onSelect={() => persistTheme(cosmicTheme.id)}
-          />
-        ))}
       </div>
       {renderPairGrid()}
       <ThemeImportDialog

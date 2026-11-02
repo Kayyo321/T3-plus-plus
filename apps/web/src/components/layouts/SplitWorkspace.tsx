@@ -163,7 +163,18 @@ function SplitPaneFrame(props: {
       ) : null}
       {/* Layout containment makes this the containing block for ChatView's fixed titlebar
           controls, so each pane keeps its own instead of stacking them at the window corner. */}
-      <div className={cn("relative flex min-h-0 min-w-0 flex-1", split && "[contain:layout]")}>
+      {/* The strip above already clears the native window controls, so what sits below it only
+          keeps the gutter; the window's right edge also leaves room for the orchestrator dock. */}
+      <div
+        className={cn(
+          "relative flex min-h-0 min-w-0 flex-1",
+          split &&
+            "[--workspace-native-controls-inset:0.75rem] [--workspace-controls-right:calc(env(safe-area-inset-right)+0.75rem)] [contain:layout]",
+          split &&
+            atWindowEdge &&
+            "[--workspace-controls-right:calc(env(safe-area-inset-right)+0.75rem+var(--orchestrator-dock-width,0px))]",
+        )}
+      >
         <LinkedTimelineContext value={split && linked ? linkedTimelineFor(focused) : null}>
           {view}
         </LinkedTimelineContext>
@@ -204,7 +215,7 @@ function SplitPaneStrip(props: {
     <div
       data-split-pane-strip
       className={cn(
-        "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-1 pl-2 text-xs",
+        "flex h-7 shrink-0 items-center gap-1 border-b border-border pr-1 pl-2 text-xs wco:h-(--workspace-topbar-height)",
         focused ? "bg-accent text-foreground" : "text-muted-foreground",
         atWindowEdge && "wco:pr-(--workspace-native-controls-inset)",
       )}
