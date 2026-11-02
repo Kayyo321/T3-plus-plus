@@ -305,12 +305,16 @@ export function syncBrowserChromeTheme() {
   }
 }
 
-/** The page cross-fades while the landing shader morphs; both finish together. */
+/**
+ * The page cross-fades while the landing shader morphs; both finish together. A Settings modal
+ * skips the fade: the snapshot layers the page behind it over the modal for a few frames.
+ */
 function morphTheme(apply: () => void) {
   const root = document.documentElement;
   if (
     typeof document.startViewTransition !== "function" ||
     document.visibilityState !== "visible" ||
+    document.querySelector("[data-app-modal]") !== null ||
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   ) {
     apply();

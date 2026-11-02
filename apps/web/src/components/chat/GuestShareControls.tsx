@@ -181,7 +181,7 @@ export function GuestShareIndicator({ threadRef }: { readonly threadRef: ScopedT
     label: "stop guest share",
   });
   const [closing, setClosing] = useState(false);
-  // Remote control's queue uses the same slot and has its own header control.
+  // Remote control's queue uses the same slot and has its own switch in the details panel.
   if (share === null || isRemoteControlShare(share)) return null;
   return (
     <div className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">

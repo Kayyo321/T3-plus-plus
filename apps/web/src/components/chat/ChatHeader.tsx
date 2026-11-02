@@ -44,7 +44,6 @@ import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
 import { ComputerUseHeaderControl } from "../computerUse/ComputerUseHeaderControl";
 import { GuestShareIndicator } from "./GuestShareControls";
-import { RemoteControlButton } from "./RemoteControlControls";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -443,7 +442,6 @@ export const ChatHeader = memo(function ChatHeader({
         />
       ) : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      {isServerThread ? <RemoteControlButton threadRef={activeThreadRef} /> : null}
       {isServerThread ? <ComputerUseHeaderControl threadRef={activeThreadRef} /> : null}
     </div>
   );

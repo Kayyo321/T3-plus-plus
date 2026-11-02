@@ -19,7 +19,7 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { CheckIcon, CopyIcon, MousePointer2Icon, RadioTowerIcon } from "lucide-react";
+import { CheckIcon, CopyIcon, MousePointer2Icon } from "lucide-react";
 import { Atom } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
@@ -103,30 +103,6 @@ function useRemoteControlSwitches(environmentId: EnvironmentId) {
 function useRemoteControlSwitch(threadRef: ScopedThreadRef): RemoteControlSwitch | null {
   const switches = useRemoteControlSwitches(threadRef.environmentId);
   return switches?.find((candidate) => candidate.threadId === threadRef.threadId) ?? null;
-}
-
-/** The header's switch: opens the sheet, and shows at a glance whether anyone is connected. */
-export function RemoteControlButton({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
-  const remote = useRemoteControlSwitch(threadRef);
-  const connected = remote?.devices.filter((device) => device.connected) ?? [];
-  const label =
-    remote === null
-      ? "Remote control"
-      : connected.length > 0
-        ? `Remote control: ${connected.map((device) => device.label).join(", ")} connected`
-        : "Remote control is on";
-  return (
-    <Button
-      size={connected.length > 0 ? "xs" : "icon-xs"}
-      variant={remote === null ? "ghost-muted" : "outline"}
-      aria-label={label}
-      title={label}
-      onClick={() => openRemoteControlSheet(threadRef)}
-    >
-      <RadioTowerIcon />
-      {connected.length > 0 ? <span>{connected.length}</span> : null}
-    </Button>
-  );
 }
 
 /**

@@ -43,6 +43,13 @@ describe("applyUiDirective", () => {
     ).toBe(false);
   });
 
+  it("swaps Pair's second pane out when another layout is applied", () => {
+    applyUiDirective({ type: "layout.apply", layout: "pair", threadRef });
+    expect(useSplitViewStore.getState().panes).toHaveLength(2);
+    applyUiDirective({ type: "layout.apply", layout: "debug", threadRef });
+    expect(useSplitViewStore.getState().panes).toEqual([]);
+  });
+
   it("asks ChatView for the tabs that need a session", () => {
     applyUiDirective({ type: "layout.apply", layout: "ide", threadRef });
     expect(panel().arrangement?.pendingOpens).toEqual(["terminal"]);

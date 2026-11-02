@@ -10,8 +10,8 @@ machine. A remote device reaches one conversation and nothing else.
 ## Turn it on
 
 1. Open the conversation's thread details panel and switch on **Remote Control**. The switch needs a
-   conversation that has started. The header button and the command palette's **Remote control**
-   (`Ctrl+Alt+R`, `Cmd+Option+R` on a Mac) also work.
+   conversation that has started. The command palette's **Remote control** (`Ctrl+Alt+R`,
+   `Cmd+Option+R` on a Mac) also works.
 2. Turning it on uses Chat access and **Approve on this device** pairing, and opens the sheet with the
    link. Change access or pairing in that sheet.
 3. Scan the QR code on the other device, or send it the link.

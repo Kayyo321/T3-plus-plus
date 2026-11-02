@@ -67,8 +67,17 @@ const focusedPane = (): SplitPane | undefined => {
   return panes.find((pane) => pane.id === focusedPaneId);
 };
 
-/** Applies a layout to a conversation. Nothing it already shows is reloaded. */
-export function applyLayout(threadRef: ScopedThreadRef, layout: LayoutDocument): void {
+const SINGLE_PANE = { count: 1, sizes: [1], linked: false } as const;
+
+/**
+ * Applies a layout to a conversation. Nothing it already shows is reloaded. A layout without panes
+ * is a single pane, so switching to it closes any split, unless `keepSplit` asks to leave it be.
+ */
+export function applyLayout(
+  threadRef: ScopedThreadRef,
+  layout: LayoutDocument,
+  { keepSplit = false }: { readonly keepSplit?: boolean } = {},
+): void {
   const panels = useRightPanelStore.getState();
   const revision =
     (selectThreadRightPanelState(panels.byThreadKey, threadRef).arrangement?.revision ?? 0) + 1;
@@ -80,7 +89,7 @@ export function applyLayout(threadRef: ScopedThreadRef, layout: LayoutDocument):
   );
   panels.setThreadPanelOpen(threadRef, "inline", layout.settings.threadDetails);
   useTerminalUiStateStore.getState().setTerminalOpen(threadRef, layout.settings.terminalDrawer);
-  const { panes } = layout;
+  const panes = layout.panes ?? (keepSplit ? null : SINGLE_PANE);
   if (panes !== null) {
     updateSplitView((state) =>
       applyPaneSpec(state, { ...panes, routeTarget: readRouteTarget(), nextPaneId: randomUUID }),
@@ -94,7 +103,7 @@ export function applyDefaultLayout(threadRef: ScopedThreadRef, projectId: Projec
   if (layout.id === DEFAULT_BUILT_IN_LAYOUT_ID) return;
   // A new conversation may open in a split; a one-pane default must not close it.
   const panes = (layout.panes?.count ?? 1) > 1 ? layout.panes : null;
-  applyLayout(threadRef, { ...layout, panes });
+  applyLayout(threadRef, { ...layout, panes }, { keepSplit: true });
 }
 
 export function resetLayout(threadRef: ScopedThreadRef, projectId: ProjectId | null): void {
