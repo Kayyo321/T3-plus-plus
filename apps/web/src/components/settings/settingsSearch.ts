@@ -343,6 +343,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["wide full width column layout messages composer monitor"],
   },
   {
+    id: "new-thread-layout",
+    title: "New thread layout",
+    to: "/settings/appearance",
+    searchTerms: ["composer input position centered bottom empty draft hero orchestrator"],
+  },
+  {
     id: "thread-details-items",
     title: "Thread details",
     to: "/settings/appearance",

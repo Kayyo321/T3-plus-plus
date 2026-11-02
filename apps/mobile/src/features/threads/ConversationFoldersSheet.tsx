@@ -4,7 +4,6 @@ import {
   type ConversationFolderRow,
   conversationFolderChoices,
   emptyConversationFolderState,
-  UNFILED_FOLDER_KEY,
 } from "@t3tools/client-runtime/state/conversationFolders";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { StackActions } from "@react-navigation/native";
@@ -44,15 +43,12 @@ const BROWSE_MODES: ReadonlyArray<{ readonly mode: ThreadCapabilityMode; readonl
     { mode: "chat", label: "Chat" },
     { mode: "code", label: "Code" },
   ];
-// Each mode's Unfiled section collapses on its own, so the shared key is scoped by mode.
-const unfiledCollapseKey = (mode: ThreadCapabilityMode) => `${mode}:${UNFILED_FOLDER_KEY}`;
 
 type BrowseItem =
   | { readonly kind: "header"; readonly key: string; readonly label: string }
   | {
       readonly kind: "row";
       readonly key: string;
-      readonly mode: ThreadCapabilityMode;
       readonly row: ConversationFolderRow<EnvironmentThreadShell>;
     };
 
@@ -111,13 +107,13 @@ function MoveToFolderSheet(props: { readonly thread: EnvironmentThreadShell }) {
     readonly path: string;
   }> = [
     ...conversationFolderChoices(state, thread.capabilityMode ?? "code"),
-    { id: null, path: "Unfiled" },
+    { id: null, path: "No folder" },
   ];
   return (
     <SheetFrame title="Move to folder" onClose={closeFoldersSheet}>
       <FlatList
         data={choices}
-        keyExtractor={(choice) => choice.id ?? "unfiled"}
+        keyExtractor={(choice) => choice.id ?? "none"}
         renderItem={({ item }) => (
           <Pressable
             accessibilityRole="button"
@@ -170,17 +166,14 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
       state,
       capabilityMode: mode,
       threads,
-      isCollapsed: (key) =>
-        collapsed.includes(key === UNFILED_FOLDER_KEY ? unfiledCollapseKey(mode) : key),
+      isCollapsed: (key) => collapsed.includes(key),
       nowMs,
     });
-    const first = rows[0];
-    const isEmpty = rows.length === 1 && first?.kind === "unfiled" && first.count === 0;
-    return { mode, label, rows, isEmpty };
-  }).filter((section) => !section.isEmpty);
+    return { mode, label, rows };
+  }).filter((section) => section.rows.length > 0);
   const items: ReadonlyArray<BrowseItem> = sections.flatMap(({ mode, label, rows }) => [
     { kind: "header" as const, key: `header:${mode}`, label },
-    ...rows.map((row) => ({ kind: "row" as const, key: `${mode}/${row.key}`, mode, row })),
+    ...rows.map((row) => ({ kind: "row" as const, key: `${mode}/${row.key}`, row })),
   ]);
   const open = (thread: EnvironmentThreadShell) => {
     closeFoldersSheet();
@@ -193,10 +186,7 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
       );
     }
   };
-  const renderRow = (
-    row: ConversationFolderRow<EnvironmentThreadShell>,
-    mode: ThreadCapabilityMode,
-  ) => {
+  const renderRow = (row: ConversationFolderRow<EnvironmentThreadShell>) => {
     if (row.kind === "thread") {
       return (
         <Pressable
@@ -212,14 +202,13 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
         </Pressable>
       );
     }
-    const isFolder = row.kind === "folder";
-    const key = isFolder ? row.folder.id : unfiledCollapseKey(mode);
+    const key = row.folder.id;
     return (
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: !collapsed.includes(key) }}
         className={ROW_CLASS}
-        style={{ paddingLeft: 20 + (isFolder ? row.depth : 0) * 16 }}
+        style={{ paddingLeft: 20 + row.depth * 16 }}
         onPress={() => toggle(key)}
       >
         <SymbolView
@@ -229,7 +218,7 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
         />
         <SymbolView name="folder" size={16} tintColorClassName="accent-icon-muted" />
         <Text numberOfLines={1} className="flex-1 text-base font-medium text-foreground">
-          {isFolder ? row.folder.name : "Unfiled"}
+          {row.folder.name}
         </Text>
         <Text className="text-sm text-foreground-muted">{row.count}</Text>
       </Pressable>
@@ -248,7 +237,7 @@ function BrowseFoldersSheet(props: { readonly environmentId: EnvironmentId }) {
               {item.label}
             </Text>
           ) : (
-            renderRow(item.row, item.mode)
+            renderRow(item.row)
           )
         }
       />

@@ -330,6 +330,9 @@ export type InterfaceDensity = typeof InterfaceDensity.Type;
 export const ChatWidth = Schema.Literals(["comfortable", "wide", "full"]);
 export type ChatWidth = typeof ChatWidth.Type;
 
+export const NewThreadLayout = Schema.Literals(["centered", "bottom"]);
+export type NewThreadLayout = typeof NewThreadLayout.Type;
+
 /** How the composer shows reasoning effort: the level's name, or rising bars. */
 export const EffortDisplay = Schema.Literals(["label", "bars"]);
 export type EffortDisplay = typeof EffortDisplay.Type;
@@ -360,6 +363,9 @@ export const ClientSettingsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed("red-green" as const)),
   ),
   chatWidth: ChatWidth.pipe(Schema.withDecodingDefault(Effect.succeed("comfortable" as const))),
+  newThreadLayout: NewThreadLayout.pipe(
+    Schema.withDecodingDefault(Effect.succeed("centered" as const)),
+  ),
   interfaceDensity: InterfaceDensity.pipe(
     Schema.withDecodingDefault(Effect.succeed("comfortable" as const)),
   ),
@@ -1737,6 +1743,7 @@ export const ClientSettingsPatch = Schema.Struct({
   inAppNotificationsEnabled: Schema.optionalKey(Schema.Boolean),
   diffColorScheme: Schema.optionalKey(DiffColorScheme),
   chatWidth: Schema.optionalKey(ChatWidth),
+  newThreadLayout: Schema.optionalKey(NewThreadLayout),
   interfaceDensity: Schema.optionalKey(InterfaceDensity),
   effortDisplay: Schema.optionalKey(EffortDisplay),
   loadBalancingEnabled: Schema.optionalKey(Schema.Boolean),

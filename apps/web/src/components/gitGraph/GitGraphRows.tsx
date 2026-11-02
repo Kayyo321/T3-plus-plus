@@ -24,6 +24,10 @@ export const LANE_WIDTH = 12;
 
 const laneColor = (color: number) => `var(--git-lane-${color})`;
 
+/** The lanes this row draws in, counting those that end at its node. */
+export const gitGraphRowLaneCount = (row: GitGraphRow) =>
+  Math.max(row.lane, ...gitGraphSegments(row).map((segment) => segment.lane)) + 1;
+
 /** Box-drawing lines: every stroke ends at a cell edge or centre, so rows join without gaps. */
 function RowLanes(props: {
   readonly row: GitGraphRow;
@@ -153,6 +157,7 @@ export const GitGraphRowView = memo(function GitGraphRowView(props: {
   readonly risk: GitGraphCommitRisk | undefined;
   readonly branches: ReadonlyMap<string, GitGraphBranch>;
   readonly onSelect: (row: GitGraphRow) => void;
+  readonly hideTime?: boolean;
 }) {
   const {
     row,
@@ -165,6 +170,7 @@ export const GitGraphRowView = memo(function GitGraphRowView(props: {
     risk,
     branches,
     onSelect,
+    hideTime = false,
   } = props;
   const shape = gitGraphNodeShape(row, headSha);
   return (
@@ -216,9 +222,11 @@ export const GitGraphRowView = memo(function GitGraphRowView(props: {
       ) : row.agentMade ? (
         <BotIcon aria-label="Agent commit" className="size-3 shrink-0 text-muted-foreground" />
       ) : null}
-      <span className="w-14 shrink-0 truncate text-right font-mono text-3xs text-muted-foreground">
-        <RelativeTime timestamp={new Date(row.authoredAt * 1000).toISOString()} />
-      </span>
+      {hideTime ? null : (
+        <span className="w-14 shrink-0 truncate text-right font-mono text-3xs text-muted-foreground">
+          <RelativeTime timestamp={new Date(row.authoredAt * 1000).toISOString()} />
+        </span>
+      )}
     </button>
   );
 });

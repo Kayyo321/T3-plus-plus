@@ -41,6 +41,7 @@ import * as MacPermissions from "../../permissions/MacPermissions.ts";
 import { safariPermissionCheck } from "../../preview/BrowserImport/SafariPermission.ts";
 import * as IpcChannels from "../channels.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
+import { currentKWinWindowPosition } from "../../window/KWinWindowPosition.ts";
 import {
   extractDistroFromUncPath,
   resolveWslPickFolderDefaultPath,
@@ -97,6 +98,12 @@ export const getWindowFullscreenState = DesktopIpc.makeSyncIpcMethod({
     const window = yield* electronWindow.currentMainOrFirst;
     return Option.isSome(window) && window.value.isFullScreen();
   }),
+});
+
+export const getWindowPosition = DesktopIpc.makeSyncIpcMethod({
+  channel: IpcChannels.GET_WINDOW_POSITION_CHANNEL,
+  result: Schema.NullOr(Schema.Struct({ x: Schema.Number, y: Schema.Number })),
+  handler: () => Effect.sync(currentKWinWindowPosition),
 });
 
 export const getLocalEnvironmentBootstraps = DesktopIpc.makeSyncIpcMethod({

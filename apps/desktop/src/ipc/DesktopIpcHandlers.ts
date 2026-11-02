@@ -39,6 +39,7 @@ import {
   getRelayTelemetryEnabled,
   getSystemLocale,
   getWindowFullscreenState,
+  getWindowPosition,
   openExternal,
   openSystemSettings,
   checkSystemPermission,
@@ -94,6 +95,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handleSync(getRelayTelemetryEnabled);
   yield* ipc.handleSync(getSystemLocale);
   yield* ipc.handleSync(getWindowFullscreenState);
+  yield* ipc.handleSync(getWindowPosition);
   yield* ipc.handleSync(getLocalEnvironmentBootstraps);
   yield* ipc.handleSync(getLocalEnvironmentEnabled);
   yield* ipc.handle(setLocalEnvironmentEnabled);

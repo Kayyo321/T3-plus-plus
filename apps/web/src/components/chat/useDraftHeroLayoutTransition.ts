@@ -40,7 +40,11 @@ export function useDraftHeroLayoutTransition(
       nextComposerRect &&
       typeof transitionGroup.animate === "function"
     ) {
-      const translateX = previousComposerRect.left - nextComposerRect.left;
+      // Centers, not edges: the bottom layout's composer narrows as it docks.
+      const translateX =
+        previousComposerRect.left +
+        previousComposerRect.width / 2 -
+        (nextComposerRect.left + nextComposerRect.width / 2);
       const translateY = previousComposerRect.top - nextComposerRect.top;
       if (Math.abs(translateX) >= 0.5 || Math.abs(translateY) >= 0.5) {
         const animation = transitionGroup.animate(

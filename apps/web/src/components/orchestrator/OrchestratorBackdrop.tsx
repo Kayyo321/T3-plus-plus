@@ -10,12 +10,12 @@ import {
   type AsciiShaderId,
 } from "../ascii/asciiShaderEngine";
 
-const BACKDROP_SEED = 4177;
 const BACKDROP_FRAME_MS = 1000 / 20;
 
 /**
- * The theme's shader behind the conversation. Bubbles blur whatever passes under them, so this runs
- * slower than the landing and only while the window is visible, focused, and motion is allowed.
+ * The theme's shader behind the conversation: more of the landing's field, at the same moment and
+ * scale, as if the landing ran on under this panel. Bubbles blur whatever passes under them, so this
+ * runs slower than the landing and only while the window is visible, focused, and motion is allowed.
  */
 export function OrchestratorBackdrop() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -24,7 +24,7 @@ export function OrchestratorBackdrop() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas === null) return;
-    const engine = createAsciiShaderEngine(canvas, BACKDROP_SEED, BACKDROP_FRAME_MS);
+    const engine = createAsciiShaderEngine(canvas, BACKDROP_FRAME_MS);
     if (engine === null) return;
     const root = document.documentElement;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -51,7 +51,7 @@ export function OrchestratorBackdrop() {
     };
     const syncLayout = () => {
       const fontFamily = getComputedStyle(canvas).getPropertyValue("--font-mono") || "monospace";
-      engine.layout({ fontFamily, logo: null, quiet: null });
+      engine.layout({ fontFamily, logo: null, quiet: null, fadeEdges: false });
     };
 
     syncLayout();

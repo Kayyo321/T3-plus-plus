@@ -5,12 +5,14 @@ import {
   emptyConversationFolderState,
 } from "@t3tools/client-runtime/state/conversationFolders";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import { sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   type ConversationFolder,
   type ConversationFolderId,
   type ConversationSmartFilter,
   type EnvironmentId,
+  type ScopedThreadRef,
   type ThreadCapabilityMode,
   ThreadId,
 } from "@t3tools/contracts";
@@ -19,7 +21,6 @@ import {
   ChevronRightIcon,
   FolderIcon,
   FolderPlusIcon,
-  InboxIcon,
   MoreHorizontalIcon,
   SparklesIcon,
 } from "lucide-react";
@@ -30,11 +31,9 @@ import {
   useState,
 } from "react";
 
-import {
-  conversationFolderCollapseKey,
-  useConversationFolderViewStore,
-} from "../../conversationFolderViewStore";
+import { useConversationFolderViewStore } from "../../conversationFolderViewStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { useClientSettings } from "../../hooks/useSettings";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -89,40 +88,63 @@ const readDroppedThreadIds = (event: ReactDragEvent) => {
 function ConversationFolderThreadRow(props: {
   readonly thread: EnvironmentThreadShell;
   readonly depth: number;
+  readonly inFolder: boolean;
   readonly active: boolean;
   readonly selected: boolean;
   readonly onOpen: (event: ReactMouseEvent) => void;
   readonly onDragStart: (event: ReactDragEvent) => void;
+  readonly onOpenMenu: (position: { readonly x: number; readonly y: number }) => void;
   readonly children?: ReactNode;
 }) {
   const { thread } = props;
   const needsInput = thread.hasPendingApprovals || thread.hasPendingUserInput;
   return (
-    <button
-      type="button"
-      draggable
-      onDragStart={props.onDragStart}
-      onClick={props.onOpen}
-      aria-current={props.active ? "page" : undefined}
-      style={{ paddingLeft: 10 + props.depth * 12 }}
-      className={cn(
-        "flex h-[30px] w-full min-w-0 cursor-pointer items-center gap-2 rounded-md pr-2 text-left text-sm outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
-        props.active || props.selected
-          ? "bg-sidebar-row-active text-sidebar-foreground"
-          : "text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-      )}
-    >
-      {props.children ?? (
-        <>
-          <span className="min-w-0 flex-1 truncate">{thread.title}</span>
-          {needsInput ? (
-            <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-label="Needs input" />
-          ) : isThreadRunning(thread) ? (
-            <span className="size-1.5 shrink-0 rounded-full bg-success" aria-label="Running" />
-          ) : null}
-        </>
-      )}
-    </button>
+    <div className="group/folder-thread relative">
+      <button
+        type="button"
+        draggable
+        onDragStart={props.onDragStart}
+        onClick={props.onOpen}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          props.onOpenMenu({ x: event.clientX, y: event.clientY });
+        }}
+        aria-current={props.active ? "page" : undefined}
+        data-in-folder={props.inFolder || undefined}
+        style={{ paddingLeft: 10 + props.depth * 12 }}
+        className={cn(
+          "flex h-[30px] w-full min-w-0 cursor-pointer items-center gap-2 rounded-md pr-2 text-left text-sm outline-none group-focus-within/folder-thread:pr-8 group-hover/folder-thread:pr-8 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring pointer-coarse:pr-8",
+          props.active || props.selected
+            ? "bg-sidebar-row-active text-sidebar-foreground"
+            : "text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+        )}
+      >
+        {props.children ?? (
+          <>
+            <span className="min-w-0 flex-1 truncate">{thread.title}</span>
+            {needsInput ? (
+              <span
+                className="size-1.5 shrink-0 rounded-full bg-warning"
+                aria-label="Needs input"
+              />
+            ) : isThreadRunning(thread) ? (
+              <span className="size-1.5 shrink-0 rounded-full bg-success" aria-label="Running" />
+            ) : null}
+          </>
+        )}
+      </button>
+      <button
+        type="button"
+        aria-label={`Actions for ${thread.title}`}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          props.onOpenMenu({ x: rect.left, y: rect.bottom });
+        }}
+        className="absolute inset-y-0 right-1 my-auto flex size-6 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground opacity-0 outline-none group-focus-within/folder-thread:opacity-100 group-hover/folder-thread:opacity-100 hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring pointer-coarse:opacity-100"
+      >
+        <MoreHorizontalIcon className="size-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -132,7 +154,6 @@ function FolderHeaderRow(props: {
   readonly depth: number;
   readonly collapsed: boolean;
   readonly smart: boolean;
-  readonly unfiled: boolean;
   readonly onToggle: () => void;
   readonly onDropThreads: ((event: ReactDragEvent) => void) | null;
   readonly onDragStart: ((event: ReactDragEvent) => void) | null;
@@ -143,6 +164,7 @@ function FolderHeaderRow(props: {
   return (
     <div
       role="presentation"
+      data-in-folder
       className={cn(
         "group/folder relative flex h-[30px] min-w-0 items-center rounded-md hover:bg-sidebar-row-hover",
         dropTarget && "ring-1 ring-inset ring-primary/70",
@@ -184,8 +206,6 @@ function FolderHeaderRow(props: {
         />
         {props.smart ? (
           <SparklesIcon aria-hidden className="size-3.5 shrink-0 text-sidebar-muted-foreground" />
-        ) : props.unfiled ? (
-          <InboxIcon aria-hidden className="size-3.5 shrink-0 text-sidebar-muted-foreground" />
         ) : (
           <FolderIcon aria-hidden className="size-3.5 shrink-0 text-sidebar-muted-foreground" />
         )}
@@ -323,6 +343,10 @@ export function SidebarConversationFolders(props: {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   readonly activeThreadKey: string | null;
   readonly onOpenThread: (thread: EnvironmentThreadShell) => void;
+  readonly onOpenThreadMenu: (
+    threadRef: ScopedThreadRef,
+    position: { readonly x: number; readonly y: number },
+  ) => void;
   readonly renderThreadRow?: (
     row: Extract<ConversationFolderRow<EnvironmentThreadShell>, { kind: "thread" }>,
   ) => ReactNode;
@@ -342,17 +366,19 @@ export function SidebarConversationFolders(props: {
     label: "conversation folder change",
   });
   const [dialog, setDialog] = useState<FolderDialog | null>(null);
-  // Folders belong to one mode, but both modes have an Unfiled that collapses on its own.
-  const modeCollapseKey = (key: string) =>
-    key === conversationFolderCollapseKey(null) ? `${props.capabilityMode}:${key}` : key;
+  const [topLevelDropTarget, setTopLevelDropTarget] = useState(false);
   // Smart folders follow the clock, but a minute is close enough for "this week".
   const nowMinute = useNowMinute();
+  const threadSortOrder = useClientSettings((settings) => settings.sidebarThreadSortOrder);
 
   const rows = buildConversationFolderRows({
     state: folderState ?? emptyConversationFolderState,
-    threads: props.threads.map((thread) => ({ ...thread, running: isThreadRunning(thread) })),
+    threads: sortThreads(props.threads, threadSortOrder).map((thread) => ({
+      ...thread,
+      running: isThreadRunning(thread),
+    })),
     capabilityMode: props.capabilityMode,
-    isCollapsed: (key) => collapsedKeys[modeCollapseKey(key)] === true,
+    isCollapsed: (key) => collapsedKeys[key] === true,
     nowMs: Date.parse(nowMinute),
   });
 
@@ -397,7 +423,7 @@ export function SidebarConversationFolders(props: {
     if (result._tag !== "Success") return;
     const id = toastManager.add({
       title: `Deleted ${folder.name}`,
-      description: "Its conversations are unfiled, not deleted.",
+      description: "Its conversations stay in the sidebar, outside any folder.",
       actionProps: {
         children: "Undo",
         onClick: () => {
@@ -439,8 +465,35 @@ export function SidebarConversationFolders(props: {
       </span>
     ) : null;
 
+  // Folder rows take their own drops, so what lands anywhere else leaves its folder.
+  const isTopLevelDrop = (event: ReactDragEvent) =>
+    canOrganize &&
+    event.target instanceof Element &&
+    event.target.closest("[data-in-folder]") === null;
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className={cn(
+        "flex h-full min-h-0 flex-col rounded-md",
+        topLevelDropTarget && "ring-1 ring-inset ring-primary/70",
+      )}
+      onDragOver={(event) => {
+        const accepts = isTopLevelDrop(event);
+        if (accepts) event.preventDefault();
+        setTopLevelDropTarget(accepts);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setTopLevelDropTarget(false);
+        }
+      }}
+      onDrop={(event) => {
+        setTopLevelDropTarget(false);
+        if (!isTopLevelDrop(event)) return;
+        event.preventDefault();
+        dropOnto(null)(event);
+      }}
+    >
       <LegendList<ConversationFolderRow<EnvironmentThreadShell>>
         className="min-h-0 flex-1"
         data={rows}
@@ -450,24 +503,6 @@ export function SidebarConversationFolders(props: {
         extraData={[props.activeThreadKey, selectedThreadKeys]}
         recycleItems
         renderItem={({ item: row }) => {
-          if (row.kind === "unfiled") {
-            return (
-              <FolderHeaderRow
-                label="Unfiled"
-                count={row.count}
-                depth={0}
-                collapsed={collapsedKeys[modeCollapseKey(row.key)] === true}
-                smart={false}
-                unfiled
-                onToggle={() =>
-                  toggleCollapsed(modeCollapseKey(conversationFolderCollapseKey(null)))
-                }
-                onDropThreads={canOrganize ? dropOnto(null) : null}
-                onDragStart={null}
-                actions={null}
-              />
-            );
-          }
           if (row.kind === "folder") {
             const { folder } = row;
             const smart = folder.smartFilter !== undefined;
@@ -478,8 +513,7 @@ export function SidebarConversationFolders(props: {
                 depth={row.depth}
                 collapsed={row.collapsed}
                 smart={smart}
-                unfiled={false}
-                onToggle={() => toggleCollapsed(conversationFolderCollapseKey(folder.id))}
+                onToggle={() => toggleCollapsed(folder.id)}
                 onDropThreads={canOrganize && !smart ? dropOnto(folder.id) : null}
                 onDragStart={
                   canOrganize
@@ -496,9 +530,13 @@ export function SidebarConversationFolders(props: {
             <ConversationFolderThreadRow
               thread={thread}
               depth={row.depth}
+              inFolder={row.folderId !== null}
               active={threadKey === props.activeThreadKey}
               selected={selectedThreadKeys.has(threadKey)}
               onDragStart={startThreadDrag(thread)}
+              onOpenMenu={(position) =>
+                props.onOpenThreadMenu(scopeThreadRef(thread.environmentId, thread.id), position)
+              }
               onOpen={(event) => {
                 if (event.metaKey || event.ctrlKey) toggleThreadSelection(threadKey);
                 else props.onOpenThread(thread);

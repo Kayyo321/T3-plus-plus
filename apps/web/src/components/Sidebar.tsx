@@ -3323,6 +3323,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                   )}
                   activeThreadKey={routeRowThreadKey}
                   onOpenThread={selectThreadSearchResult}
+                  onOpenThreadMenu={handleThreadContextMenu}
                 />
               </div>
             </div>

@@ -1266,6 +1266,33 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 /* Theme switches cross-fade the window while the shader morphs underneath. */
+/* A Chat or Code tab switch: see morphWorkspaceMode. */
+html[data-mode-morph] [data-chat-composer-stack="true"] {
+  view-transition-name: t3-mode-composer;
+}
+
+html[data-mode-morph] [data-draft-hero-headline] {
+  view-transition-name: t3-mode-headline;
+}
+
+html[data-mode-morph]::view-transition-group(*) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-mode-morph]::view-transition-image-pair(t3-mode-composer),
+html[data-mode-morph]::view-transition-image-pair(t3-mode-headline) {
+  overflow: clip;
+}
+
+html[data-mode-morph]::view-transition-old(*),
+html[data-mode-morph]::view-transition-new(*) {
+  animation-duration: 220ms;
+  height: 100%;
+  object-fit: none;
+  object-position: top;
+}
+
 html[data-theme-morph]::view-transition-old(root),
 html[data-theme-morph]::view-transition-new(root) {
   animation-duration: 480ms;

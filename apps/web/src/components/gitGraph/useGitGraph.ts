@@ -44,8 +44,9 @@ export function useGitGraph(input: {
   readonly cwd: string;
   readonly threadId: ThreadId;
   readonly visible: boolean;
+  readonly limit?: number;
 }) {
-  const { environmentId, cwd, threadId, visible } = input;
+  const { environmentId, cwd, threadId, visible, limit = PAGE_ROWS } = input;
   const listMore = useAtomCommand(gitGraphEnvironment.listMore, { reportFailure: false });
   const act = useAtomCommand(gitGraphEnvironment.act, { reportFailure: false });
   const preview = useAtomCommand(gitGraphEnvironment.preview, { reportFailure: false });
@@ -59,7 +60,7 @@ export function useGitGraph(input: {
   const query = useDebouncedValue(filters.query, QUERY_SETTLE_MS);
   const listInput: GitGraphListInput = {
     cwd,
-    limit: PAGE_ROWS,
+    limit,
     showCheckpoints: filters.showCheckpoints,
     checkpointThreadId: threadId,
     filter: {

@@ -81,7 +81,7 @@ const keys = (
   }).map((row) => row.key);
 
 describe("conversation folder rows", () => {
-  it("nests folders, then their threads, with unfiled threads last", () => {
+  it("nests folders, then their threads, with threads outside any folder last", () => {
     const state = stateOf(
       snapshot([folder("b"), folder("a"), folder("child", { parentId: folderIdOf("a") })], {
         a: ["t1"],
@@ -94,8 +94,7 @@ describe("conversation folder rows", () => {
       "child:t2",
       "a:t1",
       "folder:b",
-      "unfiled",
-      "unfiled:t3",
+      "thread:t3",
     ]);
   });
 
@@ -108,27 +107,20 @@ describe("conversation folder rows", () => {
       nowMs: NOW,
       isCollapsed: (key) => key === "a",
     });
-    expect(rows.map((row) => row.key)).toStrictEqual(["folder:a", "unfiled"]);
+    expect(rows.map((row) => row.key)).toStrictEqual(["folder:a"]);
     expect(rows[0]).toMatchObject({ count: 2, collapsed: true });
   });
 
-  it("shows a deleted folder's threads as unfiled and puts them back on restore", () => {
+  it("shows a deleted folder's threads outside any folder and puts them back on restore", () => {
     const deleted = stateOf(
       snapshot([folder("a", { deletedAt: "2026-10-30T00:00:00.000Z" })], { a: ["t1"] }),
     );
-    expect(keys({ state: deleted, threads: [thread("t1")] })).toStrictEqual([
-      "unfiled",
-      "unfiled:t1",
-    ]);
+    expect(keys({ state: deleted, threads: [thread("t1")] })).toStrictEqual(["thread:t1"]);
     const restored = reduceConversationFolderEvent(deleted, {
       type: "folders-updated",
       folders: [folder("a")],
     });
-    expect(keys({ state: restored, threads: [thread("t1")] })).toStrictEqual([
-      "folder:a",
-      "a:t1",
-      "unfiled",
-    ]);
+    expect(keys({ state: restored, threads: [thread("t1")] })).toStrictEqual(["folder:a", "a:t1"]);
   });
 
   it("applies moves and unfiling as deltas", () => {
@@ -173,11 +165,10 @@ describe("conversation folder rows", () => {
       "Busy:t1",
       "folder:Real",
       "Real:t1",
-      "unfiled",
     ]);
   });
 
-  it("shows only the folders of the requested mode and unfiles threads filed in the other mode", () => {
+  it("shows only the folders of the requested mode and lists threads filed in the other mode outside any folder", () => {
     const state = stateOf(
       snapshot([folder("Work"), folder("Chat notes", { capabilityMode: "chat" })], {
         "Chat notes": ["t1"],
@@ -185,13 +176,11 @@ describe("conversation folder rows", () => {
     );
     expect(keys({ state, threads: [thread("t1")], capabilityMode: "code" })).toStrictEqual([
       "folder:Work",
-      "unfiled",
-      "unfiled:t1",
+      "thread:t1",
     ]);
     expect(keys({ state, threads: [thread("t1")], capabilityMode: "chat" })).toStrictEqual([
       "folder:Chat notes",
       "Chat notes:t1",
-      "unfiled",
     ]);
   });
 
@@ -199,7 +188,7 @@ describe("conversation folder rows", () => {
     const state = stateOf(snapshot([folder("Work")]));
     expect(conversationFolderMode(folder("Work"))).toBe("code");
     expect(conversationFolderMode(folder("Chat", { capabilityMode: "chat" }))).toBe("chat");
-    expect(keys({ state, threads: [], capabilityMode: "chat" })).toStrictEqual(["unfiled"]);
+    expect(keys({ state, threads: [], capabilityMode: "chat" })).toStrictEqual([]);
   });
 
   it("offers the folders of one mode by path", () => {

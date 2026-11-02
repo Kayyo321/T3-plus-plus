@@ -28,6 +28,35 @@ function useRouteCapabilityMode(): ThreadCapabilityMode | null {
   return draftMode;
 }
 
+/**
+ * The switch remounts the screen, so a view transition carries it across: the composer and headline
+ * glide to where they land and the rest cross-fades over a field that looks the same on both sides.
+ */
+async function morphWorkspaceMode(open: () => Promise<void>) {
+  const root = document.documentElement;
+  if (
+    typeof document.startViewTransition !== "function" ||
+    document.visibilityState !== "visible" ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    await open();
+    return;
+  }
+  root.dataset.modeMorph = "true";
+  const transition = document.startViewTransition(async () => {
+    await open();
+    // React commits the route after the navigation settles; capture what it commits.
+    await new Promise((resolve) => setTimeout(resolve));
+  });
+  void transition.ready.catch(() => undefined);
+  void transition.finished
+    .catch(() => undefined)
+    .finally(() => {
+      delete root.dataset.modeMorph;
+    });
+  await transition.updateCallbackDone;
+}
+
 /** Keeps the sidebar on the half that holds the open conversation, and lends the Chat starter. */
 export function useWorkspaceModeRouting(): void {
   const routeMode = useRouteCapabilityMode();
@@ -63,8 +92,7 @@ export function useOpenWorkspaceMode() {
   const navigate = useNavigate();
   const { defaultProjectRef, handleNewThread } = useHandleNewThread();
 
-  return useStableCallback(async (mode: ThreadCapabilityMode) => {
-    if (mode === useWorkspaceMode.getState().mode) return;
+  const openMode = async (mode: ThreadCapabilityMode) => {
     useWorkspaceMode.getState().setMode(mode);
     const latest = readThreadShells()
       .filter(
@@ -97,5 +125,10 @@ export function useOpenWorkspaceMode() {
         .getState()
         .setDraftThreadContext(opened.draftId, { capabilityMode: mode });
     }
+  };
+
+  return useStableCallback(async (mode: ThreadCapabilityMode) => {
+    if (mode === useWorkspaceMode.getState().mode) return;
+    await morphWorkspaceMode(() => openMode(mode));
   });
 }

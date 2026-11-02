@@ -220,7 +220,7 @@ function Header(props: {
       <div className="flex min-w-0 items-center gap-2.5 wco:h-(--workspace-topbar-height) wco:pr-(--workspace-native-controls-inset)">
         <span className="relative shrink-0">
           <span className="orchestrator-avatar-glow flex size-8 items-center justify-center rounded-full border border-primary/40 bg-card/80">
-            <OrchestratorGlyph size={23} motion={props.glyph} />
+            <OrchestratorGlyph size={22} motion={props.glyph} />
           </span>
           <span
             aria-hidden

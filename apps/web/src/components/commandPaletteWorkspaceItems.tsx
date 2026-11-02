@@ -126,9 +126,9 @@ export function useWorkspacePaletteItems(
             ),
             {
               kind: "action",
-              value: "conversation-folder-move:unfiled",
-              searchTerms: ["unfiled", "remove", "none"],
-              title: "Unfiled",
+              value: "conversation-folder-move:none",
+              searchTerms: ["no folder", "remove", "none"],
+              title: "No folder",
               icon: <FolderInputIcon className={ICON_CLASS} />,
               run: async () => {
                 await mutateFolders({

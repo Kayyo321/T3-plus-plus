@@ -1,8 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { UNFILED_FOLDER_KEY } from "@t3tools/client-runtime/state/conversationFolders";
-
 import { resolveStorage } from "./lib/storage";
 
 const STORE_KEY = "t3pp:conversation-folders:v1";
@@ -30,6 +28,3 @@ export const useConversationFolderViewStore = create<ConversationFolderViewState
     },
   ),
 );
-
-export const conversationFolderCollapseKey = (folderId: string | null) =>
-  folderId ?? UNFILED_FOLDER_KEY;

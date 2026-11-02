@@ -13,6 +13,7 @@ import { Popover, PopoverPopup, PopoverCreateHandle } from "../ui/popover";
 import { selectThreadPanelOpen, useRightPanelStore } from "../../rightPanelStore";
 import { useChatCanvas } from "./ChatCanvasContext";
 import {
+  THREAD_DETAILS_BRANCH_VIEW_MIN_HEIGHT,
   THREAD_DETAILS_CARD_GAP,
   resolveThreadDetailsCardDensity,
 } from "./threadDetailsCardLayout";
@@ -78,10 +79,10 @@ export function ThreadDetailsCard({
     const measure = () => {
       const frame = element.closest<HTMLElement>("[data-thread-details-card]");
       const next = element.offsetHeight + (frame ? frame.offsetHeight - frame.clientHeight : 0);
-      // PR lists, remote control, lineage and side chats scroll as they expand. Counting them toward density
+      // PR lists, the branch view, remote control, lineage and side chats scroll as they expand. Counting them toward density
       // would hide the section and workspace controls when the user asks to see more rows.
       const lists = element.querySelectorAll<HTMLElement>(
-        "[data-thread-relationships-panel], [data-thread-side-chats-panel], [data-thread-details-pr-list], [data-thread-details-remote-control]",
+        "[data-thread-relationships-panel], [data-thread-side-chats-panel], [data-thread-details-pr-list], [data-thread-details-branch-view], [data-thread-details-remote-control]",
       );
       const fittingHeight =
         next - Array.from(lists).reduce((sum, list) => sum + list.offsetHeight, 0);
@@ -94,10 +95,15 @@ export function ThreadDetailsCard({
       // Only the laid-out DOM knows the full card height, and the canvas keeps preview
       // frames clear of it, so it is reported from this measure effect.
       if (density === "full" && cardWidth !== undefined) {
+        // The branch view grows into whatever room is spare, so it must not claim that room.
+        const branchView =
+          element.querySelector<HTMLElement>("[data-thread-details-branch-view]")?.offsetHeight ??
+          0;
+        const spare = Math.max(0, branchView - THREAD_DETAILS_BRANCH_VIEW_MIN_HEIGHT);
         measureDetailsCard?.({
           threadRef: { environmentId, threadId },
           width: cardWidth,
-          fullContentHeight: next,
+          fullContentHeight: next - spare,
         });
       }
     };

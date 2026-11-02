@@ -2,11 +2,21 @@ import { BUILT_IN_THEME_IDS, COSMIC_THEME_IDS } from "@t3tools/shared/themePalet
 import { describe, expect, it } from "vite-plus/test";
 
 import { asciiLandingCells, ASCII_LOGO } from "./asciiLanding";
-import { ASCII_SHADERS, asciiShaderForTheme } from "./asciiShaderEngine";
+import { asciiGridOffset, ASCII_SHADERS, asciiShaderForTheme } from "./asciiShaderEngine";
 
 const RAMP_LENGTH = 12;
 
 describe("ascii shaders", () => {
+  it.each([
+    { pixels: 0, cells: 0, remainder: 0 },
+    { pixels: 23, cells: 2, remainder: 7 },
+    // A window left of the primary monitor must not reverse the grid.
+    { pixels: -1, cells: -1, remainder: 7 },
+    { pixels: -16, cells: -2, remainder: 0 },
+  ])("keeps the grid on the desktop at $pixels pixels", ({ pixels, cells, remainder }) => {
+    expect(asciiGridOffset(pixels, 8)).toEqual({ cells, remainder });
+  });
+
   it("gives every cosmic theme its own shader", () => {
     const shaders = COSMIC_THEME_IDS.map(asciiShaderForTheme);
     expect(shaders).toEqual(COSMIC_THEME_IDS);

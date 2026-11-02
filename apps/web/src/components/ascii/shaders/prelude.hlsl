@@ -14,6 +14,8 @@ precision highp float;
 #define atan2(y, x) atan((y), (x))
 
 uniform float2 uCells;
+// Where this canvas sits in the field: its first cell, then the field's size, both in cells.
+uniform float4 uFrame;
 uniform float uTime;
 uniform float uSeed;
 

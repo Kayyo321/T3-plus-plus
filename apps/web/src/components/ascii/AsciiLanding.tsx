@@ -1,3 +1,4 @@
+import type { NewThreadLayout } from "@t3tools/contracts";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { observeResize } from "~/lib/observeResize";
@@ -12,7 +13,7 @@ import {
   type AsciiShaderEngine,
   type AsciiShaderId,
 } from "./asciiShaderEngine";
-import { asciiLandingCells, asciiSeed } from "./asciiLanding";
+import { ASCII_FIELD_SEED, asciiLandingCells } from "./asciiLanding";
 
 const CELL_WIDTH = 8;
 const CELL_HEIGHT = 16;
@@ -20,6 +21,9 @@ const LOGO_HEADLINE_GAP = 20;
 /** Everything in the chat canvas that is not bare background. */
 const RIPPLE_BLOCKERS =
   '[data-chat-composer-stack], [data-thread-details-card], button, a, input, textarea, select, [role="button"], [role="menu"], [role="dialog"]';
+
+/** Outlives the canvas: a tab switch remounts the screen, and the mark slides on from here. */
+let lastLogo: AsciiLayout["logo"] = null;
 
 /** The still wallpaper for browsers without WebGL2. */
 const paintStill = (canvas: HTMLCanvasElement, seed: number, logo: AsciiLayout["logo"]) => {
@@ -64,15 +68,15 @@ const paintStill = (canvas: HTMLCanvasElement, seed: number, logo: AsciiLayout["
  * it. It only runs while this screen is on show, focused, and motion is allowed.
  */
 function AsciiCanvas(props: {
-  readonly seedText: string;
+  readonly layout: NewThreadLayout;
   readonly dissolving: boolean;
   readonly onDissolved: () => void;
+  readonly onEngineChange: ((engine: AsciiShaderEngine | null) => void) | undefined;
 }) {
-  const { dissolving } = props;
+  const { dissolving, layout, onEngineChange } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AsciiShaderEngine | null>(null);
   const frozenRef = useRef(false);
-  const seed = asciiSeed(props.seedText);
   const finishDissolve = useEffectEvent(() => props.onDissolved());
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- drives a WebGL canvas, which lives outside React
@@ -83,20 +87,42 @@ function AsciiCanvas(props: {
     const headline = canvas.parentElement?.querySelector("[data-draft-hero-headline]") ?? null;
     const composer =
       canvas.parentElement?.querySelector('[data-chat-composer-stack="true"]') ?? null;
-    const readLayout = (): Omit<AsciiLayout, "fontFamily"> => {
+    // The details card insets the lane, which moves the composer without resizing anything else.
+    const composerLane = composer?.parentElement ?? null;
+    const tracked = [canvas, headline, composerLane].filter((element) => element !== null);
+    const readLayout = (): Omit<AsciiLayout, "fontFamily" | "fadeEdges"> => {
       if (headline === null) return { logo: null, quiet: null };
       const frame = canvas.getBoundingClientRect();
       const top = headline.getBoundingClientRect();
       const stack = composer?.getBoundingClientRect() ?? top;
+      const logo = {
+        bottom: top.top - frame.top - LOGO_HEADLINE_GAP,
+        center: (stack.left + stack.right) / 2 - frame.left,
+      };
       const lastAnchor =
         canvas.parentElement
           ?.querySelector("[data-orchestrator-launcher]")
           ?.getBoundingClientRect() ?? stack;
+      // Pushed to the bottom, the composer leaves open field between it and the headline.
+      if (composer !== null && !composer.contains(headline)) {
+        return {
+          logo,
+          quiet: {
+            left: top.left - frame.left,
+            top: top.top - frame.top,
+            right: top.right - frame.left,
+            bottom: top.bottom - frame.top,
+          },
+          quietBelow: {
+            left: stack.left - frame.left,
+            top: Math.min(stack.top, lastAnchor.top) - frame.top,
+            right: stack.right - frame.left,
+            bottom: stack.bottom - frame.top,
+          },
+        };
+      }
       return {
-        logo: {
-          bottom: top.top - frame.top - LOGO_HEADLINE_GAP,
-          center: (stack.left + stack.right) / 2 - frame.left,
-        },
+        logo,
         quiet: {
           left: stack.left - frame.left,
           top: top.top - frame.top,
@@ -105,18 +131,16 @@ function AsciiCanvas(props: {
         },
       };
     };
-    const engine = createAsciiShaderEngine(canvas, seed);
+    const engine = createAsciiShaderEngine(canvas);
 
     if (engine === null) {
-      const repaint = () => paintStill(canvas, seed, readLayout().logo);
+      const repaint = () => paintStill(canvas, ASCII_FIELD_SEED, readLayout().logo);
       repaint();
-      const stopResize = observeResize(canvas, repaint);
-      const stopHeadlineResize = headline === null ? null : observeResize(headline, repaint);
+      const stopResize = observeResize(tracked, repaint);
       const theme = new MutationObserver(repaint);
       theme.observe(root, { attributeFilter: ["class", "data-theme-id"] });
       return () => {
         stopResize();
-        stopHeadlineResize?.();
         theme.disconnect();
       };
     }
@@ -146,7 +170,9 @@ function AsciiCanvas(props: {
       if (key === lookKey) return;
       const opening = lookKey === "";
       lookKey = key;
-      engine.setLook(look, !motion.matches && (opening || onScreen));
+      // A tab switch is the same field carrying on, so it must not fade in like a first open.
+      const switching = root.dataset.modeMorph !== undefined;
+      engine.setLook(look, !motion.matches && !switching && (opening || onScreen));
       syncRunning();
     };
 
@@ -154,7 +180,15 @@ function AsciiCanvas(props: {
       // The headline is gone by now; the mark has to dissolve where it stood.
       if (frozenRef.current) return;
       const fontFamily = getComputedStyle(canvas).getPropertyValue("--font-mono") || "monospace";
-      engine.layout({ fontFamily, ...readLayout() });
+      const next = readLayout();
+      const switching = root.dataset.modeMorph !== undefined;
+      engine.layout({
+        ...next,
+        fontFamily,
+        fadeEdges: true,
+        ...(switching ? { logoFrom: lastLogo } : {}),
+      });
+      lastLogo = next.logo;
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -166,12 +200,18 @@ function AsciiCanvas(props: {
     };
 
     engineRef.current = engine;
+    onEngineChange?.(engine);
     syncLayout();
     syncLook();
     void document.fonts?.ready.then(syncLayout);
+    // Rects read during the composer's slide into place are mid-flight; settle on where it lands.
+    void Promise.allSettled(
+      composerLane?.getAnimations().map((animation) => animation.finished) ?? [],
+    ).then(() => {
+      if (engineRef.current === engine) syncLayout();
+    });
 
-    const stopResize = observeResize(canvas, syncLayout);
-    const stopHeadlineResize = headline === null ? null : observeResize(headline, syncLayout);
+    const stopResize = observeResize(tracked, syncLayout);
     const theme = new MutationObserver(syncLook);
     theme.observe(root, { attributeFilter: ["class", "data-theme-id", "style"] });
     const visibility = new IntersectionObserver(([entry]) => {
@@ -187,7 +227,6 @@ function AsciiCanvas(props: {
 
     return () => {
       stopResize();
-      stopHeadlineResize?.();
       theme.disconnect();
       visibility.disconnect();
       document.removeEventListener("visibilitychange", syncRunning);
@@ -196,9 +235,11 @@ function AsciiCanvas(props: {
       window.removeEventListener("pointerdown", onPointerDown);
       motion.removeEventListener("change", syncRunning);
       engineRef.current = null;
+      onEngineChange?.(null);
       engine.dispose();
     };
-  }, [seed]);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Changing the layout swaps the headline element this effect tracks.
+  }, [layout, onEngineChange]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- starts and cancels a WebGL animation, which lives outside React
   useEffect(() => {
@@ -231,9 +272,11 @@ function AsciiCanvas(props: {
  * the first message lands. Moving to a different thread cuts to it instead.
  */
 export function AsciiLanding(props: {
-  readonly seedText: string;
   readonly active: boolean;
   readonly threadId: string;
+  readonly layout: NewThreadLayout;
+  /** Reports the engine for as long as it runs, so other surfaces can follow the field. */
+  readonly onEngineChange?: (engine: AsciiShaderEngine | null) => void;
 }) {
   const { active, threadId } = props;
   const [shown, setShown] = useState(active ? threadId : null);
@@ -242,9 +285,10 @@ export function AsciiLanding(props: {
   if (shown === null) return null;
   return (
     <AsciiCanvas
-      seedText={props.seedText}
+      layout={props.layout}
       dissolving={!active}
       onDissolved={() => setShown(null)}
+      onEngineChange={props.onEngineChange}
     />
   );
 }

@@ -10,6 +10,7 @@ import * as Electron from "electron";
 
 import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
 
+import { isKWinWaylandSession, watchKWinWindowPosition } from "./KWinWindowPosition.ts";
 import * as DesktopAssets from "../app/DesktopAssets.ts";
 import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import { makeComponentLogger } from "../app/DesktopObservability.ts";
@@ -26,6 +27,7 @@ import {
   TRACKPAD_SCROLL_BEGIN_CHANNEL,
   TRACKPAD_SCROLL_END_CHANNEL,
   WINDOW_FULLSCREEN_STATE_CHANNEL,
+  WINDOW_POSITION_CHANNEL,
 } from "../ipc/channels.ts";
 import { PASSKEY_BRIDGE_ARGUMENT } from "../preview/GuestProtocol.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -311,6 +313,18 @@ export const make = Effect.gen(function* () {
   const runFork = Effect.runForkWith(context);
   const runPromise = Effect.runPromiseWith(context);
   let flushMainWindowBounds: Effect.Effect<void> = Effect.void;
+
+  if (environment.platform === "linux" && isKWinWaylandSession(process.env)) {
+    yield* Effect.acquireRelease(
+      Effect.sync(() =>
+        watchKWinWindowPosition((position) => {
+          const window = Electron.BrowserWindow.getFocusedWindow();
+          window?.webContents.send(WINDOW_POSITION_CHANNEL, position);
+        }),
+      ),
+      (stop) => Effect.promise(stop),
+    );
+  }
 
   const dismissConnectingSplash = Effect.gen(function* () {
     const splash = yield* Ref.getAndSet(splashWindowRef, Option.none());

@@ -161,6 +161,10 @@ what you have checked out. Search messages by typing, or narrow with `author:` a
 filter menu keeps only agent-made commits or this conversation's. A commit made during a turn opens
 that conversation from its details.
 
+For a quick look without opening the panel, **Branch view** in the thread details card shows the
+latest commits as a tree under **Changes**. Select its row to minimize it, select a commit to open
+the Git graph, or hide it from the card's right-click menu.
+
 The diamond button adds the conversation's checkpoints to the graph, so you can return your files to
 how a turn left them without changing the conversation.
 

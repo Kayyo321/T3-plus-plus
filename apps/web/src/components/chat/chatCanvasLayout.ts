@@ -176,5 +176,7 @@ export function resolveChatCanvasLayout({
     frame.x + frame.width > detailsCard.left &&
     frame.y < detailsCard.bottom,
   );
-  return { chat, frame, overlapsChat, overlapsDetailsCard };
+  // A composer stretched across the lane stops at the details card instead of centering around it.
+  const wideInsetEnd = Math.max(0, container.width - padding - laneRight);
+  return { chat, wideInsetEnd, frame, overlapsChat, overlapsDetailsCard };
 }

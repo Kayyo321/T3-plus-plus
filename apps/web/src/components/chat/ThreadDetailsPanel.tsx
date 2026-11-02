@@ -19,6 +19,8 @@ import ProjectScriptsControl, {
   type ProjectScriptActionResult,
 } from "../ProjectScriptsControl";
 import { memo, useState, type ComponentProps } from "react";
+import type { AsciiShaderEngine } from "../ascii/asciiShaderEngine";
+import { ThreadBranchView } from "../gitGraph/ThreadBranchView";
 import { ThreadDetailsCard } from "./ThreadDetailsCard";
 import { OpenInPicker } from "./OpenInPicker";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
@@ -81,6 +83,9 @@ interface ThreadDetailsPanelProps extends Pick<
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest: () => void;
   onOpenChanges?: () => void;
+  onOpenGitGraph?: () => void;
+  /** Runs while the new-thread screen is up, and the branch view sits on its blur. */
+  landingShader: AsciiShaderEngine | null;
   onRunProjectScript: (script: ProjectScript) => void;
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<ProjectScriptActionResult>;
   onUpdateProjectScript: (
@@ -167,6 +172,12 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
             props.gitCwd !== null &&
             props.activeProjectName !== undefined &&
             (visible.gitActions || (visible.changes && props.isGitRepo)),
+          branchView:
+            code &&
+            density !== "essential" &&
+            props.gitCwd !== null &&
+            props.isGitRepo &&
+            visible.branchView,
         };
         return (
           <>
@@ -229,7 +240,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                 </ThreadDetailsSection>
               ) : null}
 
-              {props.gitCwd && (show.branch || show.git) ? (
+              {props.gitCwd && (show.branch || show.git || show.branchView) ? (
                 <ThreadDetailsSection
                   headingId="thread-details-version-control-heading"
                   title="Version Control"
@@ -249,6 +260,15 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                         activeThreadRef={activeThreadRef}
                         {...(props.draftId ? { draftId: props.draftId } : {})}
                         {...(props.onOpenChanges ? { onOpenChanges: props.onOpenChanges } : {})}
+                      />
+                    ) : null}
+                    {show.branchView ? (
+                      <ThreadBranchView
+                        environmentId={props.environmentId}
+                        cwd={props.gitCwd}
+                        threadId={props.threadId}
+                        landingShader={props.landingShader}
+                        {...(props.onOpenGitGraph ? { onOpenGraph: props.onOpenGitGraph } : {})}
                       />
                     ) : null}
                   </div>

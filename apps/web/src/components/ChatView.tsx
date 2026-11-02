@@ -117,6 +117,7 @@ import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread
 import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  type CSSProperties,
   type SetStateAction,
   use,
   useEffect,
@@ -283,6 +284,7 @@ import {
 import { useEnvironmentShellHasSnapshot } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { AsciiLanding } from "./ascii/AsciiLanding";
+import type { AsciiShaderEngine } from "./ascii/asciiShaderEngine";
 import { OrchestratorLauncher } from "./orchestrator/OrchestratorEntries";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialogHost, openExpandedImagePreview } from "./chat/ExpandedImageDialog";
@@ -1618,6 +1620,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const onCancelWorktreeSetupStable = useStableCallback(() => void cancelWorktreeSetup());
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
+  const [landingShader, setLandingShader] = useState<AsciiShaderEngine | null>(null);
   const draftHeroDockRequested =
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
   const capabilityMode =
@@ -3434,6 +3437,28 @@ export default function ChatView(props: ChatViewProps) {
     addFolders: addDroppedFoldersToComposer,
   });
 
+  const draftHeroLayout = isDraftHeroState ? settings.newThreadLayout : null;
+  const draftHeroHeadline = (
+    <DraftHeroHeadline
+      capabilityMode={capabilityMode}
+      draftId={draftId}
+      activeProjectRef={activeProjectRef}
+      activeProjectTitle={activeProject?.title ?? null}
+    />
+  );
+  const draftHeroAside = (
+    <>
+      {composerBannerItems.length > 0 ? (
+        <ComposerBannerStack items={composerBannerItems} detached />
+      ) : null}
+      {isChatMode ? null : (
+        <div className="hidden sm:block">
+          <OrchestratorLauncher />
+        </div>
+      )}
+    </>
+  );
+
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
@@ -3531,9 +3556,10 @@ export default function ChatView(props: ChatViewProps) {
             onDrop={workspaceFileDropHandlers.onDrop}
           >
             <AsciiLanding
-              seedText={activeProject?.id ?? "t3pp"}
               active={isDraftHeroState}
               threadId={activeThread.id}
+              layout={settings.newThreadLayout}
+              onEngineChange={setLandingShader}
             />
             <ThreadFind onClose={focusComposerStable} />
             {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
@@ -3676,17 +3702,46 @@ export default function ChatView(props: ChatViewProps) {
               inert={isRevertingCheckpoint}
               data-chat-composer-overlay="true"
               className={
-                isDraftHeroState
+                draftHeroLayout === "centered"
                   ? "pointer-events-none absolute inset-0 z-20 flex items-center"
-                  : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+                  : draftHeroLayout === "bottom"
+                    ? "pointer-events-none absolute inset-0 z-20 flex flex-col justify-end"
+                    : "pointer-events-none absolute inset-x-0 bottom-0 z-20 pt-1.5 sm:pt-2"
+              }
+              style={
+                draftHeroLayout === "bottom"
+                  ? ({
+                      "--chat-lane-inset-end": "var(--chat-lane-wide-inset-end)",
+                    } as CSSProperties)
+                  : undefined
               }
             >
+              {draftHeroLayout === "bottom" ? (
+                <div className="chat-composer-lane flex min-h-0 w-full flex-1 flex-col">
+                  <div className="flex min-h-0 flex-1 items-center pt-24">
+                    <div
+                      className="pointer-events-auto mx-auto w-full max-w-(--chat-content-max-width)"
+                      data-draft-hero-headline
+                    >
+                      {draftHeroHeadline}
+                    </div>
+                  </div>
+                  <div className="pointer-events-auto mx-auto flex w-full max-w-(--chat-content-max-width) flex-col gap-3 pb-3">
+                    {draftHeroAside}
+                  </div>
+                </div>
+              ) : null}
               <div ref={draftHeroTransitionGroupRef} className="chat-composer-lane w-full">
                 <div
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)"
+                  style={
+                    draftHeroLayout === "bottom"
+                      ? ({ "--chat-content-max-width": "100%" } as CSSProperties)
+                      : undefined
+                  }
                 >
-                  {isDraftHeroState ? (
+                  {draftHeroLayout === "centered" ? (
                     <div className="absolute inset-x-0 bottom-full" data-draft-hero-headline>
                       <div
                         className="pb-4 group-has-data-[composer-shoulder-tab]/composer-stack:pb-0"
@@ -3696,12 +3751,7 @@ export default function ChatView(props: ChatViewProps) {
                             : undefined
                         }
                       >
-                        <DraftHeroHeadline
-                          capabilityMode={capabilityMode}
-                          draftId={draftId}
-                          activeProjectRef={activeProjectRef}
-                          activeProjectTitle={activeProject?.title ?? null}
-                        />
+                        {draftHeroHeadline}
                       </div>
                     </div>
                   ) : null}
@@ -3971,17 +4021,10 @@ export default function ChatView(props: ChatViewProps) {
                           )}
                         </div>
                       </div>
-                      {isDraftHeroState ? (
+                      {draftHeroLayout === "centered" ? (
                         // Out of flow, like the headline, so these never move the centered composer.
                         <div className="absolute inset-x-0 top-full flex flex-col gap-3 pt-5">
-                          {composerBannerItems.length > 0 ? (
-                            <ComposerBannerStack items={composerBannerItems} detached />
-                          ) : null}
-                          {isChatMode ? null : (
-                            <div className="hidden sm:block">
-                              <OrchestratorLauncher />
-                            </div>
-                          )}
+                          {draftHeroAside}
                         </div>
                       ) : null}
                     </ComposerSurface.Shell>
@@ -4071,8 +4114,12 @@ export default function ChatView(props: ChatViewProps) {
                     : {})}
                   onComposerFocusRequest={scheduleComposerFocusStable}
                   {...(isServerThread && isGitRepo
-                    ? { onOpenChanges: openChangesFromThreadPanelStable }
+                    ? {
+                        onOpenChanges: openChangesFromThreadPanelStable,
+                        onOpenGitGraph: addGitGraphSurfaceStable,
+                      }
                     : {})}
+                  landingShader={landingShader}
                   onRunProjectScript={runProjectScriptStable}
                   onAddProjectScript={saveProjectScriptStable}
                   onUpdateProjectScript={updateProjectScriptStable}

@@ -1,4 +1,5 @@
 import type {
+  DesktopWindowPosition,
   DesktopBridge,
   DesktopPreviewOpenLinkEvent,
   DesktopPreviewPointerEvent,
@@ -263,6 +264,21 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.on(IpcChannels.WINDOW_FULLSCREEN_STATE_CHANNEL, wrappedListener);
     return () => {
       ipcRenderer.removeListener(IpcChannels.WINDOW_FULLSCREEN_STATE_CHANNEL, wrappedListener);
+    };
+  },
+  getWindowPosition: () => {
+    const position = ipcRenderer.sendSync(IpcChannels.GET_WINDOW_POSITION_CHANNEL);
+    return typeof position === "object" ? position : null;
+  },
+  onWindowPositionChange: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, position: unknown) => {
+      if (typeof position !== "object" || position === null) return;
+      listener(position as DesktopWindowPosition);
+    };
+
+    ipcRenderer.on(IpcChannels.WINDOW_POSITION_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.WINDOW_POSITION_CHANNEL, wrappedListener);
     };
   },
   getUpdateState: () => ipcRenderer.invoke(IpcChannels.UPDATE_GET_STATE_CHANNEL),

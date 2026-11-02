@@ -29,11 +29,14 @@ const valueNoise = (x: number, y: number, seed: number) => {
   return top * (1 - fy) + bottom * fy;
 };
 
-export const asciiSeed = (text: string) => {
+const asciiSeed = (text: string) => {
   let value = 7;
   for (const character of text) value = (value * 31 + character.charCodeAt(0)) % 9973;
   return value;
 };
+
+/** One field for the whole app, so nothing about the background changes between conversations. */
+export const ASCII_FIELD_SEED = asciiSeed("t3pp");
 
 interface AsciiCell {
   readonly character: string;

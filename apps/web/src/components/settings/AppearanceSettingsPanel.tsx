@@ -4,6 +4,7 @@ import {
   DEFAULT_ENVIRONMENT_IDENTIFICATION_MODE,
   DEFAULT_UNIFIED_SETTINGS,
   type ChatWidth,
+  type NewThreadLayout,
   type EffortDisplay,
   type EnvironmentIdentificationMode,
   MAX_APPEARANCE_CONTRAST,
@@ -77,6 +78,11 @@ const CHAT_WIDTH_LABELS: Record<ChatWidth, string> = {
   comfortable: "Comfortable",
   wide: "Wide",
   full: "Full",
+};
+
+const NEW_THREAD_LAYOUT_LABELS: Record<NewThreadLayout, string> = {
+  centered: "Centered",
+  bottom: "Bottom",
 };
 
 const EFFORT_DISPLAY_LABELS: Record<EffortDisplay, string> = {
@@ -320,6 +326,39 @@ export function AppearanceSettingsPanel() {
                   <SelectItem value="comfortable">Comfortable (default)</SelectItem>
                   <SelectItem value="wide">Wide</SelectItem>
                   <SelectItem value="full">Full</SelectItem>
+                </SelectPopup>
+              </Select>
+            </div>
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("new-thread-layout")}
+          description="Keep the new thread composer in the middle, or stretch it across the bottom."
+          resetAction={
+            settings.newThreadLayout !== DEFAULT_UNIFIED_SETTINGS.newThreadLayout ? (
+              <SettingResetButton
+                label="new thread layout"
+                onClick={() =>
+                  updateSettings({ newThreadLayout: DEFAULT_UNIFIED_SETTINGS.newThreadLayout })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="w-full sm:w-40">
+              <Select
+                value={settings.newThreadLayout}
+                onValueChange={(value) => {
+                  if (value === "centered" || value === "bottom")
+                    updateSettings({ newThreadLayout: value });
+                }}
+              >
+                <SelectTrigger size="sm" className="w-full min-w-0" aria-label="New thread layout">
+                  <SelectValue>{NEW_THREAD_LAYOUT_LABELS[settings.newThreadLayout]}</SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="centered">Centered (default)</SelectItem>
+                  <SelectItem value="bottom">Bottom</SelectItem>
                 </SelectPopup>
               </Select>
             </div>

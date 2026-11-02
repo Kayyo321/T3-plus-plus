@@ -107,23 +107,21 @@ export type ConversationFolderRow<Thread> =
       readonly thread: Thread;
       readonly depth: number;
       readonly folderId: ConversationFolderId | null;
-    }
-  | { readonly kind: "unfiled"; readonly key: "unfiled"; readonly count: number };
-
-export const UNFILED_FOLDER_KEY = "unfiled";
+    };
 
 const compareFolders = (left: ConversationFolder, right: ConversationFolder) =>
   left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
 
 /**
  * Flattens the tree into the rows a virtualized list renders. Collapsed folders contribute one row
- * and no work, so a closed folder of thousands of threads costs nothing per scroll. A thread whose
- * folder was deleted is unfiled, which is what lets a restore put it straight back.
+ * and no work, so a closed folder of thousands of threads costs nothing per scroll. Threads outside
+ * any folder follow the folders at the top level. A thread whose folder was deleted is one of them,
+ * which is what lets a restore put it straight back.
  */
 export const buildConversationFolderRows = <Thread extends ConversationFolderThread>(input: {
   readonly state: ConversationFolderState;
   readonly threads: ReadonlyArray<Thread>;
-  /** Only folders of this mode show. A thread filed in another mode's folder lands in Unfiled. */
+  /** Only folders of this mode show. A thread filed in another mode's folder shows outside any folder. */
   readonly capabilityMode: ThreadCapabilityMode;
   readonly isCollapsed: (key: string) => boolean;
   readonly nowMs: number;
@@ -189,18 +187,8 @@ export const buildConversationFolderRows = <Thread extends ConversationFolderThr
   };
   visit(null, 0);
 
-  const unfiled = threadsByFolder.get(null) ?? [];
-  rows.push({ kind: "unfiled", key: UNFILED_FOLDER_KEY, count: unfiled.length });
-  if (!isCollapsed(UNFILED_FOLDER_KEY)) {
-    for (const thread of unfiled) {
-      rows.push({
-        kind: "thread",
-        key: `unfiled:${thread.id}`,
-        thread,
-        depth: 1,
-        folderId: null,
-      });
-    }
+  for (const thread of threadsByFolder.get(null) ?? []) {
+    rows.push({ kind: "thread", key: `thread:${thread.id}`, thread, depth: 0, folderId: null });
   }
   return rows;
 };
