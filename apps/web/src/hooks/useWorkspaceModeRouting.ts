@@ -85,6 +85,12 @@ export function useOpenWorkspaceMode() {
       openCommandPalette({ open: "new-thread-in" });
       return;
     }
-    await handleNewThread(defaultProjectRef);
+    const opened = await handleNewThread(defaultProjectRef);
+    // An empty draft is reused with the mode it was started in, so the tab sets the mode it opens.
+    if (opened) {
+      useComposerDraftStore
+        .getState()
+        .setDraftThreadContext(opened.draftId, { capabilityMode: mode });
+    }
   });
 }
