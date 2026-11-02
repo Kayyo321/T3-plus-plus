@@ -19,7 +19,7 @@ export const BUILT_IN_THEME_IDS = [
   "iris",
 ] as const;
 
-export const DEFAULT_THEME_ID = "void";
+export const DEFAULT_THEME_ID = "dark";
 
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
 

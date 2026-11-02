@@ -5,7 +5,7 @@ appearance or stay in light or dark mode. To use different themes for light and 
 the corresponding preview within each theme. Appearance preferences are saved separately on each
 device or browser.
 
-T3++ opens in **Void**. Void, Nova, Luna, Orbit, Nebula, Sol, Eclipse, Astral, and Aether each bring
+T3++ opens in its own dark theme. Void, Nova, Luna, Orbit, Nebula, Sol, Eclipse, Astral, and Aether each bring
 their own animated ASCII background to the new thread screen, and the T3++ mark takes on the theme.
 In **Settings → Appearance**, click a theme to use it, or click its light or dark circle to use that
 appearance. Classic and custom themes share one background that follows their colors. The background
