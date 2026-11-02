@@ -67,6 +67,8 @@ describe("V2 preview upgrade", () => {
         [86, "Teamwork"],
         [87, "ConversationFolderCapabilityMode"],
         [88, "RemoteControlDeviceAccess"],
+        [89, "SupervisionModes"],
+        [90, "TeamworkSheets"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -177,6 +179,8 @@ describe("V2 preview upgrade", () => {
         [86, "Teamwork"],
         [87, "ConversationFolderCapabilityMode"],
         [88, "RemoteControlDeviceAccess"],
+        [89, "SupervisionModes"],
+        [90, "TeamworkSheets"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

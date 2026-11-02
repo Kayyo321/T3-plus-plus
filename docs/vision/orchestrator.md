@@ -99,7 +99,7 @@ has stopped making progress, reviews it, and decides what to do.
 - A _loop_: the same command, error, or edit repeated, or two steps undoing each other.
 - A run waiting on input or approval for a long time.
 - A scheduled or [teamwork](./teamwork.md) run that exceeds its budget or keeps failing the same
-  review phase.
+  check.
 - A nested session whose parent is waiting on it.
 
 **Detection is cheap and mechanical.** The server computes the signals (elapsed time against a

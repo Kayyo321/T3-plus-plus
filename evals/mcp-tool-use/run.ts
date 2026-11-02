@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { TeamworkToolkit } from "../../apps/server/src/mcp/toolkits/teamwork/tools.ts";
+import { TeamSheetsToolkit } from "../../apps/server/src/mcp/toolkits/teamwork/sheets.ts";
 import { SessionsToolkit } from "../../apps/server/src/mcp/toolkits/sessions/tools.ts";
 import { DocumentsToolkit } from "../../apps/server/src/mcp/toolkits/documents/tools.ts";
 import {
@@ -382,6 +383,7 @@ export const normalizeToolInput = (name: string, input: unknown) => {
 const t3SourceTools: ReadonlyArray<Tool.Any> = [
   OrchestratorToolkit,
   TeamworkToolkit,
+  TeamSheetsToolkit,
   SessionsToolkit,
   DocumentsToolkit,
   ComputerUseStandardToolkit,

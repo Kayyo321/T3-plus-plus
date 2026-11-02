@@ -514,3 +514,22 @@ export const OnePasswordIcon: Icon = (props) => (
     />
   </svg>
 );
+
+export const TeamworkIcon: Icon = (props) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <circle cx="12" cy="10.5" r="3" />
+    <path d="M5.5 21a6.5 4.5 0 0 1 13 0Z" />
+    <circle cx="5" cy="6" r="2.5" />
+    <circle cx="19" cy="6" r="2.5" />
+    <path d="M2 17.5a3.5 5 0 0 1 3-5h1" />
+    <path d="M22 17.5a3.5 5 0 0 0-3-5h-1" />
+  </svg>
+);

@@ -27,6 +27,7 @@ import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
 import * as ConversationDocumentService from "../documents/ConversationDocumentService.ts";
+import * as TeamworkStore from "../teamwork/TeamworkStore.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
@@ -164,6 +165,7 @@ export const layer: Layer.Layer<
     const documents = yield* Effect.serviceOption(
       ConversationDocumentService.ConversationDocumentService,
     );
+    const teamwork = yield* Effect.serviceOption(TeamworkStore.TeamworkStore);
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
@@ -1594,7 +1596,35 @@ export const layer: Layer.Layer<
               : yield* documents.value
                   .takeTurnContext(projection.thread.id)
                   .pipe(Effect.orElseSucceed(() => null));
-          const context = [delivery.context, sideChatContext, restartNote, documentContext ?? ""]
+          const teamworkContext =
+            compact || goalCommand || Option.isNone(teamwork)
+              ? null
+              : yield* teamwork.value
+                  .takeTurnContext({
+                    threadId: projection.thread.id,
+                    capabilityMode: projection.thread.capabilityMode,
+                    orchestrationRunId: run.id,
+                    modelSelection: run.modelSelection,
+                    text: message.text,
+                    fromUser:
+                      message.createdBy === "user" &&
+                      message.senderThreadId === undefined &&
+                      message.scheduledTaskId === undefined,
+                  })
+                  .pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("Could not prepare a teamwork turn", cause).pipe(
+                        Effect.as(null),
+                      ),
+                    ),
+                  );
+          const context = [
+            delivery.context,
+            sideChatContext,
+            restartNote,
+            documentContext ?? "",
+            teamworkContext ?? "",
+          ]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
@@ -1657,12 +1687,18 @@ export const layer: Layer.Layer<
               }),
         ),
       );
+      const teamworkEnabled = Option.isSome(teamwork)
+        ? (yield* teamwork.value
+            .threadSheetId(projection.thread.id)
+            .pipe(Effect.orElseSucceed(() => null))) !== null
+        : false;
       const deliverySession =
         effectiveHandoffs.length === 0 &&
         retryHandoff.length === 0 &&
         sideChatHandoff === undefined &&
         restartNote === "" &&
-        !noteContinuation
+        !noteContinuation &&
+        !teamworkEnabled
           ? session
           : makeDeliverySession(session, startWithHandoffs);
       return runExecution.startRootRun({

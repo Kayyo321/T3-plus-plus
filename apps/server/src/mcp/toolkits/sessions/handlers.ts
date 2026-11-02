@@ -6,6 +6,8 @@ import * as BackgroundTaskService from "../../../backgroundTasks/BackgroundTaskS
 import * as NestedSessionService from "../../../orchestration-v2/NestedSessionService.ts";
 import type { DispatchActor } from "../../../orchestration-v2/NestedSessionService.ts";
 import * as ThreadBranchService from "../../../orchestration-v2/ThreadBranchService.ts";
+import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
+import { nestedFamilyOf } from "../../../orchestration-v2/nestedFamily.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import { SessionsToolkit } from "./tools.ts";
@@ -78,6 +80,22 @@ export const layer = McpToolAccess.toLayer(SessionsToolkit, {
         };
       }),
     { refused: "A linked environment cannot nest sessions under a thread here." },
+  ),
+  nested_session_family: McpToolAccess.readsAsCaller(() =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const threadId = yield* callerThreadId(undefined, "nested_session_family");
+      const threads = yield* ThreadManagementService.ThreadManagementService;
+      const snapshot = yield* Effect.flatten(
+        threads.readShellSnapshot({ familyOf: threadId }),
+      ).pipe(Effect.mapError(toFailure));
+      return {
+        members: nestedFamilyOf(snapshot.threads, threadId).map((member) => ({
+          ...member,
+          link: McpInvocationContext.threadLinkFor(scope, member.threadId),
+        })),
+      };
+    }),
   ),
   report_to_parent: McpToolAccess.actsAsCaller((input) =>
     Effect.gen(function* () {

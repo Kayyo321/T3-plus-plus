@@ -23,9 +23,9 @@ Nesting goes two levels deep by default. The `nestedSessionMaxDepth` server sett
 
 ## Work with one
 
-Nested sessions sit indented under their parent in the sidebar, whichever folder that is in. Open one and talk to it as you would any conversation.
+Nested sessions sit in a tree under their parent in the sidebar, whichever folder that is in. Each level down goes further right, and some sessions share a level. Click a branch to collapse everything below it into one `└ ...` row. Open one and talk to it as you would any conversation.
 
-A nested session's agent can leave a summary card in the parent with `report_to_parent`, optionally starting a turn there. The parent's agent can read, message, and wait for its children with `t3_thread_read`, `t3_thread_send`, and `t3_thread_wait`.
+A nested session's agent can leave a summary card in the parent with `report_to_parent`, optionally starting a turn there. Agents in one nested family can read, message, and wait for each other, including chat threads and their nested sessions. The `nested_session_family` tool lists the family.
 
 ## Close one
 

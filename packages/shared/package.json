@@ -7,6 +7,10 @@
       "types": "./src/secretRedaction.ts",
       "import": "./src/secretRedaction.ts"
     },
+    "./teamSheets": {
+      "types": "./src/teamSheets.ts",
+      "import": "./src/teamSheets.ts"
+    },
     "./cronSchedule": {
       "types": "./src/cronSchedule.ts",
       "import": "./src/cronSchedule.ts"

@@ -48,4 +48,18 @@ export const layer = McpToolAccess.toLayer(TeamworkToolkit, {
         .pipe(Effect.mapError(failure));
     }),
   ),
+  t3_team_growth_request: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      return yield* (yield* TeamworkService.TeamworkService)
+        .requestGrowth(input, yield* caller)
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
+  t3_team_growth_decide: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      return yield* (yield* TeamworkService.TeamworkService)
+        .decideGrowth(input, yield* caller)
+        .pipe(Effect.mapError(failure));
+    }),
+  ),
 });

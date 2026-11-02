@@ -431,7 +431,12 @@ const layerNestedSessionsProvided = NestedSessionService.layer.pipe(
 export const layerProduction = Layer.mergeAll(
   TeamworkService.layer.pipe(
     Layer.provide(
-      Layer.mergeAll(layerNestedSessionsProvided, layerThreadManagementProvided, AuditTrail.layer),
+      Layer.mergeAll(
+        layerNestedSessionsProvided,
+        layerThreadManagementProvided,
+        layerThreadLaunchProvided,
+        AuditTrail.layer,
+      ),
     ),
   ),
   layer.pipe(Layer.provide(layerProjectService)),

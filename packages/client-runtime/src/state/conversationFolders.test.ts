@@ -12,6 +12,7 @@ import {
 
 import {
   buildConversationFolderRows,
+  buildConversationTreeRows,
   type ConversationFolderThread,
   conversationFolderChoices,
   conversationFolderMode,
@@ -206,6 +207,82 @@ describe("conversation folder rows", () => {
     expect(conversationFolderChoices(state, "chat").map((choice) => choice.path)).toStrictEqual([
       "Chat notes",
     ]);
+  });
+});
+
+describe("conversation tree rows", () => {
+  const session = (id: string, parent?: string) => ({
+    ...thread(id),
+    archivedAt: null,
+    lineage: {
+      parentThreadId: parent === undefined ? null : ThreadId.make(parent),
+      relationshipToParent: parent === undefined ? null : "fork",
+      nestedSession: parent !== undefined,
+    } as never,
+  });
+  const summarize = (
+    threads: ReadonlyArray<ReturnType<typeof session>>,
+    options: { readonly collapsed?: ReadonlyArray<string>; readonly active?: string } = {},
+    state = emptyConversationFolderState,
+  ) =>
+    buildConversationTreeRows({
+      state,
+      threads,
+      capabilityMode: "code",
+      nowMs: NOW,
+      isCollapsed: (key) => options.collapsed?.includes(key) ?? false,
+      threadKey: (candidate) => candidate.id,
+      isActive: (candidate) => candidate.id === options.active,
+    }).map((row) =>
+      row.kind === "nested-thread"
+        ? `${row.thread.id} d${row.depth} ${row.lastSibling ? "last" : "mid"} [${row.guides}]`
+        : row.kind === "nested-collapsed"
+          ? `collapsed ${row.parent.id} d${row.depth} [${row.guides}] ${row.containsActive}`
+          : row.key,
+    );
+  const family = [
+    session("root"),
+    session("first", "root"),
+    session("grandchild", "first"),
+    session("second", "root"),
+  ];
+
+  it("moves nested sessions under their parent with depth and sibling flags", () => {
+    expect(summarize(family)).toEqual([
+      "thread:root",
+      "first d1 mid []",
+      "grandchild d2 last [true]",
+      "second d1 last []",
+    ]);
+  });
+
+  it("nests under a parent inside a folder at the folder's depth", () => {
+    const state = stateOf(snapshot([folder("a")], { a: ["root"] }));
+    expect(summarize(family, {}, state)).toEqual([
+      "folder:a",
+      "a:root",
+      "first d2 mid []",
+      "grandchild d3 last [true]",
+      "second d2 last []",
+    ]);
+  });
+
+  it("replaces a collapsed branch with one row that reports a hidden active thread", () => {
+    expect(summarize(family, { collapsed: ["nested:root"], active: "grandchild" })).toEqual([
+      "thread:root",
+      "collapsed root d1 [] true",
+    ]);
+    expect(summarize(family, { collapsed: ["nested:first"] })).toEqual([
+      "thread:root",
+      "first d1 mid []",
+      "collapsed first d2 [true] false",
+      "second d1 last []",
+    ]);
+  });
+
+  it("keeps a nested session top-level when its parent is not listed or the lineage loops", () => {
+    expect(summarize([session("orphan", "gone")])).toEqual(["thread:orphan"]);
+    expect(summarize([session("a", "b"), session("b", "a")])).toEqual(["thread:a", "thread:b"]);
   });
 });
 

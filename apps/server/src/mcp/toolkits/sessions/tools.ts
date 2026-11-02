@@ -62,7 +62,7 @@ const backgroundDependencies = [
 const StartNestedSessionTool = Tool.make("start_nested_session", {
   ...base,
   description:
-    "Start a nested session under this thread on the user's behalf: a durable child conversation the user can open and talk to. Not for a task whose result only you need; use `delegate_task`. `inherit`: nothing, summary, transcript, or selection. Its `threadId` works with `t3_thread_send`, `t3_thread_wait`, and `t3_thread_read`. Depth is limited.",
+    "Start a nested session under this thread on the user's behalf: a durable child conversation the user can open and talk to. Not for a task whose result only you need; use `delegate_task`. `inherit`: nothing, summary, transcript, or selection. Its `threadId` works with `t3_thread_send`, `t3_thread_wait`, and `t3_thread_read`, so wait for it when the user wants the answer back. Depth is limited.",
   parameters: Schema.Struct({
     title: Schema.optional(TrimmedNonEmptyString),
     inherit: NestedSessionInherit,
@@ -81,6 +81,35 @@ const StartNestedSessionTool = Tool.make("start_nested_session", {
 })
   .annotate(Tool.Title, "Start a nested session")
   .annotate(Tool.Destructive, true);
+
+const NestedFamilyMember = Schema.Struct({
+  threadId: ThreadId,
+  title: Schema.String,
+  relation: Schema.Literals([
+    "self",
+    "parent",
+    "ancestor",
+    "sibling",
+    "child",
+    "descendant",
+    "cousin",
+  ]),
+  depth: NonNegativeInt,
+  status: Schema.NullOr(Schema.String),
+  link: Schema.optional(Schema.String),
+});
+
+const NestedSessionFamilyTool = Tool.make("nested_session_family", {
+  ...base,
+  description:
+    "List the nested sessions tied to this thread: its parent, siblings, and children, with status. Any of them works with `t3_thread_read`, `t3_thread_send`, `t3_thread_wait`, and `t3_thread_interrupt`, also from a chat thread. Wait for one before you report on its work.",
+  parameters: Tool.EmptyParams,
+  success: Schema.Struct({ members: Schema.Array(NestedFamilyMember) }),
+  dependencies: nestedDependencies,
+})
+  .annotate(Tool.Title, "List this thread's nested family")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false);
 
 const ReportToParentTool = Tool.make("report_to_parent", {
   ...base,
@@ -210,6 +239,7 @@ const BackgroundTaskRemoveTool = Tool.make("background_task_remove", {
 
 export const SessionsToolkit = Toolkit.make(
   StartNestedSessionTool,
+  NestedSessionFamilyTool,
   ReportToParentTool,
   ThreadCloseTool,
   ThreadRewindTool,

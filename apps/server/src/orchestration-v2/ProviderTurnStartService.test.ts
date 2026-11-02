@@ -52,6 +52,7 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderTurnStart from "./ProviderTurnStartService.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
+import * as TeamworkStore from "../teamwork/TeamworkStore.ts";
 
 const isDomainEvent = Schema.is(OrchestrationV2DomainEvent);
 
@@ -1242,6 +1243,26 @@ effectIt.effect.each([
         },
       ]);
     }),
+);
+
+effectIt.effect("sends the Project Lead's brief on a turn with nothing else to deliver", () =>
+  Effect.gen(function* () {
+    const harness = makeLocalCommandHarness({
+      text: "Fix the parser",
+      sideChat: { contextRun: "delivered" },
+    });
+
+    yield* harness.start.pipe(
+      Effect.provideService(TeamworkStore.TeamworkStore, {
+        threadSheetId: () => Effect.succeed("default"),
+        takeTurnContext: () => Effect.succeed("LEAD_BRIEF"),
+      } as never),
+    );
+
+    expect(harness.startTurn.mock.calls.map(([turn]) => turn.message.text)).toEqual([
+      withInlineContext("LEAD_BRIEF", "Fix the parser"),
+    ]);
+  }),
 );
 
 effectIt.effect.each([

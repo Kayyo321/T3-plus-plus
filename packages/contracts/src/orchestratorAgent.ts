@@ -342,6 +342,8 @@ export const OrchestratorFocus = Schema.Struct({
   workspaceName: Schema.optional(Schema.String),
   layoutName: Schema.optional(Schema.String),
   branch: Schema.optional(Schema.String),
+  /** The team sheet open in the editor, so "this sheet" means something. */
+  teamSheetId: Schema.optional(Schema.String),
 });
 export type OrchestratorFocus = typeof OrchestratorFocus.Type;
 

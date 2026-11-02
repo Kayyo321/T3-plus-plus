@@ -65,6 +65,7 @@ import {
   type ServerProviderModel,
   ThreadId,
   isOrchestrationV2WorkActive,
+  isNestedSessionLineage,
 } from "@t3tools/contracts";
 import { getProviderOptionCurrentValue } from "@t3tools/shared/model";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
@@ -1118,11 +1119,56 @@ const make = Effect.gen(function* () {
       )
       .pipe(Effect.mapError(threadManagementFailure));
 
+  /** The conversation a nested family hangs from. Forks of it are not family. */
+  const nestedRootOf = Effect.fn("OrchestratorMcpService.nestedRootOf")(function* (
+    threadId: ThreadId,
+  ) {
+    const seen = new Set([threadId]);
+    let shell = yield* threadManagement.getThreadShell(threadId);
+    while (shell !== null && isNestedSessionLineage(shell.lineage)) {
+      const parentId: ThreadId | null = shell.lineage.parentThreadId;
+      if (parentId === null || seen.has(parentId)) break;
+      seen.add(parentId);
+      shell = yield* threadManagement.getThreadShell(parentId);
+    }
+    return shell?.id ?? threadId;
+  }, Effect.mapError(threadManagementFailure));
+
+  /**
+   * A chat thread's credential cannot control threads, but it can start nested sessions, which
+   * stay in chat. It may reach those and nothing else, so the sessions it starts are not lost to it.
+   */
+  const requireThreadAccess = Effect.fn("OrchestratorMcpService.requireThreadAccess")(function* (
+    scope: McpInvocationScope,
+    threadId: ThreadId,
+  ) {
+    if (
+      scope.capabilities.has("orchestration") ||
+      !scope.capabilities.has("documents") ||
+      scope.thread === undefined ||
+      threadId === scope.thread.threadId
+    ) {
+      return yield* requireCapability(scope);
+    }
+    const [callerRoot, targetRoot] = yield* Effect.all([
+      nestedRootOf(scope.thread.threadId),
+      nestedRootOf(threadId),
+    ]);
+    if (callerRoot !== targetRoot) yield* requireCapability(scope);
+  });
+
   const loadCaller = Effect.fn("OrchestratorMcpService.loadCaller")(function* (
     scope: McpInvocationScope,
     includeUserMessages = true,
   ) {
     yield* requireCapability(scope);
+    return yield* loadCallerProjection(scope, includeUserMessages);
+  });
+
+  const loadCallerProjection = Effect.fn("OrchestratorMcpService.loadCallerProjection")(function* (
+    scope: McpInvocationScope,
+    includeUserMessages = true,
+  ) {
     if (scope.thread === undefined) {
       return {
         parent: undefined,
@@ -1187,7 +1233,8 @@ const make = Effect.gen(function* () {
     threadId: ThreadId,
     includeHistory = true,
   ) {
-    const caller = yield* loadCaller(scope);
+    yield* requireThreadAccess(scope, threadId);
+    const caller = yield* loadCallerProjection(scope);
     const target =
       caller.parent !== undefined && threadId === caller.parent.thread.id
         ? caller.parent
@@ -1245,8 +1292,9 @@ const make = Effect.gen(function* () {
     scope: McpInvocationScope,
     threadId: ThreadId,
   ) {
+    yield* requireThreadAccess(scope, threadId);
     // Caller prompts are not used to read a timeline or acknowledge a child result.
-    const { parent } = yield* loadCaller(scope, false);
+    const { parent } = yield* loadCallerProjection(scope, false);
     const shell = yield* threadManagement
       .getThreadShell(threadId)
       .pipe(Effect.mapError(threadManagementFailure));

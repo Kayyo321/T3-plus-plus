@@ -1,7 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
-  buildConversationFolderRows,
+  buildConversationTreeRows,
   type ConversationFolderRow,
+  type ConversationTreeRow,
   emptyConversationFolderState,
 } from "@t3tools/client-runtime/state/conversationFolders";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -52,6 +53,7 @@ import {
 import { Input } from "../ui/input";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { toastManager } from "../ui/toast";
+import { isThreadRunning, NestedSessionTreeRow } from "./SidebarNestedSessionRows";
 import { SidebarHeaderIconButton } from "./SidebarThreadHeader";
 
 const FOLDER_ROW_HEIGHT = 30;
@@ -70,11 +72,6 @@ const SMART_FOLDER_PRESETS: ReadonlyArray<{
 type FolderDialog =
   | { readonly kind: "create"; readonly parentId: ConversationFolderId | null }
   | { readonly kind: "rename"; readonly folder: ConversationFolder };
-
-const isThreadRunning = (thread: EnvironmentThreadShell) =>
-  thread.runtime?.activeRunId != null ||
-  thread.runtime?.status === "running" ||
-  thread.runtime?.status === "starting";
 
 const readDroppedThreadIds = (event: ReactDragEvent) => {
   const raw = event.dataTransfer.getData(THREADS_DRAG_TYPE);
@@ -371,7 +368,9 @@ export function SidebarConversationFolders(props: {
   const nowMinute = useNowMinute();
   const threadSortOrder = useClientSettings((settings) => settings.sidebarThreadSortOrder);
 
-  const rows = buildConversationFolderRows({
+  const threadKeyOf = (thread: EnvironmentThreadShell) =>
+    scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+  const rows = buildConversationTreeRows({
     state: folderState ?? emptyConversationFolderState,
     threads: sortThreads(props.threads, threadSortOrder).map((thread) => ({
       ...thread,
@@ -380,6 +379,8 @@ export function SidebarConversationFolders(props: {
     capabilityMode: props.capabilityMode,
     isCollapsed: (key) => collapsedKeys[key] === true,
     nowMs: Date.parse(nowMinute),
+    threadKey: threadKeyOf,
+    isActive: (thread) => threadKeyOf(thread) === props.activeThreadKey,
   });
 
   const run = (input: Parameters<typeof mutate>[0]["input"]) => mutate({ environmentId, input });
@@ -494,7 +495,7 @@ export function SidebarConversationFolders(props: {
         dropOnto(null)(event);
       }}
     >
-      <LegendList<ConversationFolderRow<EnvironmentThreadShell>>
+      <LegendList<ConversationTreeRow<EnvironmentThreadShell>>
         className="min-h-0 flex-1"
         data={rows}
         keyExtractor={(row) => row.key}
@@ -524,8 +525,18 @@ export function SidebarConversationFolders(props: {
               />
             );
           }
+          if (row.kind !== "thread") {
+            return (
+              <NestedSessionTreeRow
+                row={row}
+                activeThreadKey={props.activeThreadKey}
+                onToggle={toggleCollapsed}
+                onOpenThreadMenu={props.onOpenThreadMenu}
+              />
+            );
+          }
           const { thread } = row;
-          const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
+          const threadKey = threadKeyOf(thread);
           return (
             <ConversationFolderThreadRow
               thread={thread}

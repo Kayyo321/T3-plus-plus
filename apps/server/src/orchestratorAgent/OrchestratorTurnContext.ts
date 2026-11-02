@@ -29,6 +29,7 @@ const focusLines = (focus: OrchestratorFocus) =>
     focus.branch === undefined ? null : `Branch: ${focus.branch}`,
     focus.workspaceName === undefined ? null : `Workspace: ${focus.workspaceName}`,
     focus.layoutName === undefined ? null : `Layout: ${focus.layoutName}`,
+    focus.teamSheetId === undefined ? null : `Open team sheet: ${focus.teamSheetId}`,
   ].filter((line) => line !== null);
 
 /**

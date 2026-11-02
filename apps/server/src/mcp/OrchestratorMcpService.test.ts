@@ -3179,6 +3179,51 @@ describe("OrchestratorMcpService thread lookup", () => {
     }),
   );
 
+  it.effect("lets a chat thread reach its nested sessions and nothing else", () =>
+    Effect.gen(function* () {
+      const chat = ThreadId.make("chat-parent");
+      const child = ThreadId.make("nested-child");
+      const stranger = ThreadId.make("stranger");
+      const lineageOf = (id: ThreadId): unknown =>
+        id === child
+          ? { parentThreadId: chat, relationshipToParent: "fork", nestedSession: true }
+          : { parentThreadId: null, relationshipToParent: null };
+      const sent = yield* Ref.make(0);
+      return yield* Effect.gen(function* () {
+        const mcp = yield* OrchestratorMcpService.OrchestratorMcpService;
+        const scope: McpInvocationScope = {
+          environmentId: EnvironmentId.make("environment:chat"),
+          requestNamespace: "provider-session:chat",
+          thread: {
+            threadId: chat,
+            providerSessionId: "provider-session:chat",
+            providerInstanceId: ProviderInstanceId.make("codex"),
+          },
+          client: undefined,
+          capabilities: new Set(["documents"]),
+          issuedAt: 1,
+        };
+        const denied = yield* mcp.waitForThread(scope, { threadId: stranger }).pipe(Effect.flip);
+        assert.equal(denied.code, "capability_denied");
+        const allowed = yield* mcp.waitForThread(scope, { threadId: child }).pipe(Effect.flip);
+        assert.notEqual(allowed.code, "capability_denied");
+      }).pipe(
+        Effect.provide(
+          service([], sent, {
+            getThreadRecords: () => Effect.fail("records unavailable" as never),
+            getThreadShell: (id: ThreadId) =>
+              Effect.succeed({
+                id,
+                projectId: ProjectId.make("project"),
+                deletedAt: null,
+                lineage: lineageOf(id),
+              } as never),
+          }),
+        ),
+      );
+    }),
+  );
+
   it.effect("refuses waiting without orchestration capability before reading the target", () =>
     Effect.gen(function* () {
       const sent = yield* Ref.make(0);

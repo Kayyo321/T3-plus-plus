@@ -199,6 +199,7 @@ import { SERVICE_LAUNCHER_CONTEXT_ENV } from "./cloud/serviceProtocol.ts";
 import * as ComputerUseService from "./computerUse/ComputerUseService.ts";
 import * as VirtualDisplay from "./computerUse/VirtualDisplay.ts";
 import * as ConversationDocumentService from "./documents/ConversationDocumentService.ts";
+import * as TeamworkStore from "./teamwork/TeamworkStore.ts";
 import * as RuntimeLayer from "./orchestration-v2/runtimeLayer.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as ThreadSearch from "./orchestration-v2/ThreadSearch.ts";
@@ -580,6 +581,7 @@ const layerOrchestrationV2Runtime = RuntimeLayer.layerProduction.pipe(
   Layer.provide(layerWorkspace),
   // Merged in so the turn and session services see them as well as the transports.
   Layer.provideMerge(layerConversationDocuments),
+  Layer.provideMerge(TeamworkStore.layer.pipe(Layer.provide(layerWorkspace))),
   Layer.provideMerge(layerComputerUse),
   Layer.provide(layerScheduledTaskWebhookOrigin),
   Layer.provide(layerScheduledRunCostEstimator),

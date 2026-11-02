@@ -1,5 +1,7 @@
 import { TeamworkToolkit } from "./toolkits/teamwork/tools.ts";
 import * as TeamworkHandlers from "./toolkits/teamwork/handlers.ts";
+import { TeamSheetsToolkit } from "./toolkits/teamwork/sheets.ts";
+import * as TeamSheetsHandlers from "./toolkits/teamwork/sheetHandlers.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1237,6 +1239,7 @@ export const layerTools = Layer.mergeAll(
  */
 export const layerOrchestratorTools = Layer.mergeAll(
   toolkitRegistration(TeamworkToolkit, TeamworkHandlers.layer),
+  toolkitRegistration(TeamSheetsToolkit, TeamSheetsHandlers.layer),
   layerOrchestratorToolkit,
   layerThreadToolkit,
   layerSessionsToolkit,

@@ -4,7 +4,7 @@ import { readLocalApi } from "../localApi";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { ComposerContextLabel } from "./ComposerContextLabel";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ProjectId, ThreadCapabilityMode, ThreadId } from "@t3tools/contracts";
 import { FolderGit2Icon, FolderGitIcon, FolderIcon, PlusIcon, ScaleIcon } from "lucide-react";
 import {
   type Ref,
@@ -47,6 +47,7 @@ import {
   THREAD_DETAILS_PANEL_LOCKED_ROW_CLASS,
 } from "./chat/threadDetailsPanelStyles";
 import { ComposerControl } from "./chat/ComposerControl";
+import { TeamworkToggle } from "./chat/TeamworkToggle";
 import {
   Menu,
   MenuGroup,
@@ -84,6 +85,7 @@ interface BranchToolbarProps {
   projectId: ProjectId;
   worktreePath: string | null;
   isServerThread: boolean;
+  capabilityMode?: ThreadCapabilityMode;
   showGitControls: boolean;
   draftId?: DraftId;
   onEnvModeChange: (mode: EnvMode) => void;
@@ -602,6 +604,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   projectId,
   worktreePath,
   isServerThread,
+  capabilityMode = "code",
   showGitControls,
   draftId,
   onEnvModeChange,
@@ -736,6 +739,8 @@ export const BranchToolbar = memo(function BranchToolbar({
     );
   }
 
+  const teamworkToggle = <TeamworkToggle threadRef={threadRef} capabilityMode={capabilityMode} />;
+
   return (
     <ComposerSurface.ContextStrip
       ref={attachStrip}
@@ -764,6 +769,7 @@ export const BranchToolbar = memo(function BranchToolbar({
             addTargets={addTargets}
             onAddToMachine={onAddToMachine}
           />
+          {teamworkToggle}
         </div>
       ) : null}
       {showGitControls || showEnvironmentIndicator ? (
@@ -806,6 +812,7 @@ export const BranchToolbar = memo(function BranchToolbar({
               onUsePreviousWorktree={onUsePreviousWorktree}
             />
           ) : null}
+          {teamworkToggle}
         </div>
       ) : null}
 

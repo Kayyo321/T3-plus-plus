@@ -4,6 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useEffectEvent } from "react";
 
 import { applyUiDirective, type UiDirective } from "../../layouts/uiDirectives";
+import { selectActiveRightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 import { useQuietThreadShell } from "../../state/entities";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { orchestratorEnvironment, useOrchestratorDock } from "../../state/orchestratorAgent";
@@ -66,6 +67,11 @@ export function OrchestratorDock(props: { readonly threadRef: ScopedThreadRef | 
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const environmentId = props.threadRef?.environmentId ?? primaryEnvironmentId;
   const shell = useQuietThreadShell(props.threadRef);
+  const teamSheetId = useRightPanelStore((state) => {
+    if (props.threadRef === null) return undefined;
+    const surface = selectActiveRightPanelSurface(state.byThreadKey, props.threadRef);
+    return surface?.kind === "team-sheet" ? surface.sheetId : undefined;
+  });
   if (environmentId === null) return null;
   const focus =
     shell === null
@@ -74,6 +80,7 @@ export function OrchestratorDock(props: { readonly threadRef: ScopedThreadRef | 
           threadId: shell.id,
           projectId: shell.projectId,
           ...(shell.branch === null ? {} : { branch: shell.branch }),
+          ...(teamSheetId === undefined ? {} : { teamSheetId }),
         };
   return (
     <>

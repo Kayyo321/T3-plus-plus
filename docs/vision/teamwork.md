@@ -2,88 +2,130 @@
 
 ## What it is
 
-Teamwork is a built-in skill that turns one request into **a small simulated company working on it**:
-designated teams, written hand-offs, and several review phases before anything is called done.
-Single agents are fast but tend to grade their own homework. Teamwork separates the people who build
-from the people who check, the way a real engineering org does.
+Teamwork lets one thread run a request through a small team of agents laid out as a **sheet**: a
+flow chart with one Project Lead and teams that build, review, and validate the work. Single agents
+are fast but tend to grade their own homework. Teamwork keeps the people who build apart from the
+people who check, the way a real engineering org does.
 
-Think of it as the difference between asking one engineer to ship a feature and opening a project
-with a lead, builders, a reviewer, a tester, and someone whose only job is to say "this doesn't match
-what was asked."
+The lead plans and coordinates. It decides which provider, model, and effort each team uses, how big
+each team is, and who gets which task, within the model option each team was given. The sheet decides
+what responsibilities exist and what checks sit between them.
 
-## The shape of a run
+## Sheets are flow charts
+
+- A sheet is a named flow chart, stored per environment, with a revision number. Its nodes are the
+  Project Lead, and teams of kind `build`, `review`, or `validate`. Its edges are `handoff` (forward on a
+  pass) or `return` (back for correction).
+- Exactly one Project Lead node. Its model is the thread's model, snapshotted when the run starts.
+- A user-added team picks one of the three work kinds, and the kind decides its behaviour. Build teams
+  get their own worktrees. Review and validate teams never edit.
+- Each team has one of three model options:
+  - **A. Lead decides.** The lead picks any provider and model.
+  - **B. Lead decides within one provider.** The lead picks the model, on a provider the sheet fixes.
+  - **C. Pinned.** One exact provider instance and model, every run.
+    In all three the lead still chooses effort and team size. The default sheet gives every team option A.
+- The built-in default sheet is read-only. "Create new sheet" starts from a copy of it. Any other
+  sheet can be edited and deleted.
+- Saving refuses a sheet the run could not execute, with a plain message: no lead, more than one lead,
+  a node the lead cannot reach, or no path to acceptance.
+- Node ids are stable across edits, so a run's history keeps pointing at the right team.
+
+## Workflow
 
 ```text
-Request
-  -> Intake        clarify goals, constraints, definition of done
-  -> Plan          lead drafts a plan and a task breakdown
-  -> Plan review   independent reviewers challenge the plan
-  -> Build         implementation teams work in parallel, each in its own session
-  -> Peer review   reviewers read diffs, not summaries
-  -> Verification  testers run the code and the checks
-  -> Acceptance    a skeptic compares the result to the original request
-  -> Report        one summary, with evidence, open risks, and what was not verified
+Lead defines and assigns
+  -> Build           produces integrated work in its worktree
+  -> Review          inspects the diff, not the summary
+       changes required -> back to Build
+  -> Validate        runs the code and the acceptance checks
+       fail -> back to Build
+  -> Lead accepts and reports
 ```
 
-Phases can loop: review feedback goes back to build; failed verification goes back to build with the
-failing output attached. A phase ends when its exit criteria are met, not when time runs out.
+A blocked task goes back to the lead, which decides on dependencies, access, scope, or approach. It does
+not go to the next team in line.
 
-## Roles and teams
+Every handoff names its verdict and the evidence behind it:
 
-Roles are configurable; the defaults should be few and clear.
+- **Build** says what changed, where, which requirements it addresses, what it checked, and what remains
+  uncertain.
+- **Review** returns PASS or CHANGES REQUIRED, with findings marked Blocking or Suggestion, and lists
+  what it could not check.
+- **Validate** returns PASS, FAIL, or BLOCKED, with evidence for each acceptance criterion, on the same
+  candidate version Review read.
 
-| Role                  | Responsibility                                                                              |
-| --------------------- | ------------------------------------------------------------------------------------------- |
-| **Lead**              | Owns the plan, decomposes work, resolves disputes, writes the final report. Does not build. |
-| **Builders**          | One or more, each assigned a slice and its own worktree or branch.                          |
-| **Reviewer**          | Reads the actual diff for correctness, design, and taste. Has no stake in the code.         |
-| **Tester**            | Runs tests, reproduces bugs, and writes missing ones. Reports evidence.                     |
-| **Skeptic / QA**      | Checks the result against the request and hunts for what everyone assumed.                  |
-| **Scribe** (optional) | Maintains the shared notes and decision log.                                                |
+The rules every agent in a run follows are defined once in shared code (`TEAM_OPERATING_RULES`), not
+repeated in each sheet.
 
-A _team_ is a named group with a role mix, instructions, and a provider and model per role. Examples:
-_Fix a bug_ (one builder, tester, reviewer), _Build a feature_ (lead, two builders, reviewer, tester,
-skeptic), _Audit_ (reviewers and a skeptic only, no builders).
+## The roster is the non-negotiable
 
-Different roles can use **different providers and models**. A reviewer on a different model than the
-builder is a feature: it avoids correlated blind spots.
+A thread keeps one roster per sheet. Each team slot on it is bound to a nested session that belongs to
+that thread. Every later run on that sheet re-invokes the same sessions. It does not create new ones.
 
-## Working environment
+The reason is what a new session lacks. It has an empty conversation, so it does not remember the plan,
+the review it already got, or the decision the lead made last time. A build team also gets a new
+worktree, which means its half-finished work is not where it was. Re-creating sessions every run throws
+all of that away, and the team starts from zero each time.
 
-- **Shared board.** A live task board: tasks, owners, state, blockers. It is the main view of a
-  teamwork run and the thing you glance at.
-- **Notes and decisions.** A shared document the team reads and writes: plan, decisions and their
-  reasons, open questions. Keeps agents aligned without replaying transcripts.
-- **Separate working copies.** Builders get isolated worktrees; merges are done by the lead, with
-  conflicts surfaced instead of silently resolved.
-- **Handoffs, not transcripts.** Teams pass structured handoff cards (what was done, how to verify,
-  known gaps). Reviewers receive the diff and the cards.
-- **Stand-ups.** Optional periodic summaries so a human can drop in, correct course, and leave.
-- **Human in the loop.** You can approve the plan, answer questions, reassign, or stop the run.
-  Dials: _autonomous_, _approve the plan_, _approve each phase_.
+Team sessions are created lazily, the first time the lead addresses that node. Replacing a slot is an
+explicit act, taken from the run board, when its session is blocked (for example, because it was deleted).
 
-Mechanically this is nested sessions ([sessions](./sessions-and-agents.md)) plus the
-[orchestrator](./orchestrator.md)'s tooling, so it should require little new infrastructure beyond
-the roles, the board, and the phase logic.
+## Growth
+
+Growth is a setting on the Project Lead node. It decides whether a run may add members to the roster.
+
+- **Off** (default). The roster is fixed after the first run. Requests are refused before they reach the
+  lead.
+- **On.** The lead decides each request.
+- **Ask.** The owner answers first, on the run board. A denial is final.
+
+When Growth is On or Ask, a request also carries a scope:
+
+- **Per session** joins this thread's roster only.
+- **Save to sheet** also adds the member as a node on the sheet, behind a revision check.
+
+Each team may make one growth request per run, whatever state the run is in.
+
+## Nested-session shape
+
+A teamwork run is a small tree of nested sessions under the thread:
+
+```text
+thread
+  -> team session
+       -> member
+```
+
+The tree is two levels below the thread, which is the default nested-session depth cap. Members sit
+under the team that started them, and the run board links each one. The lead is the run's parent thread
+and has no session of its own in the tree.
+
+## Run board
+
+The run board shows where the run is in the flow, each slot's status, growth requests waiting for an
+owner, and any denial with its reason. A blocked slot says why it is blocked and offers Replace. The
+board can stop a run. A stopped run resumes from its current step with the same sessions.
+
+Run status is one of `running`, `awaiting_owner`, `blocked`, `over_budget`, `stopped`, or `done`.
 
 ## Guardrails
 
-- **Budgets.** Set limits on total cost, time, parallel agents, and review loops. The default review
-  loop limit prevents endless back-and-forth.
-- **Evidence over assertion.** Verification and acceptance require commands run and outputs
-  captured. "Looks good" is not a pass.
-- **No self-approval.** The agent that built a slice cannot review or accept it.
+- **Budgets.** A run has limits on cost, time, and parallel agents. A run that exceeds one stops as
+  `over_budget` and waits for a larger budget before it continues.
+- **Correction cycles.** A return from Review or Validate counts as one cycle. A run that keeps failing
+  the same check stops for its owner instead of looping.
+- **Evidence over assertion.** Review and Validate cite commands run and their output. "Looks good" is
+  not a pass.
+- **No self-approval.** The session that built a slice cannot review or validate it.
 - **Honest reports.** The final report lists what was and was not verified, and failed checks stay
   visible.
-- **Permissions inherit downward.** A team cannot hold more permission than the conversation that
-  started it.
+- **Permissions inherit downward.** A team cannot hold more permission than the thread that started it.
 
 ## Ideas worth trying
 
-- **Red team phase** for security-sensitive changes: an agent tries to break the result.
-- **Retrospective** at the end that saves lessons (what reviewers caught, what slipped through) as a
-  project note for next time.
-- **Presets as files** in the repository, so teams share their team definitions the way they share
-  lint config.
-- **Dry run** that produces only the plan and team assignment, with a cost estimate, before spending
-  anything.
+- **Red team** step for security-sensitive changes: an agent tries to break the result before Validate.
+- **Retrospective** at the end that saves what reviewers caught and what slipped through, as a project
+  note for next time.
+- **Sheets as files** in the repository, so teams share their flow charts the way they share lint config.
+- **Dry run** that produces only the lead's plan and team assignments, with a cost estimate, before
+  anything spends.
