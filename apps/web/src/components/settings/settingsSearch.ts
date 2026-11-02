@@ -1098,6 +1098,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     localBackendManagementOnly: true,
   },
   {
+    id: "private-relay",
+    title: "Private relay",
+    to: "/settings/access",
+    targetId: "private-relay",
+    searchTerms: ["remote control phone anywhere cloudflare worker vpn kill switch onboard prompt"],
+    localBackendManagementOnly: true,
+  },
+  {
     id: "wsl-backend",
     title: "WSL backend",
     to: "/settings/access",

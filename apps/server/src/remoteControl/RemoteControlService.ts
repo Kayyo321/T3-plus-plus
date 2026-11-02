@@ -101,6 +101,7 @@ import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { CONFIRMATION_WORDS } from "./confirmationWords.ts";
+import { RemoteRelayTunnel } from "./RemoteRelayTunnel.ts";
 import { rankRemoteRoutes, type RemoteTransport } from "./remoteRoutes.ts";
 import {
   makeRemoteControlStore,
@@ -309,6 +310,7 @@ const make = Effect.gen(function* () {
   const computerUse = yield* Effect.serviceOption(ComputerUseService.ComputerUseService);
   const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
   const managedEndpoint = yield* CloudManagedEndpointRuntime;
+  const remoteRelay = yield* RemoteRelayTunnel;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const audit = yield* AuditTrail.AuditTrail;
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
@@ -371,6 +373,7 @@ const make = Effect.gen(function* () {
     return rankRemoteRoutes({
       endpoints: yield* directEndpoints.resolve(),
       connectHostname: yield* connectHostname,
+      relayUrl: yield* remoteRelay.publicUrl,
     });
   });
 

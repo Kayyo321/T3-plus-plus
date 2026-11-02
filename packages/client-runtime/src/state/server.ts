@@ -1743,6 +1743,18 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:remote-control:reachability",
       tag: WS_METHODS.remoteControlReachability,
     }),
+    remoteRelayLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:server:remote-relay:live",
+      tag: WS_METHODS.remoteRelaySubscribe,
+    }),
+    configureRemoteRelay: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-relay:configure",
+      tag: WS_METHODS.remoteRelayConfigure,
+    }),
+    removeRemoteRelay: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:remote-relay:remove",
+      tag: WS_METHODS.remoteRelayRemove,
+    }),
     enableRemoteControl: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:remote-control:enable",
       tag: WS_METHODS.remoteControlEnable,

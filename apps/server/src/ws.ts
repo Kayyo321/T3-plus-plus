@@ -137,6 +137,7 @@ import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "./secrets/SecretRequests.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import * as RemoteControlService from "./remoteControl/RemoteControlService.ts";
+import * as RemoteRelayTunnel from "./remoteControl/RemoteRelayTunnel.ts";
 import {
   bufferShellLiveStream,
   coalesceShellApplicationEvents,
@@ -1117,6 +1118,7 @@ export const layerWsRpc = (
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
       const remoteControl = yield* RemoteControlService.RemoteControlService;
+      const remoteRelay = yield* RemoteRelayTunnel.RemoteRelayTunnel;
       const pullRequests = yield* PullRequestService.PullRequestService;
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
@@ -2117,6 +2119,9 @@ export const layerWsRpc = (
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(remoteControl.resolvePairing(input)),
           ),
+        [WS_METHODS.remoteRelaySubscribe]: (_input) => remoteRelay.changes,
+        [WS_METHODS.remoteRelayConfigure]: (input) => remoteRelay.configure(input),
+        [WS_METHODS.remoteRelayRemove]: (_input) => remoteRelay.remove,
         [WS_METHODS.secretsAnswerRequest]: (input) =>
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(secretRequests.answer(input)),

@@ -66,6 +66,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.workspacesSubscribe
   | typeof WS_METHODS.conversationFoldersSubscribe
   | typeof WS_METHODS.remoteControlSubscribe
+  | typeof WS_METHODS.remoteRelaySubscribe
   | typeof WS_METHODS.documentsSubscribe
   | typeof WS_METHODS.computerUseSubscribe
   | typeof WS_METHODS.scheduledTasksSubscribe

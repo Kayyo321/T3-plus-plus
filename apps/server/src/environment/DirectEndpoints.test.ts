@@ -112,10 +112,13 @@ describe("resolveBoundEndpoints", () => {
     ]);
   });
 
-  it("skips container and VM networks, which only this machine reaches", () => {
+  it("skips container, VM and Mullvad networks, which no other device reaches", () => {
     const interfaces = {
       ...INTERFACES,
       docker0: virtualInterface("172.17.0.1"),
+      mullvad: vpnInterface("10.71.200.239"),
+      "wg0-mullvad": vpnInterface("10.64.0.2"),
+      wg0: vpnInterface("10.8.0.2"),
       "br-3f2a1b": virtualInterface("172.18.0.1"),
       virbr0: virtualInterface("192.168.122.1"),
       "vEthernet (WSL)": virtualInterface("172.24.0.1"),
@@ -127,6 +130,7 @@ describe("resolveBoundEndpoints", () => {
     ).toEqual([
       { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
       { kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" },
+      { kind: "lan", httpBaseUrl: "http://10.8.0.2:3773/" },
       { kind: "lan", httpBaseUrl: "http://192.168.1.20:3773/" },
     ]);
   });

@@ -134,6 +134,9 @@
         "src/preload.mjs",
       ],
     },
+    "infra/remote-relay": {
+      "entry": ["setup.mjs!", "src/worker.ts!"],
+    },
     "infra/relay": {
       // Alchemy loads src/worker.ts as the Worker entry and reads its default export.
       "entry": ["alchemy.run.ts!", "src/persistence/schema.ts!", "src/worker.ts!"],

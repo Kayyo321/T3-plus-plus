@@ -40,6 +40,7 @@ import { FoldedSettingsSection } from "./FoldedSettingsSection";
 import { LinkedEnvironmentsSettings } from "./LinkedEnvironmentsSettings";
 import { usePeerLinkHosts } from "~/state/peerLinks";
 import { LoadBalancingSettings } from "./LoadBalancingSettings";
+import { PrivateRelaySettings } from "./PrivateRelaySettings";
 import { PullRequestRoutingSettings } from "./PullRequestRoutingSettings";
 import { Input } from "../ui/input";
 import {
@@ -1136,6 +1137,10 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
               </details>
             ) : null}
           </SettingsSection>
+
+          {canManageLocalBackend && canReadAccess ? (
+            <PrivateRelaySettings environmentId={primaryEnvironmentId} />
+          ) : null}
 
           {canReadAccess || canWriteAccess ? (
             <FoldedSettingsSection

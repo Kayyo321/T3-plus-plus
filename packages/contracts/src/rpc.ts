@@ -298,6 +298,8 @@ import {
   RemoteControlSwitch,
   RemoteControlThreadInput,
   RemoteControlUpdateInput,
+  RemoteRelayConfigureInput,
+  RemoteRelayState,
 } from "./remoteControl.ts";
 import { PullRequestReviewGuideResult } from "./pullRequestReviewGuide.ts";
 import {
@@ -755,6 +757,9 @@ export const WS_METHODS = {
   remoteControlRevealLink: "remoteControl.revealLink",
   remoteControlRevokeDevice: "remoteControl.revokeDevice",
   remoteControlResolvePairing: "remoteControl.resolvePairing",
+  remoteRelaySubscribe: "remoteRelay.subscribe",
+  remoteRelayConfigure: "remoteRelay.configure",
+  remoteRelayRemove: "remoteRelay.remove",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
 
@@ -2622,6 +2627,23 @@ const WsRemoteControlResolvePairingRpc = Rpc.make(WS_METHODS.remoteControlResolv
   error: RemoteControlRpcError,
 });
 
+const WsRemoteRelaySubscribeRpc = Rpc.make(WS_METHODS.remoteRelaySubscribe, {
+  payload: Schema.Struct({}),
+  success: RemoteRelayState,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+const WsRemoteRelayConfigureRpc = Rpc.make(WS_METHODS.remoteRelayConfigure, {
+  payload: RemoteRelayConfigureInput,
+  error: RemoteControlRpcError,
+});
+
+const WsRemoteRelayRemoveRpc = Rpc.make(WS_METHODS.remoteRelayRemove, {
+  payload: Schema.Struct({}),
+  error: RemoteControlRpcError,
+});
+
 const WsSecretsAnswerRequestRpc = Rpc.make(WS_METHODS.secretsAnswerRequest, {
   payload: SecretRequestAnswerInput,
   error: Schema.Union([SecretRequestError, EnvironmentAuthorizationError]),
@@ -2745,6 +2767,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsRemoteControlRevealLinkRpc,
   WsRemoteControlRevokeDeviceRpc,
   WsRemoteControlResolvePairingRpc,
+  WsRemoteRelaySubscribeRpc,
+  WsRemoteRelayConfigureRpc,
+  WsRemoteRelayRemoveRpc,
   WsServerProbeRpc,
   WsServerGetConfigRpc,
   WsServerRefreshProvidersRpc,

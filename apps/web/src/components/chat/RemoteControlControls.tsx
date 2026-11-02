@@ -19,15 +19,18 @@ import {
   type ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
-import { CheckIcon, CopyIcon, MousePointer2Icon } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { CheckIcon, ChevronDownIcon, CopyIcon, MousePointer2Icon } from "lucide-react";
 import { Atom } from "effect/reactivity";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { requestConfirmDialog } from "~/confirmDialog";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { cn } from "~/lib/utils";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { usePrimaryEnvironmentId } from "~/state/environments";
 import { environmentPresentations } from "~/state/presentation";
 import { useEnvironmentQuery } from "~/state/query";
 import { serverEnvironment } from "~/state/server";
@@ -43,12 +46,12 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { Input } from "../ui/input";
 import { QRCodeSvg } from "../ui/qr-code";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatPairingCode, formatRemaining } from "../remote/remoteStream.logic";
+import { THREAD_DETAILS_PANEL_CHEVRON_CLASS } from "./threadDetailsPanelStyles";
 
 const sheetThreadAtom = Atom.make<ScopedThreadRef | null>(null).pipe(
   Atom.keepAlive,
@@ -60,6 +63,7 @@ export function openRemoteControlSheet(threadRef: ScopedThreadRef): void {
 }
 
 const ROUTE_LABELS: Record<RemoteControlRouteKind, string> = {
+  relay: "Private relay",
   lan: "This network",
   tailnet: "Tailscale",
   connect: "T3 Connect",
@@ -106,8 +110,8 @@ function useRemoteControlSwitch(threadRef: ScopedThreadRef): RemoteControlSwitch
 }
 
 /**
- * The details panel's switch. On, it starts at the safest settings and opens the sheet so the link
- * is one glance away; off, every device is out at once. The label reaches the sheet in both states.
+ * The details panel's switch. On, it starts at the safest settings and opens a dropdown with the
+ * link; off, every device is out at once. Off, the label opens the sheet; on, it toggles the dropdown.
  */
 export function RemoteControlDetailsRow({
   threadRef,
@@ -133,6 +137,7 @@ export function RemoteControlDetailsRow({
     label: "turn off remote control",
   });
   const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   if (!supported) return null;
   const connected = remote?.devices.filter((device) => device.connected).length ?? 0;
   const disabled = !threadStarted || !canEnable || busy;
@@ -146,7 +151,7 @@ export function RemoteControlDetailsRow({
     }
     setBusy(true);
     if (on) {
-      await enable({
+      const result = await enable({
         environmentId,
         input: {
           threadId,
@@ -157,7 +162,8 @@ export function RemoteControlDetailsRow({
         },
       });
       // Success shows the link; failure shows why no device can reach this machine.
-      openRemoteControlSheet(threadRef);
+      if (result._tag === "Success") setExpanded(true);
+      else openRemoteControlSheet(threadRef);
     } else {
       await disable({ environmentId, input: { threadId } });
     }
@@ -165,38 +171,115 @@ export function RemoteControlDetailsRow({
   };
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <div className="flex h-8 min-w-0 items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-accent/50" />
-        }
-      >
-        <button
-          type="button"
-          disabled={!threadStarted}
-          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left outline-none focus-visible:underline disabled:cursor-default"
-          onClick={() => openRemoteControlSheet(threadRef)}
+    <div>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <div className="flex h-8 min-w-0 items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-accent/50" />
+          }
         >
-          <MousePointer2Icon className={iconClassName} aria-hidden />
-          <span className={labelClassName}>Remote Control</span>
-          {connected > 0 ? (
-            <span className="truncate text-muted-foreground text-xs">{connected} connected</span>
-          ) : null}
-        </button>
-        <Switch
-          size="sm"
-          aria-label="Remote Control"
-          checked={remote !== null}
-          disabled={disabled}
-          onCheckedChange={(checked) => void flip(checked)}
-        />
-      </TooltipTrigger>
-      <TooltipPopup side="left">
-        {threadStarted
-          ? "Reach this conversation from a phone or another computer."
-          : "Send a message first. Remote control follows one conversation."}
-      </TooltipPopup>
-    </Tooltip>
+          <button
+            type="button"
+            disabled={!threadStarted}
+            aria-expanded={remote === null ? undefined : expanded}
+            className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left outline-none focus-visible:underline disabled:cursor-default"
+            onClick={() => {
+              if (remote === null) openRemoteControlSheet(threadRef);
+              else setExpanded(!expanded);
+            }}
+          >
+            <MousePointer2Icon className={iconClassName} aria-hidden />
+            <span className={labelClassName}>Remote Control</span>
+            {connected > 0 ? (
+              <span className="truncate text-muted-foreground text-xs">{connected} connected</span>
+            ) : null}
+            {remote === null ? null : (
+              <ChevronDownIcon
+                className={cn(THREAD_DETAILS_PANEL_CHEVRON_CLASS, expanded && "rotate-180")}
+                aria-hidden
+              />
+            )}
+          </button>
+          <Switch
+            size="sm"
+            aria-label="Remote Control"
+            checked={remote !== null}
+            disabled={disabled}
+            onCheckedChange={(checked) => void flip(checked)}
+          />
+        </TooltipTrigger>
+        <TooltipPopup side="left">
+          {threadStarted
+            ? "Reach this conversation from a phone or another computer."
+            : "Send a message first. Remote control follows one conversation."}
+        </TooltipPopup>
+      </Tooltip>
+      {remote !== null && expanded ? (
+        <RemoteControlDropdown threadRef={threadRef} remote={remote} />
+      ) : null}
+    </div>
+  );
+}
+
+function RemoteControlDropdown({
+  threadRef,
+  remote,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  readonly remote: RemoteControlSwitch;
+}) {
+  const linkState = useRemoteControlLink(threadRef, remote);
+  const connected = remote.devices.filter((device) => device.connected).length;
+  return (
+    <div data-thread-details-remote-control className="flex flex-col gap-3 px-2.5 pt-1 pb-2">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">Access</dt>
+        <dd>{REMOTE_CONTROL_LEVEL_INFO[remote.accessLevel].label}</dd>
+        <dt className="text-muted-foreground">Pairing</dt>
+        <dd>{PAIRING_LABELS[remote.pairingMode]}</dd>
+        <dt className="text-muted-foreground">Devices</dt>
+        <dd>{connected > 0 ? `${connected} connected` : "None yet"}</dd>
+      </dl>
+      <LinkSection remote={remote} linkState={linkState} />
+      {linkState.error !== null ? (
+        <p role="alert" className="text-destructive text-xs">
+          {linkState.error}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button size="xs" variant="outline" onClick={() => openRemoteControlSheet(threadRef)}>
+          Manage
+        </Button>
+        <PrivateRelaySettingsButton environmentId={threadRef.environmentId} size="xs" />
+      </div>
+    </div>
+  );
+}
+
+/** A relay belongs to the machine these settings manage, so other environments get no button. */
+function PrivateRelaySettingsButton({
+  environmentId,
+  size,
+  onOpen,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly size: "xs" | "sm";
+  readonly onOpen?: () => void;
+}) {
+  const navigate = useNavigate();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  if (environmentId !== primaryEnvironmentId) return null;
+  return (
+    <Button
+      size={size}
+      variant="outline"
+      onClick={() => {
+        onOpen?.();
+        void navigate({ to: "/settings/access", hash: "private-relay" });
+      }}
+    >
+      Private relay settings
+    </Button>
   );
 }
 
@@ -385,7 +468,9 @@ function RemoteControlOff({
         <Button variant="outline" size="sm" onClick={onClose}>
           Close
         </Button>
-        {noRoute ? null : (
+        {noRoute ? (
+          <PrivateRelaySettingsButton environmentId={environmentId} size="sm" onOpen={onClose} />
+        ) : (
           <Button
             size="sm"
             disabled={!canEnable || turningOn || reachability == null}
@@ -484,6 +569,59 @@ function SwitchSettings({
   );
 }
 
+function useRemoteControlLink(threadRef: ScopedThreadRef, remote: RemoteControlSwitch) {
+  const { environmentId, threadId } = threadRef;
+  const canManage = useAtomValue(
+    serverEnvironment.updateRemoteControl.permissionAtom(environmentId),
+  );
+  const reveal = useAtomCommand(serverEnvironment.revealRemoteControlLink, {
+    reportFailure: false,
+  });
+  const rotate = useAtomCommand(serverEnvironment.rotateRemoteControlLink, {
+    reportFailure: false,
+  });
+  // A link shown is only good for the link generation it came from.
+  const [revealed, setRevealed] = useState<{
+    readonly expiresAt: string;
+    readonly link: RemoteControlLink | null;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const linkIsLive = remote.linkStatus === "ready";
+  const { linkExpiresAt } = remote;
+  const answered = revealed?.expiresAt === linkExpiresAt;
+  const link = linkIsLive && answered ? revealed.link : null;
+  const revealLink = useStableCallback(() => reveal({ environmentId, input: { threadId } }));
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches the live link from the server when the sheet or dropdown opens on a switch that already has one
+  useEffect(() => {
+    if (!canManage || !linkIsLive) return;
+    let live = true;
+    void revealLink().then((result) => {
+      if (!live) return;
+      const shown =
+        result._tag === "Success" && result.value?.expiresAt === linkExpiresAt
+          ? result.value
+          : null;
+      setRevealed({ expiresAt: linkExpiresAt, link: shown });
+    });
+    return () => {
+      live = false;
+    };
+  }, [canManage, linkIsLive, linkExpiresAt, revealLink]);
+
+  const newLink = async () => {
+    const result = await rotate({ environmentId, input: { threadId } });
+    if (result._tag === "Success") {
+      setRevealed({ expiresAt: result.value.expiresAt, link: result.value });
+      setError(null);
+    } else {
+      setError(failureMessage(result));
+    }
+  };
+
+  return { canManage, error, link, loading: canManage && linkIsLive && !answered, newLink };
+}
+
 function RemoteControlOn({
   threadRef,
   remote,
@@ -494,44 +632,14 @@ function RemoteControlOn({
   readonly onClose: () => void;
 }) {
   const { environmentId, threadId } = threadRef;
-  const canManage = useAtomValue(
-    serverEnvironment.updateRemoteControl.permissionAtom(environmentId),
-  );
   const update = useAtomCommand(serverEnvironment.updateRemoteControl, { reportFailure: false });
   const disable = useAtomCommand(serverEnvironment.disableRemoteControl, {
     label: "turn off remote control",
   });
-  const reveal = useAtomCommand(serverEnvironment.revealRemoteControlLink, {
-    reportFailure: false,
-  });
-  const rotate = useAtomCommand(serverEnvironment.rotateRemoteControlLink, {
-    reportFailure: false,
-  });
-  // A link shown is only good for the link generation it came from.
-  const [revealed, setRevealed] = useState<{
-    readonly expiresAt: string;
-    readonly link: RemoteControlLink;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const linkState = useRemoteControlLink(threadRef, remote);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [turningOff, setTurningOff] = useState(false);
-  const linkIsLive = remote.linkStatus === "ready";
-  const { linkExpiresAt } = remote;
-  const link = linkIsLive && revealed?.expiresAt === linkExpiresAt ? revealed.link : null;
-  const revealLink = useStableCallback(() => reveal({ environmentId, input: { threadId } }));
-
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches the live link from the server when the sheet opens on a switch that already has one
-  useEffect(() => {
-    if (!canManage || !linkIsLive) return;
-    let live = true;
-    void revealLink().then((result) => {
-      if (live && result._tag === "Success" && result.value?.expiresAt === linkExpiresAt) {
-        setRevealed({ expiresAt: linkExpiresAt, link: result.value });
-      }
-    });
-    return () => {
-      live = false;
-    };
-  }, [canManage, linkIsLive, linkExpiresAt, revealLink]);
+  const error = saveError ?? linkState.error;
 
   const save = async (input: {
     readonly accessLevel?: RemoteControlAccessLevel;
@@ -550,17 +658,7 @@ function RemoteControlOn({
       environmentId,
       input: { threadId, ...input, confirmRaise: raising },
     });
-    setError(result._tag === "Success" ? null : failureMessage(result));
-  };
-
-  const newLink = async () => {
-    const result = await rotate({ environmentId, input: { threadId } });
-    if (result._tag === "Success") {
-      setRevealed({ expiresAt: result.value.expiresAt, link: result.value });
-      setError(null);
-    } else {
-      setError(failureMessage(result));
-    }
+    setSaveError(result._tag === "Success" ? null : failureMessage(result));
   };
 
   const turnOff = async () => {
@@ -573,36 +671,7 @@ function RemoteControlOn({
     <>
       <DialogPanel>
         <div className="flex flex-col gap-4">
-          {linkIsLive && link !== null ? (
-            <LinkPanel link={link} expiresAt={remote.linkExpiresAt} />
-          ) : (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
-              <p className="text-muted-foreground">
-                {remote.linkStatus === "spent"
-                  ? "The link was used. Each link works once."
-                  : remote.linkStatus === "locked"
-                    ? "The link was locked after failed attempts."
-                    : remote.linkStatus === "expired"
-                      ? "The link expired."
-                      : "Your connection cannot show the link."}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!canManage}
-                onClick={() => void newLink()}
-              >
-                New link
-              </Button>
-            </div>
-          )}
-          {linkIsLive && link !== null ? (
-            <div>
-              <Button size="xs" variant="ghost-muted" onClick={() => void newLink()}>
-                Replace link
-              </Button>
-            </div>
-          ) : null}
+          <LinkSection remote={remote} linkState={linkState} />
           <DeviceList threadRef={threadRef} devices={remote.devices} />
           <SwitchSettings
             accessLevel={remote.accessLevel}
@@ -636,6 +705,77 @@ function RemoteControlOn({
   );
 }
 
+function LinkSection({
+  remote,
+  linkState,
+}: {
+  readonly remote: RemoteControlSwitch;
+  readonly linkState: ReturnType<typeof useRemoteControlLink>;
+}) {
+  const { canManage, link, loading, newLink } = linkState;
+  if (loading) return <p className="text-muted-foreground text-sm">Getting the link...</p>;
+  if (link === null) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
+        <p className="text-muted-foreground">
+          {remote.linkStatus === "spent"
+            ? "The link was used. Each link works once."
+            : remote.linkStatus === "locked"
+              ? "The link was locked after failed attempts."
+              : remote.linkStatus === "expired"
+                ? "The link expired."
+                : "Your connection cannot show the link."}
+        </p>
+        <Button size="sm" variant="outline" disabled={!canManage} onClick={() => void newLink()}>
+          New link
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <>
+      <LinkPanel link={link} expiresAt={remote.linkExpiresAt} />
+      <div>
+        <Button size="xs" variant="ghost-muted" onClick={() => void newLink()}>
+          Replace link
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/** Keeps a live link off anyone's screen until clicked. Unmounting blurs it again. */
+function BlurReveal({
+  label,
+  className,
+  children,
+}: {
+  readonly label: string;
+  readonly className: string;
+  readonly children: ReactNode;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <div className={cn("relative overflow-hidden", className)}>
+      <div inert={!revealed} className={cn(!revealed && "select-none blur-sm")}>
+        {children}
+      </div>
+      {revealed ? null : (
+        <button
+          type="button"
+          aria-label={label}
+          className="absolute inset-0 flex cursor-pointer items-center justify-center outline-none focus-visible:underline"
+          onClick={() => setRevealed(true)}
+        >
+          <span className="rounded-md bg-background/90 px-2 py-0.5 font-medium text-foreground text-xs shadow-xs">
+            Click to reveal
+          </span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function LinkPanel({
   link,
   expiresAt,
@@ -650,11 +790,11 @@ function LinkPanel({
     link.routes.find((candidate) => candidate.url === chosenKind) ?? link.routes[0];
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex gap-4">
-        <div className="shrink-0 rounded-lg bg-white p-2">
+      <div className="flex flex-wrap justify-center gap-4">
+        <BlurReveal label="Reveal QR code" className="shrink-0 rounded-lg bg-white p-2">
           <QRCodeSvg value={route.url} size={120} title="Remote control link" />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        </BlurReveal>
+        <div className="flex min-w-48 flex-1 flex-col gap-2">
           {link.routes.length > 1 ? (
             <div className="flex flex-wrap gap-1" role="group" aria-label="How the device connects">
               {link.routes.map((candidate) => (
@@ -670,17 +810,26 @@ function LinkPanel({
               ))}
             </div>
           ) : (
-            <Badge variant="outline" size="sm">
-              {ROUTE_LABELS[route.kind]}
-            </Badge>
+            <div>
+              <Badge variant="outline" size="sm">
+                {ROUTE_LABELS[route.kind]}
+              </Badge>
+            </div>
           )}
           <div className="flex items-center gap-2">
-            <Input
-              readOnly
-              aria-label="Remote control link"
-              value={route.url}
-              onFocus={(event) => event.currentTarget.select()}
-            />
+            <BlurReveal
+              label="Reveal link"
+              className="min-w-0 flex-1 rounded-lg border border-border"
+            >
+              <a
+                href={route.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block truncate px-2.5 py-1.5 text-sm underline-offset-2 hover:underline"
+              >
+                {route.url}
+              </a>
+            </BlurReveal>
             <Button
               size="icon-sm"
               variant="outline"

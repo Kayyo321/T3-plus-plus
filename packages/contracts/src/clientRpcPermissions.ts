@@ -122,6 +122,9 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Ending access is what a phone reaches for in a hurry, so it needs less than granting it.
   [WS_METHODS.remoteControlDisable]: AuthOrchestrationOperateScope,
   [WS_METHODS.remoteControlRevokeDevice]: AuthOrchestrationOperateScope,
+  // A relay opens this machine to the internet, and its secret is that access.
+  [WS_METHODS.remoteRelayConfigure]: AuthAccessWriteScope,
+  [WS_METHODS.remoteRelayRemove]: AuthAccessWriteScope,
   [WS_METHODS.peerLinksLink]: AuthAccessWriteScope,
   [WS_METHODS.peerLinksUnlink]: AuthAccessWriteScope,
   // A link lets every agent here reach the other environment: Settings' bar.

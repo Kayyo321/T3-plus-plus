@@ -1,0 +1,12 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "t3pp-remote-relay",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  // Request contents must never reach a log.
+  "observability": { "enabled": false },
+  "durable_objects": { "bindings": [{ "name": "HOST_ROOM", "class_name": "HostRoom" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HostRoom"] }],
+}

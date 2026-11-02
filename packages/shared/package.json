@@ -215,6 +215,10 @@
       "types": "./src/relayUrl.ts",
       "import": "./src/relayUrl.ts"
     },
+    "./remoteRelay": {
+      "types": "./src/remoteRelay.ts",
+      "import": "./src/remoteRelay.ts"
+    },
     "./relayJwt": {
       "types": "./src/relayJwt.ts",
       "import": "./src/relayJwt.ts"

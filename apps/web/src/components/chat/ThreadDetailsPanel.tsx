@@ -219,6 +219,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                     ) : null}
 
                     <RemoteControlDetailsRow
+                      key={`${props.environmentId}:${props.threadId}`}
                       threadRef={activeThreadRef}
                       threadStarted={props.isServerThread}
                       iconClassName={THREAD_DETAILS_PANEL_ICON_CLASS}

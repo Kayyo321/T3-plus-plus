@@ -226,6 +226,7 @@ describe("DesktopServerExposure", () => {
       {
         bridge0: [{ address: "192.168.2.1", family: "IPv4", internal: false }],
         utun4: [{ address: "10.8.0.2", family: "IPv4", internal: false }],
+        mullvad: [{ address: "10.71.200.239", family: "IPv4", internal: false }],
         en0: [{ address: "192.168.1.20", family: "IPv4", internal: false }],
       },
       Effect.gen(function* () {

@@ -96,6 +96,7 @@ import * as ComputerUseService from "./computerUse/ComputerUseService.ts";
 import * as ConversationDocumentService from "./documents/ConversationDocumentService.ts";
 import * as GuestShareService from "./guest/GuestShareService.ts";
 import * as RemoteControlService from "./remoteControl/RemoteControlService.ts";
+import { RemoteRelayTunnel } from "./remoteControl/RemoteRelayTunnel.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -600,6 +601,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorkspaceService.WorkspaceService)({}),
   Layer.mock(ConversationFolderService.ConversationFolderService)({}),
   Layer.mock(RemoteControlService.RemoteControlService)({}),
+  Layer.mock(RemoteRelayTunnel)({}),
   Layer.mock(ConversationDocumentService.ConversationDocumentService)({}),
   Layer.mock(ComputerUseService.ComputerUseService)({}),
   Layer.mock(ScheduledTasks.ScheduledTaskService)({}),

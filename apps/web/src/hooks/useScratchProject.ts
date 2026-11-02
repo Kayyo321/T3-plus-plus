@@ -79,9 +79,16 @@ export function createScratchProjectActions(input: {
   };
 
   // A reused empty draft keeps its last mode, so every start says which one it wants.
-  const openScratchDraft = async (project: EnvironmentProject, mode: ThreadCapabilityMode) => {
+  const openScratchDraft = async (
+    project: EnvironmentProject,
+    mode: ThreadCapabilityMode,
+    prompt: string | undefined,
+  ) => {
     const opened = await input
-      .handleNewThread(scopeProjectRef(project.environmentId, project.id))
+      .handleNewThread(
+        scopeProjectRef(project.environmentId, project.id),
+        prompt === undefined ? undefined : { prompt },
+      )
       .catch((error: unknown) => {
         reportScratchFailure("Could not start without a project", error);
         return null;
@@ -96,9 +103,10 @@ export function createScratchProjectActions(input: {
   const startScratchThread = async (
     environmentId: EnvironmentId,
     mode: ThreadCapabilityMode = "code",
+    prompt?: string,
   ) => {
     const project = await openScratchProject(environmentId);
-    if (project) await openScratchDraft(project, mode);
+    if (project) await openScratchDraft(project, mode, prompt);
   };
 
   return {

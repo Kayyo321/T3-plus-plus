@@ -80,7 +80,7 @@ export const REMOTE_CONTROL_MAX_FAILED_ATTEMPTS = 5;
 export const REMOTE_CONTROL_CODE_DIGITS = 8;
 export const REMOTE_CONTROL_MAX_DEVICES = 8;
 
-export const RemoteControlRouteKind = Schema.Literals(["lan", "tailnet", "connect"]);
+export const RemoteControlRouteKind = Schema.Literals(["relay", "lan", "tailnet", "connect"]);
 export type RemoteControlRouteKind = typeof RemoteControlRouteKind.Type;
 
 export const RemoteControlRoute = Schema.Struct({
@@ -214,6 +214,21 @@ export const RemoteControlResolvePairingInput = Schema.Struct({
 });
 export type RemoteControlResolvePairingInput = typeof RemoteControlResolvePairingInput.Type;
 
+/** Connected only once the relay has answered this machine's secret. It never carries the secret. */
+export const RemoteRelayState = Schema.Struct({
+  url: Schema.NullOr(TrimmedNonEmptyString),
+  status: Schema.Literals(["off", "connecting", "connected", "failing"]),
+  /** Where the setup script saves a relay for this server to pick up. */
+  home: TrimmedNonEmptyString,
+});
+export type RemoteRelayState = typeof RemoteRelayState.Type;
+
+export const RemoteRelayConfigureInput = Schema.Struct({
+  url: TrimmedNonEmptyString,
+  secret: TrimmedNonEmptyString,
+});
+export type RemoteRelayConfigureInput = typeof RemoteRelayConfigureInput.Type;
+
 const REMOTE_CONTROL_MESSAGES = {
   no_route: "This machine has no address another device can reach.",
   thread_unavailable: "Remote control cannot be used on this conversation.",
@@ -222,6 +237,7 @@ const REMOTE_CONTROL_MESSAGES = {
   raise_needs_confirmation: "Raising the access level needs your confirmation.",
   not_found: "That device or request is gone.",
   storage_failed: "Remote control could not save its state.",
+  invalid_relay: "Enter the relay's https address, with no path.",
 } as const;
 
 export class RemoteControlError extends Schema.TaggedError<RemoteControlError>()(
@@ -235,6 +251,7 @@ export class RemoteControlError extends Schema.TaggedError<RemoteControlError>()
       "raise_needs_confirmation",
       "not_found",
       "storage_failed",
+      "invalid_relay",
     ]),
   },
 ) {

@@ -1,0 +1,19 @@
+{
+  "name": "t3code-remote-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "setup": "node setup.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@t3tools/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260601.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "4.151.1"
+  }
+}

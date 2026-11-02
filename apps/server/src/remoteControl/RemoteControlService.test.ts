@@ -38,6 +38,7 @@ import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
 import * as ServerConfig from "../config.ts";
 import * as DirectEndpoints from "../environment/DirectEndpoints.ts";
+import { RemoteRelayTunnel } from "./RemoteRelayTunnel.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as CommandOutputHub from "../orchestration-v2/CommandOutputHub.ts";
 import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts";
@@ -79,6 +80,7 @@ const endpoints = Ref.makeUnsafe<ReadonlyArray<ServerDirectEndpoint>>([LAN]);
 const layerEndpoints = Layer.succeed(DirectEndpoints.DirectEndpoints, {
   resolve: () => Ref.get(endpoints),
 });
+const layerRemoteRelay = Layer.mock(RemoteRelayTunnel)({ publicUrl: Effect.succeed(null) });
 const connectHost = Ref.makeUnsafe<string | null>(null);
 const layerConnect = Layer.mock(CloudManagedEndpointRuntime)({
   inspectConnector: Effect.map(Ref.get(connectHost), (hostname) => ({
@@ -135,6 +137,7 @@ const layerTest = RemoteControl.layer.pipe(
   Layer.provide(OrchestrationEventStore.layer.pipe(Layer.provide(layerDatabase))),
   Layer.provide(Layer.mock(DocumentText.DocumentText)({})),
   Layer.provide(layerEndpoints),
+  Layer.provide(layerRemoteRelay),
   Layer.provide(layerConnect),
   Layer.provide(layerProviders),
   Layer.provide(ServerSecretStore.layer),
@@ -780,7 +783,7 @@ it.effect("never hands out a link with no route, and leaves the switch off", () 
     assert.lengthOf(routes, 0);
     assert.deepEqual(
       unavailable.map((option) => option.kind),
-      ["lan", "tailnet", "connect"],
+      ["relay", "lan", "tailnet", "connect"],
     );
   }).pipe(Effect.provide(layerTest)),
 );

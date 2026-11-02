@@ -12,9 +12,10 @@ machine. A remote device reaches one conversation and nothing else.
 1. Open the conversation's thread details panel and switch on **Remote Control**. The switch needs a
    conversation that has started. The command palette's **Remote control** (`Ctrl+Alt+R`,
    `Cmd+Option+R` on a Mac) also works.
-2. Turning it on uses Chat access and **Approve on this device** pairing, and opens the sheet with the
-   link. Change access or pairing in that sheet.
-3. Scan the QR code on the other device, or send it the link.
+2. Turning it on uses Chat access and **Approve on this device** pairing, and opens a dropdown under
+   the switch with the link and QR code. Choose **Manage** to change access or pairing.
+3. Click the QR code or link to reveal it, then scan the code on the other device or send it the
+   link. Both blur again when you close the dropdown.
 
 If no other device can reach this machine, the sheet says what you can set up instead of showing a
 link that would not work.
@@ -51,6 +52,12 @@ cannot rewind the conversation, open files on your machine, or see other convers
 
 T3++ offers the routes this machine actually has, best first:
 
+- **Private relay** works from anywhere and is encrypted in transit, even when nothing can connect
+  to this machine directly, such as behind a VPN kill switch or on a network that keeps devices
+  apart. It is a small service on your own Cloudflare account that this machine dials out to, and
+  it only reaches Remote Control. Cloudflare could read the traffic while forwarding it, as with T3
+  Connect. Set it up in **Settings → Sharing & access → Private relay**, where a prompt can walk you
+  through it. See [the relay guide](../../infra/remote-relay/README.md) to do it by hand.
 - **This network** works when both devices share a network and this server accepts network
   connections. It is plain HTTP, so anyone on that network could read the conversation. Devices on
   this route stop at Chat, whatever level you chose. Use it on a network you trust.

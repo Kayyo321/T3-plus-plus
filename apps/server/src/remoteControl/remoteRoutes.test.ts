@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { classifyRemoteTransport, rankRemoteRoutes } from "./remoteRoutes.ts";
 
 describe("rankRemoteRoutes", () => {
-  it("orders LAN, then tailnet with HTTPS first, then T3 Connect", () => {
+  it("orders a relay, LAN, then tailnet with HTTPS first, then T3 Connect", () => {
     const { routes, unavailable } = rankRemoteRoutes({
       endpoints: [
         { kind: "tailnet", httpBaseUrl: "http://100.64.0.2:3773/" },
@@ -11,8 +11,10 @@ describe("rankRemoteRoutes", () => {
         { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
       ],
       connectHostname: "env.t3.test",
+      relayUrl: "https://rc.example.workers.dev",
     });
     assert.deepEqual(routes, [
+      { kind: "relay", baseUrl: "https://rc.example.workers.dev", encrypted: true },
       { kind: "lan", baseUrl: "http://192.168.1.10:3773", encrypted: false },
       { kind: "tailnet", baseUrl: "https://host.tail.ts.net", encrypted: true },
       { kind: "tailnet", baseUrl: "http://100.64.0.2:3773", encrypted: true },
@@ -32,16 +34,21 @@ describe("rankRemoteRoutes", () => {
     const { routes, unavailable } = rankRemoteRoutes({
       endpoints: [{ kind: "lan", httpBaseUrl }],
       connectHostname: null,
+      relayUrl: null,
     });
     assert.lengthOf(routes, 0);
     assert.deepEqual(
       unavailable.map((option) => option.kind),
-      ["lan", "tailnet", "connect"],
+      ["relay", "lan", "tailnet", "connect"],
     );
   });
 
   it("refuses a loopback T3 Connect hostname", () => {
-    const { routes } = rankRemoteRoutes({ endpoints: [], connectHostname: "localhost" });
+    const { routes } = rankRemoteRoutes({
+      endpoints: [],
+      connectHostname: "localhost",
+      relayUrl: null,
+    });
     assert.lengthOf(routes, 0);
   });
 });

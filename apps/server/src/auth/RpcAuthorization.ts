@@ -121,6 +121,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.gitGraphPreview]: AuthOrchestrationReadScope,
   [WS_METHODS.remoteControlSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.remoteControlReachability]: AuthOrchestrationReadScope,
+  [WS_METHODS.remoteRelaySubscribe]: AuthAccessReadScope,
   [WS_METHODS.teamworkStart]: AuthOrchestrationOperateScope,
   [WS_METHODS.teamworkAct]: AuthOrchestrationOperateScope,
   [WS_METHODS.teamworkStartMember]: AuthOrchestrationOperateScope,

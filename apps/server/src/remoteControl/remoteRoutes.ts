@@ -21,21 +21,25 @@ const hostnameOf = (url: string) => {
 const isUnreachableHost = (host: string | null) =>
   host === null || host === "" || isLoopbackHost(host) || isWildcardHost(host);
 
-const ROUTE_ORDER = { lan: 0, tailnet: 1, connect: 2 } as const;
+// A relay is set up on purpose and needs no inbound connection, so it beats anything a firewall can drop.
+const ROUTE_ORDER = { relay: 0, lan: 1, tailnet: 2, connect: 3 } as const;
 
 const NO_LAN_HINT =
   "Turn on network access for this server so devices on your network can reach it.";
 const NO_TAILNET_HINT = "Connect this machine to Tailscale and turn on Tailscale access.";
 const NO_CONNECT_HINT = "Link this machine to T3 Connect to reach it from anywhere.";
+const NO_RELAY_HINT = "Set up your own relay to reach this machine from anywhere.";
 
 /**
- * The routes a link can use, best first: the local network, then the tailnet, then T3 Connect. An
- * encrypted tailnet address comes before a plain one because only HTTPS can hold a Secure cookie.
+ * The routes a link can use, best first: a private relay, the local network, the tailnet, then T3
+ * Connect. An encrypted tailnet address comes before a plain one because only HTTPS can hold a
+ * Secure cookie.
  * Anything that resolves to this machine alone is dropped, so a link never opens the wrong one.
  */
 export function rankRemoteRoutes(input: {
   readonly endpoints: ReadonlyArray<ServerDirectEndpoint>;
   readonly connectHostname: string | null;
+  readonly relayUrl: string | null;
 }): RemoteControlReachability {
   const direct = input.endpoints.flatMap((endpoint): ReadonlyArray<RemoteControlRoute> => {
     if (isUnreachableHost(hostnameOf(endpoint.httpBaseUrl))) return [];
@@ -53,13 +57,16 @@ export function rankRemoteRoutes(input: {
     input.connectHostname === null || isUnreachableHost(input.connectHostname)
       ? []
       : [{ kind: "connect", baseUrl: `https://${input.connectHostname}`, encrypted: true }];
-  const routes = [...direct, ...connect].toSorted(
+  const relay: ReadonlyArray<RemoteControlRoute> =
+    input.relayUrl === null ? [] : [{ kind: "relay", baseUrl: input.relayUrl, encrypted: true }];
+  const routes = [...relay, ...direct, ...connect].toSorted(
     (left, right) =>
       ROUTE_ORDER[left.kind] - ROUTE_ORDER[right.kind] ||
       Number(right.baseUrl.startsWith("https:")) - Number(left.baseUrl.startsWith("https:")),
   );
   const has = (kind: RemoteControlRoute["kind"]) => routes.some((route) => route.kind === kind);
   const unavailable: ReadonlyArray<RemoteControlRouteOption> = [
+    ...(has("relay") ? [] : [{ kind: "relay" as const, hint: NO_RELAY_HINT }]),
     ...(has("lan") ? [] : [{ kind: "lan" as const, hint: NO_LAN_HINT }]),
     ...(has("tailnet") ? [] : [{ kind: "tailnet" as const, hint: NO_TAILNET_HINT }]),
     ...(has("connect") ? [] : [{ kind: "connect" as const, hint: NO_CONNECT_HINT }]),
