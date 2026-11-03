@@ -111,7 +111,7 @@ describe("makeRemoteRelayHost", () => {
           2,
         );
         assert.isFalse(response.headers.some(([name]: [string]) => name === "content-length"));
-        const chunks = binary().map(decodeRemoteRelayChunk);
+        const chunks = binary().flatMap((frame) => decodeRemoteRelayChunk(frame) ?? []);
         assert.isTrue(chunks.every(({ payload }) => payload.byteLength <= 64 * 1024));
         assert.strictEqual(
           chunks.reduce((sum, { payload }) => sum + payload.byteLength, 0),
@@ -133,6 +133,8 @@ describe("makeRemoteRelayHost", () => {
         const encoder = new TextEncoder();
         yield* host.receive(request({ method: "POST", target: "/api/remote/messages?switch=s" }));
         yield* host.receive(encodeRemoteRelayChunk(1, encoder.encode("hello ")));
+        // Too short to name its request: dropped, not fatal to the tunnel.
+        yield* host.receive(new Uint8Array([0, 0, 1]));
         yield* host.receive(encodeRemoteRelayChunk(1, encoder.encode("relay")));
         yield* host.receive(JSON.stringify({ type: "request-end", id: 1 }));
         yield* finished;

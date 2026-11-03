@@ -87,10 +87,13 @@ export interface RemoteTransport {
 /**
  * `X-Forwarded-Proto` counts only from loopback, where Tailscale Serve and the T3 Connect tunnel
  * reach the server. Any other peer could send it, and claiming HTTPS would lift the level cap.
+ * A 100.64.0.0/10 peer is Tailscale only when it arrived on a Tailscale interface: carrier-grade
+ * NAT networks number their hosts from the same range.
  */
 export function classifyRemoteTransport(input: {
   readonly peer: string | undefined;
   readonly forwardedProto: string | undefined;
+  readonly arrivedOnTailnet: () => boolean;
 }): RemoteTransport {
   const peer = input.peer ?? null;
   if (peer === null) return { peer, https: false, encrypted: false };
@@ -101,6 +104,6 @@ export function classifyRemoteTransport(input: {
   return {
     peer,
     https: false,
-    encrypted: isSharedAddressSpaceHost(peer) || isTailnetHost(peer),
+    encrypted: isTailnetHost(peer) || (isSharedAddressSpaceHost(peer) && input.arrivedOnTailnet()),
   };
 }

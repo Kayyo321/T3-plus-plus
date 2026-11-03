@@ -17,6 +17,7 @@ import {
   type RemoteControlLink,
   type RemoteControlLinkRoute,
   type RemoteControlPairingMode,
+  type RemoteControlPendingPairing,
   type RemoteControlPermission,
   type RemoteControlRouteKind,
   type RemoteControlSwitch,
@@ -803,7 +804,11 @@ function RemoteControlOn({
       <DialogPanel>
         <div className="flex flex-col gap-4">
           <LinkSection remote={remote} linkState={linkState} />
-          <DeviceList threadRef={threadRef} devices={remote.devices} />
+          <DeviceList
+            threadRef={threadRef}
+            devices={remote.devices}
+            joining={remote.pendingPairings.filter((pairing) => pairing.confirmationWord === null)}
+          />
           <SwitchSettings
             accessLevel={remote.accessLevel}
             pairingMode={remote.pairingMode}
@@ -996,22 +1001,52 @@ function LinkPanel({
   );
 }
 
+/** `joining` are code-mode pairings: the code lets them in, so refusing is the owner's one say. */
 function DeviceList({
   threadRef,
   devices,
+  joining,
 }: {
   readonly threadRef: ScopedThreadRef;
   readonly devices: ReadonlyArray<RemoteControlDevice>;
+  readonly joining: ReadonlyArray<RemoteControlPendingPairing>;
 }) {
   const revoke = useAtomCommand(serverEnvironment.revokeRemoteControlDevice, {
     label: "disconnect device",
   });
+  const refuse = useAtomCommand(serverEnvironment.resolveRemoteControlPairing, {
+    label: "refuse device",
+  });
   const nowMinute = useNowMinute();
-  if (devices.length === 0) {
+  if (devices.length === 0 && joining.length === 0) {
     return <p className="text-muted-foreground text-sm">No devices have joined yet.</p>;
   }
   return (
     <ul className="flex flex-col gap-1.5" aria-label="Connected devices">
+      {joining.map((pairing) => (
+        <li key={pairing.id} className="flex items-center gap-3 text-sm">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">
+              {pairing.deviceLabel}
+              <span className="ml-2 font-normal text-muted-foreground text-xs">
+                Entering the code
+              </span>
+            </p>
+          </div>
+          <Button
+            size="xs"
+            variant="ghost-destructive"
+            onClick={() =>
+              void refuse({
+                environmentId: threadRef.environmentId,
+                input: { threadId: threadRef.threadId, pairingId: pairing.id, decision: "deny" },
+              })
+            }
+          >
+            Refuse
+          </Button>
+        </li>
+      ))}
       {devices.map((device) => (
         <li key={device.id} className="flex items-center gap-3 text-sm">
           <div className="min-w-0 flex-1">

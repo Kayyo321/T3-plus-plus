@@ -2,12 +2,15 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  EventId,
   GuestDisplayName,
   GuestShareId,
+  NodeId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   REMOTE_CONTROL_CODE_DIGITS,
+  REMOTE_CONTROL_DEVICE_UPLOAD_BYTES_PER_HOUR,
   REMOTE_CONTROL_INACTIVITY_TTL_MS,
   REMOTE_CONTROL_LINK_TTL_MS,
   REMOTE_CONTROL_MAX_FAILED_ATTEMPTS,
@@ -23,6 +26,8 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { DEFAULT_TEAM_SHEET, teamMemberId } from "@t3tools/shared/teamSheets";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -58,6 +63,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as TeamworkStore from "../teamwork/TeamworkStore.ts";
 import * as RemoteControl from "./RemoteControlService.ts";
 import type { RemoteTransport } from "./remoteRoutes.ts";
 
@@ -158,6 +164,7 @@ const layerComputer = Layer.mock(ComputerUseService.ComputerUseService)({
 
 const layerTest = RemoteControl.layer.pipe(
   Layer.provide(layerComputer),
+  Layer.provideMerge(TeamworkStore.layer.pipe(Layer.provide(layerDatabase))),
   Layer.provideMerge(CommandOutputHub.layer.pipe(Layer.provideMerge(layerThreads))),
   Layer.provideMerge(AuditTrail.layer.pipe(Layer.provide(layerDatabase))),
   Layer.provide(OrchestrationEventStore.layer.pipe(Layer.provide(layerDatabase))),
@@ -393,6 +400,36 @@ it.effect("reports attempts left on a wrong code", () =>
       .pipe(Effect.flip);
     assert.equal(error.reason, "wrong_code");
     assert.equal(error.attemptsLeft, REMOTE_CONTROL_MAX_FAILED_ATTEMPTS - 1);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("keeps a refused code-mode device out, even with the right code", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const { link, remoteSwitch } = yield* remote.enable({ threadId, pairingMode: "code" });
+    const started = yield* remote.startPairing(
+      { credential: credentialOf(link.routes[0].url), deviceLabel: label },
+      ENCRYPTED,
+    );
+    const snapshot = Option.getOrThrow(yield* Stream.runHead(remote.changes));
+    const pending = snapshot.switches[0]!.pendingPairings[0]!;
+    // The code is this mode's approval, so the owner can only refuse.
+    assert.equal(
+      yield* failureReason(
+        remote.resolvePairing({ threadId, pairingId: pending.id, decision: "approve" }),
+      ),
+      "not_found",
+    );
+    yield* remote.resolvePairing({ threadId, pairingId: pending.id, decision: "deny" });
+    assert.equal(
+      yield* failureReason(
+        remote.submitCode(
+          { switchId: remoteSwitch.switchId, secret: started.pairingSecret, transport: ENCRYPTED },
+          { code: link.code! },
+        ),
+      ),
+      "denied",
+    );
   }).pipe(Effect.provide(layerTest)),
 );
 
@@ -852,6 +889,117 @@ it.effect("reaches exactly one conversation", () =>
   }).pipe(Effect.provide(layerTest)),
 );
 
+const memberThreadId = ThreadId.make("thread:remote-control-member");
+
+/** Starts a team run on the conversation with one member session, as teamwork staffs it. */
+const startTeamRun = Effect.fn(function* () {
+  yield* createThread(memberThreadId);
+  const store = yield* TeamworkStore.TeamworkStore;
+  const run = yield* store.beginRun({
+    threadId,
+    sheet: DEFAULT_TEAM_SHEET,
+    request: "Ship it",
+    leadModel: { instanceId, model: "gpt-5.1-codex" },
+  });
+  const build = DEFAULT_TEAM_SHEET.nodes.find((node) => node.kind === "build")!;
+  yield* store.saveRun({
+    ...run,
+    members: [
+      ...run.members,
+      {
+        id: teamMemberId(build.id, "m1"),
+        nodeId: build.id,
+        slot: "m1",
+        kind: "build",
+        name: "Builder",
+        threadId: memberThreadId,
+        state: "invoked",
+      },
+    ],
+  });
+});
+
+/** Leaves a question waiting in a thread, as a provider does. */
+const askQuestion = Effect.fn(function* (target: ThreadId, id: string) {
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
+  const now = yield* DateTime.now;
+  yield* projections.apply({
+    id: EventId.make(`event:${id}`),
+    type: "runtime-request.updated",
+    threadId: target,
+    occurredAt: now,
+    payload: {
+      id: RuntimeRequestId.make(id),
+      nodeId: NodeId.make(`node:${id}`),
+      providerTurnId: null,
+      nativeRequestRef: null,
+      kind: "user_input",
+      status: "pending",
+      responseCapability: { type: "message" },
+      createdAt: now,
+      resolvedAt: null,
+    },
+  });
+});
+
+it.effect("reports an answer the agent cannot take as rejected, not as already answered", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const device = yield* pairDevice({ accessLevel: "approve" });
+    yield* askQuestion(threadId, "request:malformed");
+    assert.equal(
+      yield* failureReason(
+        remote.respond(device, {
+          requestId: RuntimeRequestId.make("request:malformed"),
+          answers: { scope: 42 },
+        }),
+      ),
+      "rejected",
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("answers a team member's question, and nothing outside the team", () =>
+  Effect.gen(function* () {
+    const remote = yield* setup();
+    const device = yield* pairDevice({ accessLevel: "approve" });
+    yield* startTeamRun();
+    yield* askQuestion(memberThreadId, "request:member");
+    const first = Option.getOrThrow(yield* Stream.runHead(yield* remote.stream(device, undefined)));
+    assert.deepEqual(
+      first.type === "view"
+        ? first.view.teamRequests.map((member) => [
+            member.memberName,
+            member.runtimeRequests.map((request) => request.id),
+          ])
+        : [],
+      [["Builder", ["request:member"]]],
+    );
+    yield* createThread(otherThreadId);
+    yield* askQuestion(otherThreadId, "request:outside");
+    assert.equal(
+      yield* failureReason(
+        remote.respond(device, {
+          requestId: RuntimeRequestId.make("request:outside"),
+          threadId: otherThreadId,
+          answers: { scope: "yes" },
+        }),
+      ),
+      "unavailable",
+    );
+    assert.equal(
+      yield* failureReason(
+        remote.respond(device, {
+          requestId: RuntimeRequestId.make("request:member"),
+          threadId: memberThreadId,
+          decision: "decline",
+        }),
+      ),
+      "ok",
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("refuses a thread with a guest link, and refuses a guest link while on", () =>
   Effect.gen(function* () {
     const remote = yield* setup();
@@ -873,6 +1021,17 @@ it.effect("refuses a thread with a guest link, and refuses a guest link while on
     assert.equal(yield* failureReason(remote.enable({ threadId })), "ok");
   }).pipe(Effect.provide(layerTest)),
 );
+
+it("holds each device to its hourly file budget", () => {
+  const full = RemoteControl.chargeUploadWindow(
+    undefined,
+    0,
+    REMOTE_CONTROL_DEVICE_UPLOAD_BYTES_PER_HOUR,
+  );
+  assert.isNotNull(full);
+  assert.isNull(RemoteControl.chargeUploadWindow(full!, 60_000, 1));
+  assert.isNotNull(RemoteControl.chargeUploadWindow(full!, 60 * 60 * 1000, 1));
+});
 
 it.effect("sends a message as its device, and records who sent what", () =>
   Effect.gen(function* () {

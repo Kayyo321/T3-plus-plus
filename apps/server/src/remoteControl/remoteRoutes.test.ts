@@ -54,42 +54,73 @@ describe("rankRemoteRoutes", () => {
 });
 
 describe("classifyRemoteTransport", () => {
+  const onLan = () => false;
+  const onTailnet = () => true;
+
   it("trusts the forwarded protocol only from a local proxy", () => {
-    assert.deepEqual(classifyRemoteTransport({ peer: "127.0.0.1", forwardedProto: "https" }), {
-      peer: "127.0.0.1",
-      https: true,
-      encrypted: true,
-    });
+    assert.deepEqual(
+      classifyRemoteTransport({
+        peer: "127.0.0.1",
+        forwardedProto: "https",
+        arrivedOnTailnet: onLan,
+      }),
+      { peer: "127.0.0.1", https: true, encrypted: true },
+    );
     // A LAN device claiming HTTPS must not lift the Chat cap or get a Secure cookie it would drop.
-    assert.deepEqual(classifyRemoteTransport({ peer: "192.168.1.20", forwardedProto: "https" }), {
-      peer: "192.168.1.20",
-      https: false,
-      encrypted: false,
-    });
+    assert.deepEqual(
+      classifyRemoteTransport({
+        peer: "192.168.1.20",
+        forwardedProto: "https",
+        arrivedOnTailnet: onLan,
+      }),
+      { peer: "192.168.1.20", https: false, encrypted: false },
+    );
   });
 
   it("treats plain HTTP from loopback as unencrypted", () => {
     assert.isFalse(
-      classifyRemoteTransport({ peer: "127.0.0.1", forwardedProto: undefined }).encrypted,
+      classifyRemoteTransport({
+        peer: "127.0.0.1",
+        forwardedProto: undefined,
+        arrivedOnTailnet: onLan,
+      }).encrypted,
     );
   });
 
   it("treats a tailnet peer as encrypted, though the browser still sees HTTP", () => {
-    assert.deepEqual(classifyRemoteTransport({ peer: "100.100.1.2", forwardedProto: undefined }), {
-      peer: "100.100.1.2",
-      https: false,
-      encrypted: true,
-    });
+    assert.deepEqual(
+      classifyRemoteTransport({
+        peer: "100.100.1.2",
+        forwardedProto: undefined,
+        arrivedOnTailnet: onTailnet,
+      }),
+      { peer: "100.100.1.2", https: false, encrypted: true },
+    );
     assert.isTrue(
-      classifyRemoteTransport({ peer: "fd7a:115c:a1e0::1", forwardedProto: undefined }).encrypted,
+      classifyRemoteTransport({
+        peer: "fd7a:115c:a1e0::1",
+        forwardedProto: undefined,
+        arrivedOnTailnet: onLan,
+      }).encrypted,
+    );
+    // Carrier-grade NAT networks number their hosts from the same range Tailscale uses.
+    assert.isFalse(
+      classifyRemoteTransport({
+        peer: "100.100.1.2",
+        forwardedProto: undefined,
+        arrivedOnTailnet: onLan,
+      }).encrypted,
     );
   });
 
   it("fails closed when the peer is unknown", () => {
-    assert.deepEqual(classifyRemoteTransport({ peer: undefined, forwardedProto: "https" }), {
-      peer: null,
-      https: false,
-      encrypted: false,
-    });
+    assert.deepEqual(
+      classifyRemoteTransport({
+        peer: undefined,
+        forwardedProto: "https",
+        arrivedOnTailnet: onTailnet,
+      }),
+      { peer: null, https: false, encrypted: false },
+    );
   });
 });

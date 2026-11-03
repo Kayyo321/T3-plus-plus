@@ -55,8 +55,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import * as NodeOS from "node:os";
 
-import { requestPeerAddress } from "../auth/utils.ts";
+import { requestLocalAddress, requestPeerAddress } from "../auth/utils.ts";
+import { tailscaleInterfaceAddresses } from "../environment/DirectEndpoints.ts";
 import {
   attachmentFileResponse,
   encodeHistoryPage,
@@ -104,6 +106,7 @@ const STATUS_BY_REASON: Partial<Record<RemoteControlAccessError["reason"], numbe
   unencrypted: 403,
   unavailable: 404,
   rate_limited: 429,
+  upload_budget: 429,
   wrong_code: 400,
   empty: 400,
   too_many_files: 400,
@@ -143,6 +146,12 @@ const transportOf = (request: HttpServerRequest.HttpServerRequest): RemoteTransp
   classifyRemoteTransport({
     peer: requestPeerAddress(request),
     forwardedProto: request.headers["x-forwarded-proto"],
+    arrivedOnTailnet: () => {
+      const local = requestLocalAddress(request);
+      return (
+        local !== undefined && tailscaleInterfaceAddresses(NodeOS.networkInterfaces()).has(local)
+      );
+    },
   });
 
 /** The session this browser holds for the switch the request names in `?switch=`. */

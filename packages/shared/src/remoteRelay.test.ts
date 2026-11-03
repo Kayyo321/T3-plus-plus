@@ -82,8 +82,9 @@ describe("relay chunks", () => {
     const encoded = encodeRemoteRelayChunk(0xfffffffe, new Uint8Array([1, 2, 3]));
     const shifted = new Uint8Array(encoded.byteLength + 5);
     shifted.set(encoded, 5);
-    const { id, payload } = decodeRemoteRelayChunk(shifted.subarray(5));
-    expect(id).toBe(0xfffffffe);
-    expect([...payload]).toEqual([1, 2, 3]);
+    const chunk = decodeRemoteRelayChunk(shifted.subarray(5));
+    expect(chunk?.id).toBe(0xfffffffe);
+    expect([...(chunk?.payload ?? [])]).toEqual([1, 2, 3]);
+    expect(decodeRemoteRelayChunk(new Uint8Array([0, 0, 1]))).toBeNull();
   });
 });

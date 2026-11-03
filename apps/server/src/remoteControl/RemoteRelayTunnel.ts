@@ -16,6 +16,7 @@ import {
   type RemoteRelayEdgeFrame,
   type RemoteRelayHostFrame,
 } from "@t3tools/shared/remoteRelay";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -39,6 +40,7 @@ const RECONNECT_DELAY = Duration.seconds(5);
 const PING_INTERVAL = Duration.seconds(25);
 // Above Remote Control's 10 MB of files, so the server's own limits answer anything smaller.
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
+const STALLED_UPLOAD_MS = 2 * 60_000;
 // A cancelled or dropped proxy response must not advertise a length it may not reach.
 const DROPPED_RESPONSE_HEADERS = new Set([
   "connection",
@@ -116,6 +118,7 @@ export const makeRemoteRelayHost = Effect.fnUntraced(function* (input: {
       readonly frame: Extract<RemoteRelayEdgeFrame, { type: "request" }>;
       readonly chunks: Array<Uint8Array<ArrayBuffer>>;
       bytes: number;
+      lastChunkAt: number;
     }
   >();
   const send = (frame: RemoteRelayHostFrame) => input.write(JSON.stringify(frame));
@@ -190,7 +193,12 @@ export const makeRemoteRelayHost = Effect.fnUntraced(function* (input: {
       if (frame.method === "GET" || frame.method === "HEAD") {
         return yield* run(frame, undefined);
       }
-      uploads.set(frame.id, { frame, chunks: [], bytes: 0 });
+      const now = yield* Clock.currentTimeMillis;
+      // The edge ends or cancels every upload; one it dropped would stay for the tunnel's life.
+      for (const [id, upload] of uploads) {
+        if (now - upload.lastChunkAt > STALLED_UPLOAD_MS) uploads.delete(id);
+      }
+      uploads.set(frame.id, { frame, chunks: [], bytes: 0, lastChunkAt: now });
       return;
     }
     const upload = uploads.get(frame.id);
@@ -200,9 +208,12 @@ export const makeRemoteRelayHost = Effect.fnUntraced(function* (input: {
   });
 
   const onChunk = Effect.fnUntraced(function* (message: Uint8Array) {
-    const { id, payload } = decodeRemoteRelayChunk(message);
+    const chunk = decodeRemoteRelayChunk(message);
+    if (chunk === null) return;
+    const { id, payload } = chunk;
     const upload = uploads.get(id);
     if (upload === undefined) return;
+    upload.lastChunkAt = yield* Clock.currentTimeMillis;
     upload.bytes += payload.byteLength;
     if (upload.bytes > MAX_REQUEST_BYTES) {
       uploads.delete(id);

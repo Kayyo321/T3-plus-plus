@@ -6,7 +6,8 @@ and stop a run. Nothing is installed on the other device: it is a web page.
 
 This is narrower than [connecting a client](./remote-access.md), which gives an app the whole
 machine. A remote device reaches one conversation and nothing else, unless you also allow it to
-message the orchestrator.
+message the orchestrator. While a [team](./teamwork.md) is running in that conversation, a device
+with Approve access can also answer the team's approvals and questions.
 
 ## Turn it on
 
@@ -31,6 +32,7 @@ Opening the link alone never gets anyone in. The device names itself, and then o
   same word shows on the device. Allow it only if they match.
 - **One-time code**: the sheet shows an 8 digit code, and the device types it in. Use this when
   nobody will be at the computer to approve. Five wrong tries lock the link, and you need a new one.
+  While a device is entering the code, the sheet lists it with **Refuse**.
 
 After pairing, that browser stays signed in to this conversation for its session.
 
