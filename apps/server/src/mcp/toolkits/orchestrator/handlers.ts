@@ -116,6 +116,7 @@ const handlers = {
             policy,
           });
         }),
+      { refused: "change this environment's scheduled tasks" },
     ),
   ),
   list_scheduled_task_runs: McpToolAccess.reads((input) =>
@@ -139,12 +140,14 @@ const handlers = {
       return yield* service.listScheduledTasks(scope, input);
     }),
   ),
-  delete_scheduled_task: McpToolAccess.writes((input) =>
-    Effect.gen(function* () {
-      const scope = yield* McpInvocationContext.McpInvocationContext;
-      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-      return yield* service.deleteScheduledTask(scope, input);
-    }),
+  delete_scheduled_task: McpToolAccess.writes(
+    (input) =>
+      Effect.gen(function* () {
+        const scope = yield* McpInvocationContext.McpInvocationContext;
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        return yield* service.deleteScheduledTask(scope, input);
+      }),
+    { refused: "change this environment's scheduled tasks" },
   ),
   request_secret: McpToolAccess.actsAsCaller((input) =>
     Effect.gen(function* () {
@@ -208,26 +211,30 @@ const handlers = {
   ),
   // A link lets every agent here reach the other environment, so it is an
   // environment setting: full access, and never for linked work.
-  t3_environment_link: McpToolAccess.writesEnvironment((input) =>
-    Effect.gen(function* () {
-      const scope = yield* McpInvocationContext.McpInvocationContext;
-      const requests = yield* PeerLinkRequests.PeerLinkRequests;
-      return yield* requests.request(scope, input);
-    }),
+  t3_environment_link: McpToolAccess.writesEnvironment(
+    (input) =>
+      Effect.gen(function* () {
+        const scope = yield* McpInvocationContext.McpInvocationContext;
+        const requests = yield* PeerLinkRequests.PeerLinkRequests;
+        return yield* requests.request(scope, input);
+      }),
+    { refused: "change this environment's links" },
   ),
-  t3_environment_unlink: McpToolAccess.writesEnvironment(({ environmentId }) =>
-    Effect.gen(function* () {
-      const links = yield* PeerLinks.PeerLinks;
-      const removed = yield* links
-        .unlink(environmentId)
-        .pipe(
-          Effect.mapError(
-            (error) =>
-              new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
-          ),
-        );
-      return { environmentId, removed };
-    }),
+  t3_environment_unlink: McpToolAccess.writesEnvironment(
+    ({ environmentId }) =>
+      Effect.gen(function* () {
+        const links = yield* PeerLinks.PeerLinks;
+        const removed = yield* links
+          .unlink(environmentId)
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message }),
+            ),
+          );
+        return { environmentId, removed };
+      }),
+    { refused: "change this environment's links" },
   ),
   t3_thread_interrupt: McpToolAccess.writesThreads(
     (input) => [input.threadId],

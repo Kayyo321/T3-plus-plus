@@ -47,6 +47,9 @@ import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
 import * as PeerLinkRequests from "../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as TeamworkService from "../teamwork/TeamworkService.ts";
+import { TeamSheetsToolkit } from "./toolkits/teamwork/sheets.ts";
+import * as TeamSheetsHandlers from "./toolkits/teamwork/sheetHandlers.ts";
 
 // A linked environment's session drives this one's real orchestrator through
 // its real T3 tools. What the link starts carries its origin, and the link
@@ -113,10 +116,25 @@ const layerLaunches = Layer.effect(
   }),
 );
 
+const layerTeamSheets = McpHttpServer.toolkitRegistration(
+  TeamSheetsToolkit,
+  TeamSheetsHandlers.layer,
+).pipe(
+  Layer.provide(
+    Layer.mock(TeamworkService.TeamworkService)({
+      listSheets: Effect.succeed({ sheets: [] }),
+      deleteSheet: () => Effect.void,
+      setThreadSheet: (input) =>
+        Effect.succeed({ threadId: input.threadId, sheetId: input.sheetId, sheetName: null }),
+    }),
+  ),
+);
+
 const layerTools = Layer.mergeAll(
   McpHttpServer.layerOrchestratorToolkit,
   McpHttpServer.layerThreadToolkit,
   McpHttpServer.layerProjectRegistration,
+  layerTeamSheets,
 ).pipe(
   Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   Layer.provideMerge(McpServer.McpServer.layer),
@@ -273,6 +291,21 @@ const usersOwnThread = Effect.gen(function* () {
   return threadId;
 });
 
+/** The thread's own agent, the caller that tools acting as their thread need. */
+const agentOf = (
+  scope: McpInvocationContext.McpInvocationScope,
+  threadId: ThreadId,
+): McpInvocationContext.McpInvocationScope => ({
+  ...scope,
+  thread: { threadId, providerSessionId: `provider:${threadId}`, providerInstanceId: instanceId },
+});
+
+/** A live agent needs a run in flight. The effect worker is off, so nothing runs it. */
+const startRun = (scope: McpInvocationContext.McpInvocationScope, threadId: ThreadId) =>
+  call(scope, "t3_thread_send", { threadId, message: "Start." }).pipe(
+    Effect.tap((result) => Effect.sync(() => assert.equal(result.isError, false))),
+  );
+
 it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts", (it) => {
   it.effect("is stamped, and so is the work it derives", () =>
     Effect.gen(function* () {
@@ -383,6 +416,30 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
     }),
   );
 
+  it.effect("fences team sheets to the threads a link started", () =>
+    Effect.gen(function* () {
+      const users = yield* usersOwnThread;
+      const ownLaunch = yield* launch(laptop, "The laptop's team");
+      yield* startRun(laptop, ownLaunch);
+      const agent = agentOf(laptop, ownLaunch);
+      const sheetId = "sheet:laptop";
+
+      assert.equal((yield* call(agent, "t3_team_sheet_list", {})).isError, false);
+      assert.equal(
+        failureCode(yield* call(agent, "t3_team_sheet_delete", { sheetId, baseRevision: 0 })),
+        "capability_denied",
+      );
+      assert.equal(
+        failureCode(yield* call(agent, "t3_team_sheet_enable", { threadId: users, sheetId })),
+        "capability_denied",
+      );
+      assert.equal(
+        (yield* call(agent, "t3_team_sheet_enable", { threadId: ownLaunch, sheetId })).isError,
+        false,
+      );
+    }),
+  );
+
   it.effect("is not fenced when the link has full access, but still says where it came from", () =>
     Effect.gen(function* () {
       const projections = yield* ProjectionStore.ProjectionStoreV2;
@@ -407,6 +464,13 @@ it.layer(Layer.provideMerge(layerTools, layerOrchestration))("work a link starts
         const changed = yield* call(trusted, name, args);
         assert.equal(changed.isError, false, `${name}: ${JSON.stringify(changed.content)}`);
       }
+
+      yield* startRun(trusted, launched);
+      const deleted = yield* call(agentOf(trusted, launched), "t3_team_sheet_delete", {
+        sheetId: "sheet:desk",
+        baseRevision: 0,
+      });
+      assert.equal(deleted.isError, false, JSON.stringify(deleted.content));
     }),
   );
 });

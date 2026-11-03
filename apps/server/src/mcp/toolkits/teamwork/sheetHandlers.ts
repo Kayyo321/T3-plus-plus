@@ -10,6 +10,7 @@ const failure = (error: { readonly message: string }) =>
 
 const orchestrator = { kind: "agent", createdBy: "agent", creationSource: "mcp" } as const;
 const service = TeamworkService.TeamworkService;
+const sheetsRefused = "change this environment's team sheets";
 
 export const layer = McpToolAccess.toLayer(TeamSheetsToolkit, {
   t3_team_sheet_list: McpToolAccess.readsAsCaller(() =>
@@ -23,29 +24,40 @@ export const layer = McpToolAccess.toLayer(TeamSheetsToolkit, {
       teamwork.validateSheet(input).pipe(Effect.mapError(failure)),
     ),
   ),
-  t3_team_sheet_create: McpToolAccess.actsAsCaller((input) =>
-    Effect.flatMap(service, (teamwork) =>
-      teamwork.createSheet(input, orchestrator).pipe(Effect.mapError(failure)),
-    ),
+  t3_team_sheet_create: McpToolAccess.actsAsCaller(
+    (input) =>
+      Effect.flatMap(service, (teamwork) =>
+        teamwork.createSheet(input, orchestrator).pipe(Effect.mapError(failure)),
+      ),
+    { refused: sheetsRefused },
   ),
-  t3_team_sheet_update: McpToolAccess.actsAsCaller((input) =>
-    Effect.flatMap(service, (teamwork) =>
-      teamwork.updateSheet(input, orchestrator).pipe(Effect.mapError(failure)),
-    ),
+  t3_team_sheet_update: McpToolAccess.actsAsCaller(
+    (input) =>
+      Effect.flatMap(service, (teamwork) =>
+        teamwork.updateSheet(input, orchestrator).pipe(Effect.mapError(failure)),
+      ),
+    { refused: sheetsRefused },
   ),
-  t3_team_sheet_duplicate: McpToolAccess.actsAsCaller((input) =>
-    Effect.flatMap(service, (teamwork) =>
-      teamwork.duplicateSheet(input, orchestrator).pipe(Effect.mapError(failure)),
-    ),
+  t3_team_sheet_duplicate: McpToolAccess.actsAsCaller(
+    (input) =>
+      Effect.flatMap(service, (teamwork) =>
+        teamwork.duplicateSheet(input, orchestrator).pipe(Effect.mapError(failure)),
+      ),
+    { refused: sheetsRefused },
   ),
-  t3_team_sheet_delete: McpToolAccess.actsAsCaller((input) =>
-    Effect.flatMap(service, (teamwork) =>
-      teamwork.deleteSheet(input, orchestrator).pipe(Effect.as({}), Effect.mapError(failure)),
-    ),
+  t3_team_sheet_delete: McpToolAccess.actsAsCaller(
+    (input) =>
+      Effect.flatMap(service, (teamwork) =>
+        teamwork.deleteSheet(input, orchestrator).pipe(Effect.as({}), Effect.mapError(failure)),
+      ),
+    { refused: sheetsRefused },
   ),
-  t3_team_sheet_enable: McpToolAccess.actsAsCaller((input) =>
-    Effect.flatMap(service, (teamwork) =>
-      teamwork.setThreadSheet(input, orchestrator).pipe(Effect.mapError(failure)),
-    ),
+  // A linked caller turns a sheet on only for a thread its link started.
+  t3_team_sheet_enable: McpToolAccess.writesThreads(
+    (input) => [input.threadId],
+    (input) =>
+      Effect.flatMap(service, (teamwork) =>
+        teamwork.setThreadSheet(input, orchestrator).pipe(Effect.mapError(failure)),
+      ),
   ),
 });
