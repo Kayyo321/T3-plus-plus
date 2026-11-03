@@ -12,7 +12,8 @@ import { toastManager } from "./ui/toast";
 // Separate keys so a count written by another tab can never undo a dismissal.
 const SENT_KEY = "t3code:github-star-prompt:sent";
 const DISMISSED_KEY = "t3code:github-star-prompt:dismissed";
-const REPOSITORY = "pingdotgg/t3code";
+const REPOSITORY = "Kayyo321/T3-plus-plus";
+const UPSTREAM_REPOSITORY = "pingdotgg/t3code";
 const PROMPTS_BEFORE_ASKING = 5;
 
 let shownThisSession = false;
@@ -23,28 +24,32 @@ function dismiss() {
   } catch {}
 }
 
-// Every close path, including both buttons, runs `onClose`, which saves the dismissal.
+function openRepository(repository: string) {
+  dismiss();
+  void readLocalApi()
+    ?.shell.openExternal(`https://github.com/${repository}`)
+    .catch(() => undefined);
+}
+
+// Starring one repo leaves the toast up so the other can be starred too; the corner close runs `onClose`.
 function showStarPrompt() {
-  const close = () => toastManager.close(id);
-  const id = toastManager.add({
-    title: "Enjoying T3++?",
-    description: "Give us a star on GitHub to let us know!",
+  toastManager.add({
+    title: "Like T3++?",
+    description:
+      "Star it on GitHub to let us know. T3++ wouldn't exist without the hard work of the T3 Code team, so give theirs a star too.",
     timeout: 0,
     onClose: dismiss,
     actionProps: {
-      children: "Star on GitHub",
-      onClick: () => {
-        close();
-        void readLocalApi()
-          ?.shell.openExternal(`https://github.com/${REPOSITORY}`)
-          .catch(() => undefined);
-      },
+      children: "Star T3++",
+      onClick: () => openRepository(REPOSITORY),
     },
     data: {
       actionLayout: "stacked-end",
       leadingIcon: <StarIcon aria-hidden className="size-4 text-warning-foreground" />,
-      secondaryActionProps: { children: "Dismiss", onClick: close },
-      secondaryActionVariant: "ghost",
+      secondaryActionProps: {
+        children: "Star T3 Code",
+        onClick: () => openRepository(UPSTREAM_REPOSITORY),
+      },
     },
   });
 }
