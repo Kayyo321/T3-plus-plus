@@ -37,6 +37,7 @@ export const ORCHESTRATOR_TOOL_POLICY: Readonly<Record<string, OrchestratorToolP
   t3_queue: tool("conversations", "write"),
   t3_thread_capability: tool("conversations", "write"),
   t3_thread_configure: tool("conversations", "write"),
+  t3_thread_delete: tool("conversations", "destructive"),
   t3_thread_interrupt: tool("conversations", "write", "interrupt"),
   t3_thread_launch: tool("conversations", "write"),
   t3_thread_list: tool("conversations", "read"),

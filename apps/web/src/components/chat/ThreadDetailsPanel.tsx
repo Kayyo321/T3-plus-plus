@@ -14,6 +14,7 @@ import { type EnvMode, type EnvironmentOption } from "../BranchToolbar.logic";
 import { BranchToolbar } from "../BranchToolbar";
 import BaseGitActionsControl from "../GitActionsControl";
 import { RemoteControlDetailsRow } from "./RemoteControlControls";
+import { SupervisionDetailsRow } from "./SupervisionControls";
 import ProjectScriptsControl, {
   type NewProjectScriptInput,
   type ProjectScriptActionResult,
@@ -236,6 +237,16 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                       iconClassName={THREAD_DETAILS_PANEL_ICON_CLASS}
                       labelClassName={THREAD_DETAILS_PANEL_ROW_TEXT_CLASS}
                     />
+
+                    {showRemoteControl ? (
+                      <SupervisionDetailsRow
+                        key={`supervision:${props.environmentId}:${props.threadId}`}
+                        threadRef={activeThreadRef}
+                        projectId={props.projectId}
+                        threadStarted={props.isServerThread}
+                        labelClassName={THREAD_DETAILS_PANEL_ROW_TEXT_CLASS}
+                      />
+                    ) : null}
                   </div>
                 </ThreadDetailsSection>
               ) : null}

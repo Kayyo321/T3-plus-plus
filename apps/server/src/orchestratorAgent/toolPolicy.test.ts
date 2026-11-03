@@ -23,6 +23,7 @@ describe("grantDecision", () => {
     assert.equal(grantDecision(grants, policy("t3_thread_organize")), "run");
     assert.equal(grantDecision(grants, policy("t3_thread_transfer")), "ask");
     assert.equal(grantDecision(grants, policy("t3_project_delete")), "ask");
+    assert.equal(grantDecision(grants, policy("t3_thread_delete")), "ask");
     assert.equal(grantDecision(grants, policy("orchestrator_react")), "run");
   });
 

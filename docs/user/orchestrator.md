@@ -56,7 +56,7 @@ read and asks before each change. **Allow** lets it read and change.
 | Computer use   | Off       |
 
 Whatever the area's grant, it asks before anything that leaves your machine, such as a push, a pull
-request, or sharing, and before anything that destroys data. Requests appear in the panel; a request
+request, or sharing, and before anything that destroys data, such as deleting a conversation. Requests appear in the panel; a request
 you leave unanswered for 10 minutes is refused.
 
 It never reads secret values or security settings, and it cannot change its own grants. Guests on a
@@ -75,11 +75,19 @@ action, how often it retried, and how long it has waited for an answer. Only whe
 does the orchestrator read the conversation and decide what to do. Usually that is to leave it or
 send the agent a note, labeled as coming from the orchestrator. It tells you when it cannot help.
 
-Choose **Supervise this conversation** in the command palette to turn this on, and **Let this
-conversation run** to turn it off. Scheduled tasks, background tasks, and teamwork runs are supervised
-unless you turn it off, because nobody is watching them. It leaves alone any conversation you have open.
+Supervision has three modes:
 
-Each run gets a limited number of nudges, with a cooldown between interventions. A review can read
+- **Off**: no automatic reviews.
+- **Modest**: the default. It steps in when a conversation looks stuck.
+- **Aggressive**: it checks twice as often, trips sooner, steps in instead of waiting, and gets twice
+  the nudges. This uses more of the orchestrator's model.
+
+Set the default in **Settings > Threads**. Pick a project in settings to set the mode for all of its
+threads, which replaces each thread's own choice until you reset it there. Otherwise, use the
+**Supervision** slider in a thread's details panel, or the command palette. It leaves alone any
+conversation you have open.
+
+Your grants still apply in every mode. Each run gets a limited number of nudges, with a cooldown between interventions. A review can read
 activity without spending a nudge, but every message, answer, or control action counts separately.
 After the cap it tells you instead. Choosing **Let this conversation run** blocks further interventions
 from reviews already queued. Messaging a conversation's agent is allowed by default.

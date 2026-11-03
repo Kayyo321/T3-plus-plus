@@ -308,6 +308,37 @@ it.effect("attributes only active supervision turns to their persisted review co
   }),
 );
 
+it.effect("pushes which thread a review is on as its run starts and ends", () =>
+  Effect.gen(function* () {
+    const { attempted, layer, sends, active, activeMessage, domainEvents } = yield* harness();
+    yield* Effect.gen(function* () {
+      const agent = yield* OrchestratorAgent.OrchestratorAgent;
+      yield* agent.setBrain({ brain });
+      yield* Deferred.await(attempted);
+      const reviewed = ThreadId.make("reviewed");
+      yield* agent.review("Check progress", { threadId: reviewed, runId: RunId.make("run") });
+      const message = (yield* Ref.get(sends)).at(-1)!;
+      const pushed = yield* Queue.unbounded<OrchestratorSnapshot>();
+      yield* agent.changes.pipe(
+        Stream.runForEach((snapshot) => Queue.offer(pushed, snapshot)),
+        Effect.forkChild({ startImmediately: true }),
+      );
+      assert.equal((yield* Queue.take(pushed)).supervisionReviewing, null);
+      const runUpdated = (status: string) =>
+        ({ type: "run.updated", threadId: message.threadId, payload: { status } }) as never;
+
+      yield* Ref.set(active, { id: message.threadId, activeRunId: RunId.make("brain-run") });
+      yield* Ref.set(activeMessage, message.messageId);
+      yield* Queue.offer(domainEvents, runUpdated("running"));
+      assert.equal((yield* Queue.take(pushed)).supervisionReviewing, reviewed);
+
+      yield* Ref.set(active, null);
+      yield* Queue.offer(domainEvents, runUpdated("completed"));
+      assert.equal((yield* Queue.take(pushed)).supervisionReviewing, null);
+    }).pipe(Effect.provide(layer));
+  }),
+);
+
 it.effect(
   "greets the owner once, when the first brain is chosen, without waiting on the greeting",
   () =>

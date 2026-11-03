@@ -304,6 +304,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "supervision-mode",
+    title: "Supervision",
+    to: "/settings/threads",
+    scope: "project-defaults",
+    searchTerms: ["orchestrator stuck watch let it run off modest aggressive review nudge"],
+  },
+  {
     id: "theme",
     title: "Themes",
     to: "/settings/appearance",

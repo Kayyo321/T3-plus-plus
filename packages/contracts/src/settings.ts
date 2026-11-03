@@ -30,6 +30,11 @@ import {
   ProviderOptionSelections,
 } from "./model.ts";
 import { ModelSelection } from "./modelSelection.ts";
+import {
+  DEFAULT_SUPERVISION_MODE,
+  type ResolvedSupervisionMode,
+  SupervisionMode,
+} from "./orchestratorAgent.ts";
 import { ProjectScript, type ProjectMutation } from "./project.ts";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy.ts";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile.ts";
@@ -1059,6 +1064,7 @@ export const PROJECT_SCOPED_SERVER_SETTING_KEYS = [
   "sidebarAutoSettleKeepPullRequests",
   "continueThreadsAfterServerUpdate",
   "responseStreamingMode",
+  "supervisionMode",
 ] as const;
 export type ProjectScopedServerSettingKey = (typeof PROJECT_SCOPED_SERVER_SETTING_KEYS)[number];
 
@@ -1096,6 +1102,7 @@ export const ProjectSettingsOverrides = Schema.Struct({
   sidebarAutoSettleKeepPullRequests: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  supervisionMode: Schema.optionalKey(SupervisionMode),
   providerInstances: Schema.optionalKey(
     Schema.Record(ProviderInstanceId, ProjectProviderInstanceOverride),
   ),
@@ -1127,6 +1134,21 @@ const NULLABLE_PROJECT_SETTINGS_OVERRIDES: ReadonlySet<ProjectScopedServerSettin
   "pullRequestMergeMethod",
   "sidebarAutoSettleAfterDays",
 ]);
+
+/** A project's setting manages its threads, so it wins over the thread's own choice. */
+export const resolveThreadSupervisionMode = (
+  settings: Pick<ServerSettings, "supervisionMode" | "projectSettingsOverrides">,
+  projectId: ProjectId | null | undefined,
+  threadMode: SupervisionMode | null | undefined,
+): ResolvedSupervisionMode => {
+  const project = projectId == null ? undefined : settings.projectSettingsOverrides[projectId];
+  if (project?.supervisionMode !== undefined) {
+    return { mode: project.supervisionMode, source: "project" };
+  }
+  return threadMode == null
+    ? { mode: settings.supervisionMode, source: "default" }
+    : { mode: threadMode, source: "thread" };
+};
 
 /** Reclaimable bytes from which the offline `t3pp doctor` repair is worth suggesting. */
 export const DATABASE_COMPACTION_RECOMMENDED_BYTES = 1024 ** 3;
@@ -1210,6 +1232,10 @@ export const ServerSettings = Schema.Struct({
   ),
   responseStreamingMode: ResponseStreamingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("paragraph" as const)),
+  ),
+  /** The global default. A project's override and a thread's choice go first. */
+  supervisionMode: SupervisionMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_SUPERVISION_MODE)),
   ),
   /** How many levels of nested sessions can hang under a conversation. */
   nestedSessionMaxDepth: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 8 })).pipe(
@@ -1588,6 +1614,7 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   worktreesDirectory: Schema.optionalKey(TrimmedString),
   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+  supervisionMode: Schema.optionalKey(SupervisionMode),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),

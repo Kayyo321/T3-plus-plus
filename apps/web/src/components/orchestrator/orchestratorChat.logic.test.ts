@@ -32,6 +32,23 @@ const kinds = (items: ReadonlyArray<OrchestrationV2ProjectedTurnItem>) =>
     .map((row) => row.kind);
 
 describe("orchestratorFeed", () => {
+  const react = (id: string, emoji = "👋") =>
+    tool(id, { toolName: "t3-code.orchestrator_react", input: { emoji } });
+
+  it.each([
+    ["alone", [react("wave")], ["owner"]],
+    [
+      "with a silent reply",
+      [react("wave"), reply("(silent)", { id: "s" })],
+      ["owner", "orchestrator"],
+    ],
+    ["echoed as text", [react("wave"), reply("👋", { id: "e", text: "👋" })], ["owner"]],
+    ["beside a real reply", [react("wave"), reply("Done")], ["owner", "tools", "orchestrator"]],
+    ["beside other work", [react("wave"), tool("work")], ["owner", "tools"]],
+  ])("shows a reaction's call only when there is a reply: %s", (_name, rest, expected) => {
+    expect(kinds([owner("thanks"), ...rest])).toEqual(expected);
+  });
+
   it("hides prompts the server wrote, and their tool calls, keeping what it said out loud", () => {
     const review = {
       runId: run("run-review"),

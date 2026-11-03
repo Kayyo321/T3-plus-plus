@@ -1,12 +1,19 @@
 import {
   BackgroundTask,
   CommandId,
+  isOrchestratorAgentThread,
   type OrchestrationV2ThreadShell,
+  resolveThreadSupervisionMode,
   RunId,
   OrchestratorMcpFailure,
+  ProjectId,
+  type ServerSettings as ServerSettingsValue,
+  type SupervisionMode,
+  type SupervisionResolvedThreadState,
   type SupervisionSetThreadInput,
   SupervisionThreadState,
   type SupervisionThresholds,
+  supervisionThresholdsFor,
   ThreadId,
 } from "@t3tools/contracts";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
@@ -16,24 +23,26 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Schedule from "effect/Schedule";
+import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Stream from "effect/Stream";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as OrchestratorAgent from "./OrchestratorAgent.ts";
 import {
   ACTION_ITEM_TYPES,
   computeSignals,
   ownerIsPresent,
-  supervisionEnabled,
   type SupervisionSignal,
 } from "./supervisionSignals.ts";
 
-const TICK = "1 minute";
+/** Aggressive threads get a second pass halfway through each full one. */
+const HALF_TICK = "30 seconds";
 const RECENT_ITEM_LIMIT = 60;
 
 const StateJson = Schema.fromJsonString(SupervisionThreadState);
@@ -41,8 +50,8 @@ const decodeTask = Schema.decodeUnknownOption(Schema.fromJsonString(BackgroundTa
 const decodeState = Schema.decodeUnknownOption(StateJson);
 const encodeState = Schema.encodeSync(StateJson);
 
-const OFF: SupervisionThreadState = {
-  mode: "off",
+const INITIAL: SupervisionThreadState = {
+  mode: null,
   reviews: 0,
   lastReviewAt: null,
   snoozedUntil: null,
@@ -53,8 +62,8 @@ const OFF: SupervisionThreadState = {
 export class SupervisionMonitor extends Context.Service<
   SupervisionMonitor,
   {
-    readonly threadState: (threadId: ThreadId) => Effect.Effect<SupervisionThreadState>;
-    /** "off" is also what "let it run" means. */
+    readonly threadState: (threadId: ThreadId) => Effect.Effect<SupervisionResolvedThreadState>;
+    /** "off" is also what "let it run" means; null clears the thread's choice. */
     readonly setThreadMode: (input: SupervisionSetThreadInput) => Effect.Effect<void>;
     /** Records the review's verdict: leave it, snoozed, or tell the owner. */
     readonly decide: (input: {
@@ -71,6 +80,7 @@ export class SupervisionMonitor extends Context.Service<
     readonly status: Effect.Effect<
       ReadonlyArray<{
         readonly threadId: ThreadId;
+        readonly mode: SupervisionMode;
         readonly state: SupervisionThreadState;
       }>
     >;
@@ -88,6 +98,7 @@ const make = Effect.gen(function* () {
   const audit = yield* AuditTrail.AuditTrail;
   const environment = yield* ServerEnvironment.ServerEnvironment;
   const environmentId = yield* environment.getEnvironmentId;
+  const serverSettings = yield* ServerSettings.ServerSettingsService;
 
   const rows = yield* sql<{ readonly threadId: string; readonly stateJson: string }>`
     SELECT thread_id AS "threadId", state_json AS "stateJson" FROM supervision_thread_state
@@ -129,26 +140,117 @@ const make = Effect.gen(function* () {
     Effect.map((rows) => new Set(rows.map((row) => ThreadId.make(row.threadId)))),
   );
 
+  const running = sql<{ readonly threadId: string }>`
+    SELECT DISTINCT thread_id AS "threadId" FROM orchestration_v2_projection_runs
+    WHERE status IN ('preparing', 'starting', 'running', 'waiting')
+  `.pipe(
+    Effect.orDie,
+    Effect.map((rows) => rows.map((row) => ThreadId.make(row.threadId))),
+  );
+
   const interventions = yield* Semaphore.make(1);
 
-  const stateFor = (threadId: ThreadId) => states.get(threadId) ?? OFF;
+  const stateFor = (threadId: ThreadId) => states.get(threadId) ?? INITIAL;
+  const settings = serverSettings.getSettings.pipe(Effect.orDie);
+
+  const publishThreadModes = Effect.suspend(() =>
+    agent.setSupervisionThreadModes(
+      Object.fromEntries(
+        [...states].flatMap(([threadId, { mode }]) =>
+          mode === null ? [] : [[threadId, mode] as const],
+        ),
+      ),
+    ),
+  );
+  yield* publishThreadModes;
+
+  const modeOf = (shell: OrchestrationV2ThreadShell, current: ServerSettingsValue) =>
+    resolveThreadSupervisionMode(current, shell.projectId, stateFor(shell.id).mode).mode;
+
+  /** Provider subagents answer to their parent, so they are watched only as unattended work. */
+  const watchable = (shell: OrchestrationV2ThreadShell, unattendedWork: ReadonlySet<ThreadId>) =>
+    shell.deletedAt === null &&
+    !isOrchestratorAgentThread(shell) &&
+    (shell.lineage.relationshipToParent !== "subagent" || unattendedWork.has(shell.id));
+
+  const watchedThreads = Effect.gen(function* () {
+    const automatic = yield* unattended;
+    const candidates = new Set([...(yield* running), ...automatic]);
+    const current = yield* settings;
+    const watched: Array<{
+      readonly shell: OrchestrationV2ThreadShell;
+      readonly mode: Exclude<SupervisionMode, "off">;
+    }> = [];
+    for (const threadId of candidates) {
+      const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+      if (shell === null || !watchable(shell, automatic)) continue;
+      const mode = modeOf(shell, current);
+      if (mode !== "off") watched.push({ shell, mode });
+    }
+    return watched;
+  });
+
+  const THREAD_MODE_ACTIONS: Record<SupervisionMode, string> = {
+    off: "thread.let-run",
+    modest: "thread.watch",
+    aggressive: "thread.watch-aggressive",
+  };
 
   const setThreadMode: SupervisionMonitor["Service"]["setThreadMode"] = Effect.fn(
     "SupervisionMonitor.setThreadMode",
   )(function* (input) {
-    yield* save(input.threadId, {
-      ...stateFor(input.threadId),
-      mode: input.mode,
-      automatic: false,
-    });
+    yield* save(input.threadId, { ...stateFor(input.threadId), mode: input.mode });
+    yield* publishThreadModes;
     yield* audit.record({
       actor: "user",
       domain: "supervision",
-      action: input.mode === "on" ? "thread.watch" : "thread.let-run",
+      action: input.mode === null ? "thread.follow-default" : THREAD_MODE_ACTIONS[input.mode],
       outcome: "succeeded",
       threadId: input.threadId,
     });
   }, interventions.withPermits(1));
+
+  const auditSettingsChange = Effect.fn("SupervisionMonitor.auditSettingsChange")(function* (
+    previous: ServerSettingsValue,
+    next: ServerSettingsValue,
+  ) {
+    if (previous.supervisionMode !== next.supervisionMode) {
+      yield* audit.record({
+        actor: "user",
+        domain: "supervision",
+        action: `default.${next.supervisionMode}`,
+        outcome: "succeeded",
+      });
+    }
+    const projects = new Set([
+      ...Object.keys(previous.projectSettingsOverrides),
+      ...Object.keys(next.projectSettingsOverrides),
+    ]);
+    for (const key of projects) {
+      const projectId = ProjectId.make(key);
+      const before = previous.projectSettingsOverrides[projectId]?.supervisionMode;
+      const after = next.projectSettingsOverrides[projectId]?.supervisionMode;
+      if (before === after) continue;
+      yield* audit.record({
+        actor: "user",
+        domain: "supervision",
+        action: after === undefined ? "project.clear" : `project.${after}`,
+        outcome: "succeeded",
+        target: { kind: "project", id: projectId },
+      });
+    }
+  });
+
+  const lastSettings = yield* Ref.make(yield* settings);
+  yield* serverSettings.streamChanges.pipe(
+    Stream.runForEach((next) =>
+      Ref.getAndSet(lastSettings, next).pipe(
+        Effect.flatMap((previous) => auditSettingsChange(previous, next)),
+      ),
+    ),
+    Effect.catchCause((cause) => Effect.logWarning("Could not audit a supervision change", cause)),
+    Effect.forkScoped,
+  );
 
   const escalate = Effect.fn("SupervisionMonitor.escalate")(function* (
     shell: OrchestrationV2ThreadShell,
@@ -191,7 +293,18 @@ const make = Effect.gen(function* () {
         return yield* escalate(shell, input.note);
       }
       if (input.snoozeMinutes !== undefined) {
-        const until = DateTime.add(yield* DateTime.now, { minutes: input.snoozeMinutes });
+        const aggressive = shell !== null && modeOf(shell, yield* settings) === "aggressive";
+        const snapshot = aggressive ? yield* agent.snapshot.pipe(Effect.option) : Option.none();
+        // A long snooze would undo what aggressive is for: staying on top of the thread.
+        const minutes = Option.match(snapshot, {
+          onNone: () => input.snoozeMinutes!,
+          onSome: ({ thresholds }) =>
+            Math.min(
+              input.snoozeMinutes!,
+              supervisionThresholdsFor("aggressive", thresholds).silenceMinutes,
+            ),
+        });
+        const until = DateTime.add(yield* DateTime.now, { minutes });
         yield* save(input.threadId, {
           ...stateFor(input.threadId),
           snoozedUntil: DateTime.formatIso(until),
@@ -204,6 +317,7 @@ const make = Effect.gen(function* () {
   const reviewPrompt = (
     shell: OrchestrationV2ThreadShell,
     signals: ReadonlyArray<SupervisionSignal>,
+    mode: Exclude<SupervisionMode, "off">,
     backgroundTaskId?: string,
   ) =>
     [
@@ -215,18 +329,19 @@ const make = Effect.gen(function* () {
             `The parent is idle; inspect background task ${backgroundTaskId} with background_task_log before deciding what to do.`,
           ]),
       "",
-      "Read its recent activity with t3_thread_read (view: activity) and judge whether it is making progress, waiting on something legitimate, stuck, or looping. In order of preference: leave it, talk to its agent with t3_thread_send, help directly by answering what it is blocked on, escalate to the owner, or interrupt or stop it. End by calling supervision_decide unless you sent it a message.",
+      mode === "aggressive"
+        ? "The owner chose aggressive supervision for this conversation. Read its recent activity with t3_thread_read (view: activity). Unless progress is clear, step in now: give its agent specific direction with t3_thread_send, or answer what it is blocked on. Leave it only when it is clearly progressing, escalate to the owner when you cannot unblock it, and interrupt or stop it only when it is looping or doing harm. End by calling supervision_decide unless you sent it a message."
+        : "Read its recent activity with t3_thread_read (view: activity) and judge whether it is making progress, waiting on something legitimate, stuck, or looping. In order of preference: leave it, talk to its agent with t3_thread_send, help directly by answering what it is blocked on, escalate to the owner, or interrupt or stop it. End by calling supervision_decide unless you sent it a message.",
     ].join("\n");
 
   const superviseThread = Effect.fn("SupervisionMonitor.superviseThread")(function* (
-    threadId: ThreadId,
-    state: SupervisionThreadState,
-    thresholds: SupervisionThresholds,
+    actual: OrchestrationV2ThreadShell,
+    mode: Exclude<SupervisionMode, "off">,
+    base: SupervisionThresholds,
   ) {
-    state = states.get(threadId) ?? state;
-    if (state.mode === "off") return;
-    const actual = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
-    if (actual === null) return;
+    const threadId = actual.id;
+    const state = stateFor(threadId);
+    const thresholds = supervisionThresholdsFor(mode, base);
     const backgroundRows =
       actual.activeRunId !== null
         ? []
@@ -313,7 +428,7 @@ const make = Effect.gen(function* () {
       threadId,
       request: signals.map((signal) => `${signal.kind}: ${signal.detail}`).join("; "),
     });
-    yield* agent.review(reviewPrompt(shell, signals, background?.id), {
+    yield* agent.review(reviewPrompt(shell, signals, mode, background?.id), {
       threadId,
       runId: shell.activeRunId,
     });
@@ -347,10 +462,14 @@ const make = Effect.gen(function* () {
             code: "capability_denied",
             message: "The reviewed run has ended or changed.",
           });
-        const automatic = yield* unattended;
         const shell = yield* threads
           .getThreadShell(threadId)
           .pipe(Effect.orElseSucceed(() => null));
+        const mode = resolveThreadSupervisionMode(
+          yield* settings,
+          shell?.projectId,
+          state.mode,
+        ).mode;
         const backgroundRun =
           shell?.activeRunId == null
             ? (yield* sql<{
@@ -365,23 +484,24 @@ const make = Effect.gen(function* () {
         const snapshot = yield* agent.snapshot.pipe(Effect.orDie);
         const now = yield* DateTime.now;
         const nowMs = DateTime.toEpochMillis(now);
-        const reason = !supervisionEnabled(state, automatic.has(threadId))
-          ? "The owner chose let it run, or unattended work ended."
-          : shell === null || runId !== state.runId
-            ? "The reviewed run has ended or changed."
-            : ownerIsPresent(shell, now)
-              ? "The owner is present."
-              : snapshot.supervision.status !== "active"
-                ? snapshot.supervision.reason
-                : state.snoozedUntil !== null && Date.parse(state.snoozedUntil) > nowMs
-                  ? "Supervision is snoozed."
-                  : state.lastNudgeAt != null &&
-                      nowMs - Date.parse(state.lastNudgeAt) <
-                        snapshot.thresholds.cooldownMinutes * 60_000
-                    ? "The supervision nudge cooldown is active."
-                    : (state.nudges ?? 0) >= snapshot.thresholds.nudgeCap
-                      ? "The supervision nudge cap was reached."
-                      : null;
+        const thresholds = supervisionThresholdsFor(mode, snapshot.thresholds);
+        const reason =
+          mode === "off"
+            ? "The owner chose let it run."
+            : shell === null || runId !== state.runId
+              ? "The reviewed run has ended or changed."
+              : ownerIsPresent(shell, now)
+                ? "The owner is present."
+                : snapshot.supervision.status !== "active"
+                  ? snapshot.supervision.reason
+                  : state.snoozedUntil !== null && Date.parse(state.snoozedUntil) > nowMs
+                    ? "Supervision is snoozed."
+                    : state.lastNudgeAt != null &&
+                        nowMs - Date.parse(state.lastNudgeAt) < thresholds.cooldownMinutes * 60_000
+                      ? "The supervision nudge cooldown is active."
+                      : (state.nudges ?? 0) >= thresholds.nudgeCap
+                        ? "The supervision nudge cap was reached."
+                        : null;
         if (reason !== null)
           return yield* new OrchestratorMcpFailure({ code: "capability_denied", message: reason });
         // Reserve before dispatch: failures may have applied a partial side effect.
@@ -402,55 +522,60 @@ const make = Effect.gen(function* () {
     return yield* run;
   });
 
-  const tick: SupervisionMonitor["Service"]["tick"] = Effect.gen(function* () {
-    yield* agent.checkOrchestrator;
-    const automatic = yield* unattended;
-    const candidates = new Set([...states.keys(), ...automatic]);
-    const watched = [...candidates]
-      .filter((id) => supervisionEnabled(states.get(id), automatic.has(id)))
-      .map(
-        (id) => [id, states.get(id) ?? { ...OFF, mode: "on" as const, automatic: true }] as const,
-      );
-    yield* agent.setWatching(watched.length);
-    if (watched.length === 0) return;
-    const snapshot = yield* agent.snapshot.pipe(Effect.option);
-    // Paused, and the snapshot says why; no model runs while the brain is unavailable.
-    if (Option.isNone(snapshot) || snapshot.value.supervision.status !== "active") return;
-    for (const [threadId, state] of watched) {
-      yield* superviseThread(threadId, state, snapshot.value.thresholds);
-    }
-  }).pipe(
+  let aggressiveThreads = false;
+
+  const pass = Effect.fn("SupervisionMonitor.tick")(
+    function* (scope: "all" | "aggressive") {
+      if (scope === "all") yield* agent.checkOrchestrator;
+      const watched = yield* watchedThreads;
+      aggressiveThreads = watched.some(({ mode }) => mode === "aggressive");
+      yield* agent.setWatching(watched.length);
+      if (watched.length === 0) return;
+      const snapshot = yield* agent.snapshot.pipe(Effect.option);
+      // Paused, and the snapshot says why; no model runs while the brain is unavailable.
+      if (Option.isNone(snapshot) || snapshot.value.supervision.status !== "active") return;
+      for (const { shell, mode } of watched) {
+        if (scope === "all" || mode === "aggressive") {
+          yield* superviseThread(shell, mode, snapshot.value.thresholds);
+        }
+      }
+    },
     Effect.catchCause((cause) => Effect.logWarning("A supervision pass failed", cause)),
-    Effect.withSpan("SupervisionMonitor.tick"),
   );
 
-  yield* tick.pipe(Effect.repeat(Schedule.spaced(TICK)), Effect.forkScoped);
+  const tick = pass("all");
+
+  yield* tick.pipe(
+    Effect.andThen(Effect.sleep(HALF_TICK)),
+    Effect.andThen(Effect.suspend(() => (aggressiveThreads ? pass("aggressive") : Effect.void))),
+    Effect.andThen(Effect.sleep(HALF_TICK)),
+    Effect.forever,
+    Effect.forkScoped,
+  );
 
   return SupervisionMonitor.of({
     threadState: Effect.fn("SupervisionMonitor.threadState")(function* (threadId) {
-      const state = states.get(threadId);
-      const automatic = yield* unattended;
-      return state === undefined
-        ? automatic.has(threadId)
-          ? { ...OFF, mode: "on", automatic: true }
-          : OFF
-        : state.automatic === true && !automatic.has(threadId)
-          ? { ...state, mode: "off" }
-          : state;
+      const state = stateFor(threadId);
+      const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+      const { mode, source } = resolveThreadSupervisionMode(
+        yield* settings,
+        shell?.projectId,
+        state.mode,
+      );
+      return { ...state, effectiveMode: mode, modeSource: source };
     }),
     setThreadMode,
     decide,
     governIntervention,
-    status: Effect.gen(function* () {
-      const automatic = yield* unattended;
-      const candidates = new Set([...states.keys(), ...automatic]);
-      return [...candidates]
-        .filter((id) => supervisionEnabled(states.get(id), automatic.has(id)))
-        .map((threadId) => ({
-          threadId,
-          state: states.get(threadId) ?? { ...OFF, mode: "on" as const, automatic: true },
-        }));
-    }),
+    status: watchedThreads.pipe(
+      Effect.map((watched) =>
+        watched.map(({ shell, mode }) => ({
+          threadId: shell.id,
+          mode,
+          state: stateFor(shell.id),
+        })),
+      ),
+    ),
     tick,
   });
 });
