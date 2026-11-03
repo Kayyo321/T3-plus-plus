@@ -177,7 +177,7 @@ function namedProjectReadme(name: string): string {
     "",
     `# ${name}`,
     "",
-    "Created in [T3++](https://t3.codes).",
+    "Created in [T3++](https://github.com/Kayyo321/T3-plus-plus).",
     "",
   ].join("\n");
 }

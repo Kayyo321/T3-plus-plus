@@ -106,7 +106,7 @@ export const T3ProjectFile = Schema.Struct({
 }).annotate({
   title: "T3 project file",
   description:
-    "Checked-in project configuration for T3++ (t3.json at the repository root). See https://t3.codes for documentation.",
+    "Checked-in project configuration for T3++ (t3.json at the repository root). See https://github.com/Kayyo321/T3-plus-plus for documentation.",
 });
 export type T3ProjectFile = typeof T3ProjectFile.Type;
 

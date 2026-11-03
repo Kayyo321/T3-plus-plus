@@ -120,8 +120,8 @@ jobs:
     name: Build ${{ inputs.label }}
     runs-on: ${{ inputs.runner }}
     # Windows waits for the Linux CLI archive inside its own budget (see
-    # "Wait for Linux CLI archive"), so it gets that wait on top of the usual 30.
-    timeout-minutes: ${{ inputs.platform == 'win' && 70 || 30 }}
+    # "Wait for Linux CLI archive"), so it gets that wait on top of the usual 60.
+    timeout-minutes: ${{ inputs.platform == 'win' && 120 || 60 }}
     env:
       T3PP_CLERK_PUBLISHABLE_KEY: ${{ inputs.clerk_publishable_key }}
       T3PP_CLERK_JWT_TEMPLATE: ${{ inputs.clerk_jwt_template }}
@@ -223,7 +223,7 @@ jobs:
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
           tracing_token="$(sed -n 's/^T3PP_RELAY_CLIENT_OTLP_TRACES_TOKEN=//p' "$config_path")"
-          echo "::add-mask::$tracing_token"
+          if [[ -n "$tracing_token" ]]; then echo "::add-mask::$tracing_token"; fi
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
@@ -467,7 +467,7 @@ jobs:
       - name: Wait for Linux CLI archive
         if: inputs.platform == 'win'
         shell: pwsh
-        timeout-minutes: 40
+        timeout-minutes: 60
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ARTIFACT: cli-linux-${{ inputs.arch }}
@@ -590,7 +590,7 @@ jobs:
           elif [[ "${{ inputs.platform }}" == "win" ]]; then
             # Embed the Linux CLI archive built by the same-arch Linux job as
             # the WSL runtime. Required for a working WSL backend on Windows.
-            args+=(--wsl-runtime "$GITHUB_WORKSPACE"/wsl-runtime/t3-*-linux-${{ inputs.arch }}.tar.gz)
+            args+=(--wsl-runtime "$GITHUB_WORKSPACE"/wsl-runtime/t3pp-*-linux-${{ inputs.arch }}.tar.gz)
             if has_all \
               "$AZURE_TENANT_ID" \
               "$AZURE_CLIENT_ID" \

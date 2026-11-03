@@ -6,9 +6,8 @@ on:
       - "v*.*.*"
       - "!v*-nightly.*"
       - "!v*-preview.*"
-  schedule:
-    # Avoid minute zero, when GitHub scheduled jobs are busiest.
-    - cron: "8,38 * * * *"
+  # Nightlies are dispatched by hand. The `schedule` branches below stay so a
+  # `schedule: [{ cron: "8,38 * * * *" }]` trigger here turns automatic ones back on.
   workflow_dispatch:
     inputs:
       channel:
@@ -50,8 +49,8 @@ jobs:
   # have already run. Scheduled runs also decide here whether a nightly is due.
   resolve_commit:
     name: Resolve release commit
-    if: github.repository == 'pingdotgg/t3code'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    if: github.repository == 'Kayyo321/T3-plus-plus'
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
@@ -105,7 +104,7 @@ jobs:
     if: |
       needs.resolve_commit.result == 'success' &&
       (github.event_name != 'schedule' || needs.resolve_commit.outputs.has_changes == 'true')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       release_channel: ${{ steps.release_meta.outputs.release_channel }}
@@ -118,7 +117,41 @@ jobs:
       is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
       make_latest: ${{ steps.release_meta.outputs.make_latest }}
       ref: ${{ needs.resolve_commit.outputs.ref }}
+      has_vercel: ${{ steps.integrations.outputs.has_vercel }}
+      has_aur: ${{ steps.integrations.outputs.has_aur }}
+      has_discord: ${{ steps.integrations.outputs.has_discord }}
+      has_release_app: ${{ steps.integrations.outputs.has_release_app }}
     steps:
+      # Job conditions cannot read secrets, so optional publishing steps key off
+      # these flags. A release without them still ships every GitHub asset.
+      - id: integrations
+        name: Detect optional release integrations
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          DISCORD_RELEASE_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK_URL }}
+          RELEASE_APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          flag() {
+            for value in "${@:2}"; do
+              if [[ -z "$value" ]]; then
+                echo "$1=false" >> "$GITHUB_OUTPUT"
+                return
+              fi
+            done
+            echo "$1=true" >> "$GITHUB_OUTPUT"
+          }
+          flag has_vercel "$VERCEL_TOKEN" "$VERCEL_ORG_ID" "$VERCEL_PROJECT_ID"
+          flag has_aur "$AUR_SSH_PRIVATE_KEY"
+          flag has_discord "$DISCORD_RELEASE_WEBHOOK_URL"
+          flag has_release_app "$RELEASE_APP_ID" "$RELEASE_APP_PRIVATE_KEY"
+          cat "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -233,8 +266,8 @@ jobs:
     name: Release quality checks
     needs: [preflight]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -265,8 +298,8 @@ jobs:
     name: Release tests
     needs: [preflight]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -289,7 +322,7 @@ jobs:
 
       - name: Install browser secret helper build libraries
         run: |
-          sudo sed -i 's|http://|https://|g' /etc/apt/blacksmith-ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
+          sudo sed -i 's|http://|https://|g' /etc/apt/ubuntu-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config build-essential
 
       - name: Test
@@ -301,8 +334,8 @@ jobs:
     name: Release web tests
     needs: [preflight]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -355,8 +388,8 @@ jobs:
     name: Release server tests ${{ matrix.shard }}
     needs: [preflight]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -393,7 +426,7 @@ jobs:
     if: |
       needs.resolve_commit.result == 'success' &&
       (github.event_name != 'schedule' || needs.resolve_commit.outputs.has_changes == 'true')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment:
       name: production
@@ -421,6 +454,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup dependencies
+        if: env.CLOUDFLARE_API_TOKEN != ''
         uses: ./.github/actions/setup-ci-deps
         with:
           install-args: --filter=t3code-relay...
@@ -431,11 +465,19 @@ jobs:
       # and strip the credential-refresh progress prefix before parsing JSON.
       # Redacted values are persisted as
       # {"__redacted__": "<value>"}; the token is masked before it is written.
+      # Without a Cloudflare token there is no relay stack to read, and builds
+      # ship without relay client tracing.
       - name: Read production relay tracing config
         shell: bash
         working-directory: infra/relay
         run: |
           set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "::notice::No CLOUDFLARE_API_TOKEN, so builds ship without relay client tracing."
+            printf '%s=\n' T3PP_RELAY_CLIENT_OTLP_TRACES_URL T3PP_RELAY_CLIENT_OTLP_TRACES_DATASET T3PP_RELAY_CLIENT_OTLP_TRACES_TOKEN \
+              > "$RUNNER_TEMP/relay-client-tracing.env"
+            exit 0
+          fi
           output="$(npx alchemy state read T3CodeRelay/prod/output --backend cloudflare --log-level error --no-input | sed -n '/^{/,$p')"
           field() {
             jq -er --arg key "$1" '.[$key] | if type == "object" then .__redacted__ else . end | select(. != null and . != "")' <<<"$output" \
@@ -469,6 +511,18 @@ jobs:
           if [[ -z "$relay_domain" && -n "${RELAY_API_ZONE_NAME:-}" ]]; then
             relay_domain="relay.$RELAY_API_ZONE_NAME"
           fi
+          # None of it set means T3 Connect is off for these builds; a partial
+          # set is a misconfiguration and still fails.
+          if [[ -z "$relay_domain${CLERK_PUBLISHABLE_KEY:-}${CLERK_JWT_TEMPLATE:-}${CLERK_CLI_OAUTH_CLIENT_ID:-}" ]]; then
+            echo "::notice::No relay or Clerk variables, so these builds ship with T3 Connect turned off."
+            {
+              echo "clerk_publishable_key="
+              echo "clerk_jwt_template="
+              echo "clerk_cli_oauth_client_id="
+              echo "relay_url="
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           required=(
             relay_domain
             CLERK_PUBLISHABLE_KEY
@@ -501,8 +555,8 @@ jobs:
     # this runs alongside preflight. See the condition comment there.
     needs: [preflight, relay_public_config]
     if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' }}
-    runs-on: blacksmith-32vcpu-ubuntu-2404
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     env:
       T3PP_CLERK_PUBLISHABLE_KEY: ${{ needs.relay_public_config.outputs.clerk_publishable_key }}
       T3PP_CLERK_JWT_TEMPLATE: ${{ needs.relay_public_config.outputs.clerk_jwt_template }}
@@ -545,7 +599,7 @@ jobs:
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
           tracing_token="$(sed -n 's/^T3PP_RELAY_CLIENT_OTLP_TRACES_TOKEN=//p' "$config_path")"
-          echo "::add-mask::$tracing_token"
+          if [[ -n "$tracing_token" ]]; then echo "::add-mask::$tracing_token"; fi
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
@@ -603,7 +657,7 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: macOS arm64
-      runner: blacksmith-12vcpu-macos-26
+      runner: macos-26
       platform: mac
       target: dmg
       arch: arm64
@@ -627,7 +681,7 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: macOS x64
-      runner: blacksmith-12vcpu-macos-26
+      runner: macos-26
       platform: mac
       target: dmg
       arch: x64
@@ -653,7 +707,7 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Linux x64
-      runner: blacksmith-32vcpu-ubuntu-2404
+      runner: ubuntu-24.04
       platform: linux
       target: AppImage
       arch: x64
@@ -679,7 +733,7 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Linux arm64
-      runner: blacksmith-16vcpu-ubuntu-2404-arm
+      runner: ubuntu-24.04-arm
       platform: linux
       target: AppImage
       arch: arm64
@@ -707,7 +761,7 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Windows x64
-      runner: blacksmith-16vcpu-ubuntu-2404
+      runner: ubuntu-24.04
       verify_runner: windows-2025
       platform: win
       target: nsis
@@ -731,7 +785,7 @@ jobs:
       clerk_cli_oauth_client_id: ${{ needs.relay_public_config.outputs.clerk_cli_oauth_client_id }}
       relay_url: ${{ needs.relay_public_config.outputs.relay_url }}
       label: Windows arm64
-      runner: blacksmith-16vcpu-ubuntu-2404
+      runner: ubuntu-24.04
       verify_runner: windows-11-arm
       platform: win
       target: nsis
@@ -758,7 +812,7 @@ jobs:
         desktop_win_arm64,
       ]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.quality.result == 'success' && needs.test.result == 'success' && needs.test_web.result == 'success' && needs.test_server.result == 'success' && needs.desktop_mac_arm64.result == 'success' && needs.desktop_mac_x64.result == 'success' && needs.desktop_linux_x64.result == 'success' && needs.desktop_linux_arm64.result == 'success' && needs.desktop_win_x64.result == 'success' && needs.desktop_win_arm64.result == 'success' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
@@ -808,9 +862,10 @@ jobs:
             node .github/scripts/mirror-play-apk.cjs
           fi
 
-      # Installers verify archives against this file, so it is written from the
-      # signed bytes that get uploaded, never from an earlier stage.
-      - name: Write CLI archive checksums
+      # Installers verify CLI archives and desktop installers against this file,
+      # so it is written from the signed bytes that get uploaded, never from an
+      # earlier stage. Readers look entries up by file name.
+      - name: Write release checksums
         shell: bash
         run: |
           set -euo pipefail
@@ -821,7 +876,15 @@ jobs:
             echo "No CLI archives were produced." >&2
             exit 1
           fi
-          sha256sum "${archives[@]}" > SHA256SUMS
+          installers=(*.dmg *.AppImage *.deb *.exe)
+          for zip in *.zip; do
+            [[ "$zip" == t3pp-* ]] || installers+=("$zip")
+          done
+          if [[ ${#installers[@]} -eq 0 ]]; then
+            echo "No desktop installers were produced." >&2
+            exit 1
+          fi
+          sha256sum "${archives[@]}" "${installers[@]}" > SHA256SUMS
           cat SHA256SUMS
 
       # The desktop build omits the publish config for preview versions, so
@@ -931,7 +994,7 @@ jobs:
           > [!WARNING]
           > **This is a preview build. Do not install it unless you know exactly why you are here.**
           >
-          > Preview builds are cut by maintainers from unreleased branches to exercise the release pipeline. They can be broken, receive no fixes, are never offered as updates, and are not supported. If you want T3++, install the [latest release](https://github.com/pingdotgg/t3code/releases/latest) or a nightly instead.
+          > Preview builds are cut by maintainers from unreleased branches to exercise the release pipeline. They can be broken, receive no fixes, are never offered as updates, and are not supported. If you want T3++, install the [latest release](https://github.com/Kayyo321/T3-plus-plus/releases/latest) or a nightly instead.
 
           Built from `${{ needs.preflight.outputs.ref }}`.
           EOF
@@ -987,8 +1050,10 @@ jobs:
   publish_cli:
     name: Publish CLI to npm
     needs: [preflight, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' }}
-    runs-on: ubuntu-24.04 # blacksmith-8vcpu-ubuntu-2404
+    # Needs a trusted publisher for the package on npm; set the T3PP_NPM_PUBLISH
+    # variable to "true" once it exists.
+    if: ${{ !failure() && !cancelled() && vars.T3PP_NPM_PUBLISH == 'true' && needs.preflight.result == 'success' && needs.release.result == 'success' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -1021,7 +1086,7 @@ jobs:
   publish_aur:
     name: Publish AUR package
     needs: [preflight, release]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel != 'preview' && needs.preflight.outputs.has_aur == 'true' }}
     uses: ./.github/workflows/publish-aur.yml
     with:
       release_tag: ${{ needs.preflight.outputs.tag }}
@@ -1037,9 +1102,9 @@ jobs:
   build_web:
     name: Build hosted web app
     needs: [preflight, relay_public_config]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.relay_public_config.result == 'success' && needs.preflight.outputs.release_channel != 'preview' && needs.preflight.outputs.has_vercel == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     outputs:
       deployment_url: ${{ steps.deploy.outputs.deployment_url }}
     env:
@@ -1078,7 +1143,7 @@ jobs:
         run: |
           config_path="$RUNNER_TEMP/relay-client-tracing/relay-client-tracing.env"
           tracing_token="$(sed -n 's/^T3PP_RELAY_CLIENT_OTLP_TRACES_TOKEN=//p' "$config_path")"
-          echo "::add-mask::$tracing_token"
+          if [[ -n "$tracing_token" ]]; then echo "::add-mask::$tracing_token"; fi
           cat "$config_path" >> "$GITHUB_ENV"
 
       - name: Align package versions to release version
@@ -1138,8 +1203,8 @@ jobs:
   deploy_web:
     name: Deploy hosted web app
     needs: [preflight, build_web, release, publish_cli]
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.release.result == 'success' && needs.publish_cli.result == 'success' && needs.preflight.outputs.release_channel != 'preview' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_web.result == 'success' && needs.release.result == 'success' && (needs.publish_cli.result == 'success' || needs.publish_cli.result == 'skipped') && needs.preflight.outputs.release_channel != 'preview' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       DEPLOYMENT_URL: ${{ needs.build_web.outputs.deployment_url }}
@@ -1210,8 +1275,8 @@ jobs:
   build_marketing:
     name: Build marketing site
     needs: [preflight]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' && needs.preflight.outputs.has_vercel == 'true' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       deployment_url: ${{ steps.deploy.outputs.deployment_url }}
@@ -1278,7 +1343,7 @@ jobs:
     name: Deploy marketing site
     needs: [preflight, build_marketing, release]
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build_marketing.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'nightly' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       DEPLOYMENT_URL: ${{ needs.build_marketing.outputs.deployment_url }}
@@ -1319,9 +1384,11 @@ jobs:
 
   finalize:
     name: Finalize release
-    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' }}
+    # The version bump pushes to main as a GitHub App, which the main ruleset
+    # must list as a bypass actor. Without the app, bump versions in a PR.
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.release.result == 'success' && needs.preflight.outputs.release_channel == 'stable' && needs.preflight.outputs.has_release_app == 'true' }}
     needs: [preflight, release]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - id: app_token
@@ -1398,11 +1465,12 @@ jobs:
       needs.preflight.result == 'success' &&
       needs.preflight.outputs.release_channel != 'preview' &&
       needs.relay_public_config.result == 'success' &&
+      needs.preflight.outputs.has_discord == 'true' &&
       needs.release.result == 'success' &&
-      needs.deploy_web.result == 'success' &&
+      (needs.deploy_web.result == 'success' || needs.deploy_web.result == 'skipped') &&
       (needs.finalize.result == 'success' || needs.finalize.result == 'skipped')
     needs: [preflight, relay_public_config, release, deploy_web, finalize]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Checkout

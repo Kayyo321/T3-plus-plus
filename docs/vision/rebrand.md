@@ -16,20 +16,24 @@ diff reviewable.
 | Environment variables `T3CODE_*`                                     | `T3PP_*`                         |
 | Desktop app IDs `com.t3tools.t3code`, `com.t3tools.T3Code`           | `com.t3pp.t3pp`, `com.t3pp.T3PP` |
 | Desktop installer artifacts `T3-Code-<version>-<arch>`               | `T3PP-<version>-<arch>`          |
+| GitHub repository, releases, update feeds `pingdotgg/t3code`         | `Kayyo321/T3-plus-plus`          |
+| Installers `t3.codes/install.sh`, `/install.ps1`                     | root `install.sh`, `install.bat` |
+| App icons and favicons (white T3 mark)                               | `assets/brand` art               |
+| AUR packages `t3code-bin`, `t3code-nightly-bin`                      | `t3pp-bin`, `t3pp-nightly-bin`   |
 
 ## Deliberately unchanged
 
 - **`@t3tools/*` package scope, `t3code` lint plugin and rule names, `.repos`, file and directory
   names** containing `t3code`. Renaming them is a mechanical but very large change with no user
   benefit. Do it separately if wanted.
-- **Hosted T3 services:** `t3.codes`, `app.t3.codes`, the T3 Connect relay, auth, and the update feed.
-  T3++ still depends on them. Anything called "T3 Connect" keeps that name because it names the hosted
+- **Hosted T3 services:** `t3.codes`, `app.t3.codes`, the T3 Connect relay, auth, the telemetry
+  endpoint, and the legal pages. T3++ still depends on them. Anything called "T3 Connect" keeps that name because it names the hosted
   service, not this product.
 - **Mobile identity:** the iOS and Android bundle IDs, store links, and the APNs/relay wiring. Push
   delivery is tied to those IDs on the hosted relay, so changing them breaks mobile.
 - **`t3.json`** project config file name, and `T3_ACP_*` test-only variables.
-- **GitHub URLs** (`pingdotgg/t3code`), used for updates and links until the fork has its own
-  releases. Point these at the T3++ repository when releases move.
+- **Credits and history:** links that credit T3 Code or cite upstream pull requests still point at
+  `pingdotgg/t3code`, and test fixtures keep it as sample data.
 
 ## Consequences to plan for
 
@@ -39,5 +43,7 @@ diff reviewable.
 - **CI secrets and variables** read as `T3CODE_*` in workflows are now `T3PP_*`. Rename them in the
   repository settings.
 - **npm.** Publishing `t3pp` needs a trusted publisher registered for the release workflow.
-- **Update feed and signing.** The desktop updater, code signing, and store listings need to point at
-  T3++ infrastructure before a public release.
+- **Signing.** Releases from this repository are unsigned until signing secrets are added (see
+  [Release](../operations/release.md)). Unsigned macOS builds are ad-hoc signed, so they launch but
+  cannot update themselves; rerunning the installer updates them.
+- **Store listings.** The App Store and Google Play apps are T3 Code's; T3++ has none of its own.
