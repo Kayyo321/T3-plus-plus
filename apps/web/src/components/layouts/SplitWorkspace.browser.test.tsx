@@ -94,10 +94,12 @@ describe("SplitWorkspace", () => {
     using _state = setup(twoPanes, "a");
     await using screen = await render(
       <SplitWorkspace routeTarget={target("one")} background={false} />,
+      { container: wideContainer() },
     );
     const two = screen.getByLabelText("Composer two");
+    await expect.element(two).toHaveAttribute("data-inactive", "true");
 
-    await two.element().focus();
+    two.element().focus();
 
     await expect.element(two).toHaveAttribute("data-inactive", "false");
   });
