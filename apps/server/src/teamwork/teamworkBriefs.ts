@@ -59,7 +59,7 @@ export const leadBrief = (run: TeamRun, roster: ReadonlyArray<TeamRosterSlot>) =
     ["Teams:", ...flowLines(run)].join("\n"),
     rosterLines(run, roster).join("\n"),
     `Running it:
-- Record the objective and tasks first with \`t3_team_act\` (task_upsert): owner, scope, dependencies, acceptance criteria.
+- Record the objective and tasks first with \`t3_team_act\` (task_upsert): owner, scope, dependencies, acceptance criteria. An owner is a build member or you, the lead; review and validate members judge work and never own it.
 - \`t3_team_start_member\` reaches a team (omit \`slot\`) or a member (\`slot\` such as m1). A bound slot gets a new turn in its existing session. An empty slot starts one only while this run is the first to use that node. Pick effort and model with \`modelSelection\`, within the rule above.
 - Use \`t3_thread_wait\` and \`t3_thread_read\` to follow sessions. Summary cards are not the record: handoffs, evidence, and verdicts in \`t3_team_act\` are.
 - Move the run with \`t3_team_act\` (advance). Finish with \`t3_team_act\` (report), once every task is done.

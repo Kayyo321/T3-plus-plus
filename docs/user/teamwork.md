@@ -55,5 +55,7 @@ You can open a member, or view it in split view. A blocked member says why it is
 
 **Stop** interrupts the turns in progress and ends the run. Its team sessions stay, and your next message starts a new run with them. A run that reaches its budget pauses instead, and continues once you raise the budget and resume it.
 
+Archiving or deleting the conversation also ends its run.
+
 A team session is kept across runs. If you delete a session that is on a roster, its slot is blocked until
 you replace it, and the replacement starts with an empty conversation.

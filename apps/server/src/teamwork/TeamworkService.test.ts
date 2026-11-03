@@ -14,12 +14,16 @@ import {
   type AuditEntryInput,
   type ModelSelection,
   type NestedSessionStartInput,
+  type OrchestrationV2DomainEvent,
   type TeamGrowth,
   type TeamSheet,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as Sqlite from "../persistence/Sqlite.ts";
 import * as AuditTrail from "../audit/AuditTrail.ts";
@@ -47,6 +51,8 @@ const harness = (
     readonly pricedCost?: number | null;
     /** When the priced turn ran, to tell a run's own turns from an earlier round's. */
     readonly turnAt?: number;
+    /** Conversation events, for a test that archives or deletes the parent. */
+    readonly events?: Stream.Stream<OrchestrationV2DomainEvent>;
   } = {},
 ) => {
   const started: Array<NestedSessionStartInput> = [];
@@ -55,6 +61,8 @@ const harness = (
   const dispatched: Array<{ readonly type: string; readonly threadId?: ThreadId }> = [];
   const interrupted: Array<ThreadId> = [];
   const recorded: Array<AuditEntryInput> = [];
+  // Resolves once an owner stop is recorded, which is after its members were told to stop.
+  const ownerStopped = Deferred.makeUnsafe<void>();
   const shells = new Map<ThreadId, Record<string, unknown>>();
   const addShell = (id: ThreadId, modelSelection: ModelSelection = leadModel) =>
     shells.set(id, {
@@ -83,7 +91,13 @@ const harness = (
           record: (entry) =>
             Effect.sync(() => {
               recorded.push(entry);
-            }),
+            }).pipe(
+              Effect.andThen(
+                entry.action === "owner_stop"
+                  ? Deferred.succeed(ownerStopped, undefined)
+                  : Effect.void,
+              ),
+            ),
         }),
         Layer.mock(NestedSessionService.NestedSessionService)({
           start: (input) =>
@@ -121,6 +135,7 @@ const harness = (
                   }) as never,
             ),
           getThreadShell: (id) => Effect.succeed((shells.get(id) ?? null) as never),
+          streamDomainEvents: options.events ?? Stream.never,
           assertProviderInstanceEnabled: () => Effect.void,
           sendToThread: (input) =>
             Effect.sync(() => {
@@ -145,7 +160,18 @@ const harness = (
       Layer.succeed(ScheduledRunCostEstimator, () => Effect.succeed(options.pricedCost ?? null)),
     ),
   );
-  return { layer, started, launched, sent, dispatched, interrupted, recorded, shells, addShell };
+  return {
+    layer,
+    started,
+    launched,
+    sent,
+    dispatched,
+    interrupted,
+    recorded,
+    shells,
+    addShell,
+    ownerStopped,
+  };
 };
 
 const service = TeamworkService.TeamworkService;
@@ -617,6 +643,7 @@ it.effect("waits for the owner in Ask mode, and an owner denial creates nothing"
     const filed = yield* teamwork.requestGrowth({ runId: run.id, ...ask }, asTeam);
     const requestId = filed.growth[0]!.id;
     assert.equal(filed.growth[0]?.status, "awaiting_owner");
+    assert.equal(filed.status, "awaiting_owner");
     assert.isNotNull(filed.waitingFor);
     const early = yield* teamwork
       .decideGrowth({ runId: run.id, requestId, accept: true, reason: "Yes", brief: "Parse" }, lead)
@@ -636,6 +663,67 @@ it.effect("waits for the owner in Ask mode, and an owner denial creates nothing"
       .pipe(Effect.flip);
     assert.equal(late.reason, "growth_refused");
     assert.equal(h.started.length, 1);
+  }).pipe(Effect.provide(h.layer));
+});
+
+it.effect("refuses growth that would take a sheet past its team limit, starting no session", () => {
+  const h = harness();
+  return Effect.gen(function* () {
+    const teamwork = yield* service;
+    const base = yield* editableSheet({ mode: "on", scope: "sheet" });
+    const teams = Array.from({ length: 28 }, (_, index) => ({
+      id: TeamNodeId.make(`team-${index}`),
+      kind: "build" as const,
+      name: `Team ${index}`,
+      instructions: "",
+      position: { x: 0, y: 0 },
+      modelChoice: { type: "lead" as const },
+    }));
+    const full = yield* teamwork.updateSheet(
+      {
+        sheetId: base.id,
+        baseRevision: base.revision,
+        changes: [
+          ...teams.map((node) => ({ type: "add_node" as const, node })),
+          ...teams.map((node) => ({
+            type: "connect" as const,
+            edge: { from: build, to: node.id, kind: "handoff" as const },
+          })),
+        ],
+      },
+      owner,
+    );
+    const run = yield* teamwork.start(
+      { parentThreadId: parent, request: "Go", sheetId: full.id },
+      owner,
+    );
+    const staffed = yield* teamwork.startMember(
+      { runId: run.id, nodeId: build, message: "Build" },
+      lead,
+    );
+    const team = staffed.members.find((member) => member.nodeId === build)!;
+    const asTeam = {
+      kind: "agent",
+      createdBy: "agent",
+      creationSource: "mcp",
+      threadId: team.threadId!,
+    } as const;
+    const filed = yield* teamwork.requestGrowth({ runId: run.id, ...ask }, asTeam);
+    const refused = yield* teamwork
+      .decideGrowth(
+        {
+          runId: run.id,
+          requestId: filed.growth[0]!.id,
+          accept: true,
+          reason: "Yes",
+          brief: "Parse",
+        },
+        lead,
+      )
+      .pipe(Effect.flip);
+    assert.equal(refused.reason, "invalid_sheet");
+    assert.equal(h.started.length, 1);
+    assert.equal((yield* teamwork.getSheet({ sheetId: full.id })).nodes.length, 32);
   }).pipe(Effect.provide(h.layer));
 });
 
@@ -790,7 +878,7 @@ it.effect("caps new sessions at the parallel limit, and a run past its time park
   }).pipe(Effect.provide(h.layer));
 });
 
-it.effect("interrupts a stopped run's turns without deleting its sessions", () => {
+it.effect("stops a stopped run's busy sessions with a hold, without deleting them", () => {
   const h = harness();
   return Effect.gen(function* () {
     const teamwork = yield* service;
@@ -802,8 +890,59 @@ it.effect("interrupts a stopped run's turns without deleting its sessions", () =
     const reviewer = staffed.members.find((member) => member.nodeId === review)!;
     h.shells.set(reviewer.threadId!, { ...h.shells.get(reviewer.threadId!), activeRunId: "busy" });
     yield* teamwork.act({ runId: run.id, action: { type: "owner_stop", reason: "Stop" } }, owner);
-    assert.deepEqual(h.interrupted, [reviewer.threadId]);
+    assert.deepEqual(h.interrupted, []);
+    assert.deepEqual(
+      h.dispatched
+        .filter((command) => command.type === "thread.stop")
+        .map((command) => command.threadId ?? null),
+      [reviewer.threadId],
+    );
     assert.isTrue(h.shells.has(reviewer.threadId!));
+  }).pipe(Effect.provide(h.layer));
+});
+
+it.effect("ends the run when its conversation is archived, holding its busy sessions", () =>
+  Effect.gen(function* () {
+    const events = yield* Queue.unbounded<OrchestrationV2DomainEvent>();
+    const h = harness({ events: Stream.fromQueue(events) });
+    return yield* Effect.gen(function* () {
+      const teamwork = yield* service;
+      const run = yield* teamwork.start({ parentThreadId: parent, request: "Go" }, owner);
+      const staffed = yield* teamwork.startMember(
+        { runId: run.id, nodeId: review, message: "Review" },
+        lead,
+      );
+      const reviewer = staffed.members.find((member) => member.nodeId === review)!;
+      h.shells.set(reviewer.threadId!, {
+        ...h.shells.get(reviewer.threadId!),
+        activeRunId: "busy",
+      });
+      yield* Queue.offer(events, { type: "thread.archived", threadId: parent } as never);
+      yield* Deferred.await(h.ownerStopped);
+      const board = (yield* teamwork.list({ parentThreadId: parent })).runs[0];
+      assert.equal(board?.status, "stopped");
+      assert.equal(board?.waitingFor, "The conversation was archived.");
+      assert.deepEqual(
+        h.dispatched
+          .filter((command) => command.type === "thread.stop")
+          .map((command) => command.threadId ?? null),
+        [reviewer.threadId],
+      );
+    }).pipe(Effect.provide(h.layer));
+  }),
+);
+
+it.effect("refuses to start a team on an archived conversation", () => {
+  const h = harness();
+  h.shells.set(parent, { ...h.shells.get(parent), archivedAt: "2026-11-02T00:00:00.000Z" });
+  return Effect.gen(function* () {
+    const teamwork = yield* service;
+    const refused = yield* teamwork
+      .start({ parentThreadId: parent, request: "Go" }, owner)
+      .pipe(Effect.flip);
+    assert.equal(refused.reason, "wrong_phase");
+    assert.equal(refused.detail, "Unarchive this conversation to run a team.");
+    assert.equal((yield* teamwork.list({ parentThreadId: parent })).runs.length, 0);
   }).pipe(Effect.provide(h.layer));
 });
 

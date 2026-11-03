@@ -245,6 +245,17 @@ describe("applyTeamAction", () => {
       assert.deepStrictEqual(assigned.tasks[0]?.builtBy, [builder]);
     });
 
+    it("refuses a review or validate member as owner, since a judge cannot own what it judges", () => {
+      assert.equal(
+        reasonOf(apply(makeRun(), upsert(lead, { ownerId: reviewer }))),
+        "self_approval",
+      );
+      assert.equal(
+        reasonOf(apply(makeRun(), upsert(lead, { ownerId: validator }))),
+        "self_approval",
+      );
+    });
+
     it("refuses a status a verdict or handoff owns", () => {
       const created = runOf(apply(makeRun(), upsert(lead)));
       assert.equal(reasonOf(apply(created, upsert(lead, { status: "done" }))), "wrong_phase");
@@ -274,12 +285,6 @@ describe("applyTeamAction", () => {
   });
 
   describe("verdict", () => {
-    it("refuses a judge's verdict on work it built", () => {
-      const owned = runOf(apply(makeRun(), upsert(lead, { ownerId: reviewer })));
-      const built = runOf(apply(owned, handoffAction(reviewer)));
-      assert.equal(reasonOf(apply(built, verdictAction(reviewer, "pass"))), "self_approval");
-    });
-
     it("refuses a verdict on a stale version", () => {
       const built = reviewReady();
       assert.equal(
@@ -393,6 +398,20 @@ describe("applyTeamAction", () => {
       assert.equal(reasonOf(apply(passedThenFailed, covered)), "needs_evidence");
     });
 
+    it("refuses a validate pass while the latest run of one of the task's commands failed", () => {
+      const validating = runOf(apply(reviewReady(), verdictAction(reviewer, "pass")));
+      const withFailure = [
+        passingCheck,
+        { ...passingCheck, command: "vp run lint", output: "1 error", passed: false },
+      ].reduce((run, action) => runOf(apply(run, action)), validating);
+      const covered = verdictAction(validator, "pass", {
+        criteria: [{ criterion: "parser handles empty input", result: "pass", evidence: "ok" }],
+      });
+      const refused = apply(withFailure, covered);
+      assert.equal(reasonOf(refused), "failed_checks");
+      assert.include(refused.ok ? "" : refused.refusal.detail, "vp run lint");
+    });
+
     it("sends a fail back to build and blocks the run once correction cycles exceed the budget", () => {
       const validating = runOf(apply(reviewReady(), verdictAction(reviewer, "pass")));
       const capped = makeRun({
@@ -485,6 +504,33 @@ describe("applyTeamAction", () => {
       assert.equal(reasonOf(apply(failing, report(lead))), "failed_checks");
       assert.equal(reasonOf(apply(failing, report(lead, [passingCheck.command]))), "ok");
     });
+
+    it("keeps a failed check of one task visible when another task's run of it passed", () => {
+      const other = TeamTaskId.make("task-2");
+      const failedElsewhere = makeRun({
+        tasks: [doneRun().tasks[0]!, { ...doneRun().tasks[0]!, id: other }],
+        evidence: [
+          {
+            taskId: task,
+            byId: validator,
+            command: "vp test run",
+            output: "1 failed",
+            passed: false,
+            at,
+          },
+          {
+            taskId: other,
+            byId: validator,
+            command: "vp test run",
+            output: "1 passed",
+            passed: true,
+            at,
+          },
+        ],
+      });
+      assert.equal(reasonOf(apply(failedElsewhere, report(lead))), "failed_checks");
+      assert.equal(reasonOf(apply(failedElsewhere, report(lead, ["vp test run"]))), "ok");
+    });
   });
 
   describe("owner actions", () => {
@@ -503,6 +549,43 @@ describe("applyTeamAction", () => {
       const blocked = makeRun({ status: "blocked", waitingFor: "Cycles.", correctionCycles: 4 });
       const resumed = runOf(apply(blocked, { type: "owner_resume", budget: DEFAULT_TEAM_BUDGET }));
       assert.deepStrictEqual([resumed.status, resumed.correctionCycles], ["running", 0]);
+    });
+
+    it("parks an awaiting run on budget, and resume returns it to waiting while growth awaits", () => {
+      const requestId = TeamGrowthRequestId.make("g1");
+      const waiting = makeRun({
+        status: "awaiting_owner",
+        waitingFor: "Answer growth.",
+        growth: [
+          {
+            id: requestId,
+            nodeId: node("build"),
+            fromId: builder,
+            capacity: "a second tester",
+            why: "more coverage",
+            tried: "the existing tester",
+            status: "awaiting_owner",
+            decidedBy: null,
+            reason: null,
+            memberId: null,
+            scope: null,
+            requestedAt: at,
+            decidedAt: null,
+          },
+        ],
+      });
+      const parked = enforceTeamBudget({ ...waiting, costUsd: 30 }, started);
+      assert.equal(parked?.status, "over_budget");
+      const raised = { ...DEFAULT_TEAM_BUDGET, maxCostUsd: 40 };
+      const resumed = runOf(apply(parked!, { type: "owner_resume", budget: raised }));
+      assert.deepStrictEqual(
+        [resumed.status, resumed.waitingFor],
+        ["awaiting_owner", "Answer the growth request for a second tester."],
+      );
+      assert.equal(
+        runOf(apply(resumed, { type: "owner_growth_answer", requestId, allow: true })).status,
+        "running",
+      );
     });
 
     it("refuses resume from a run that is not parked, and resume that would park again", () => {
