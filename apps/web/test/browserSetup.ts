@@ -1,4 +1,4 @@
-import { beforeEach } from "vite-plus/test";
+import { beforeEach, vi } from "vite-plus/test";
 import { commands } from "vite-plus/test/browser";
 
 declare module "vite-plus/test/browser" {
@@ -14,4 +14,14 @@ declare module "vite-plus/test/browser" {
 // running and can move the mouse after its own afterEach.
 beforeEach(async () => {
   await commands.resetPointer();
+});
+
+// Vite serves the pdf.js worker through its transform with an inline source map (6.8 MB for a
+// 1.3 MB file) and `no-cache`, so every PDF load would wait on the shared dev server, which
+// stalls for seconds under CI load. A blob of the raw file is the same code without the server.
+vi.mock(import("pdfjs-dist/build/pdf.worker.min.mjs?url"), async () => {
+  const { default: source } = await import("pdfjs-dist/build/pdf.worker.min.mjs?raw");
+  return {
+    default: URL.createObjectURL(new Blob([source], { type: "text/javascript" })),
+  };
 });
