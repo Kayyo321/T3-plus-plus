@@ -1,23 +1,25 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
+import * as NestedSessionService from "../../../orchestration-v2/NestedSessionService.ts";
 import * as OrchestratorAgent from "../../../orchestratorAgent/OrchestratorAgent.ts";
 import * as SupervisionMonitor from "../../../orchestratorAgent/SupervisionMonitor.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { dispatchFailure, newCommandId, readThread } from "../../threadAccess.ts";
+import { readThread } from "../../threadAccess.ts";
 import { EditorToolkit } from "./tools.ts";
 
+const toFailure = (cause: { readonly message: string }) =>
+  new OrchestratorMcpFailure({ code: "orchestration_error", message: cause.message });
+
 const requireEditor = McpInvocationContext.McpInvocationContext.pipe(
-  Effect.flatMap((scope) =>
-    scope.capabilities.has("editor")
-      ? Effect.void
-      : Effect.fail(
-          new OrchestratorMcpFailure({
-            code: "capability_denied",
-            message: "Only the orchestrator can use this tool.",
-          }),
-        ),
+  Effect.filterOrFail(
+    (scope) => scope.capabilities.has("editor"),
+    () =>
+      new OrchestratorMcpFailure({
+        code: "capability_denied",
+        message: "Only the orchestrator can use this tool.",
+      }),
   ),
 );
 
@@ -62,24 +64,32 @@ export const layer = McpToolAccess.toLayer(EditorToolkit, {
   ),
   t3_thread_delete: McpToolAccess.writesThreads(
     ({ threadId }) => [threadId],
-    ({ threadId }) =>
+    ({ threadId, children }) =>
       Effect.gen(function* () {
-        yield* requireEditor;
-        const { threads, projection, caller } = yield* readThread(threadId);
-        if (caller?.id === projection.thread.id) {
+        const scope = yield* requireEditor;
+        const { projection, caller } = yield* readThread(threadId);
+        const sessions = yield* NestedSessionService.NestedSessionService;
+        const nested =
+          children === "delete"
+            ? yield* sessions.listChildren(projection.thread.id).pipe(Effect.mapError(toFailure))
+            : [];
+        if ([projection.thread, ...nested].some((thread) => thread.id === caller?.id)) {
           return yield* new OrchestratorMcpFailure({
             code: "invalid_request",
             message: "You cannot delete your own conversation.",
           });
         }
-        const result = yield* threads
-          .dispatch({
-            type: "thread.delete",
-            commandId: yield* newCommandId(),
-            threadId: projection.thread.id,
-          })
-          .pipe(Effect.mapError(dispatchFailure));
-        return { sequence: result.sequence };
+        return yield* sessions
+          .deleteParent(
+            { threadId: projection.thread.id, children },
+            {
+              kind: "agent",
+              label: scope.thread?.providerInstanceId ?? scope.client?.label,
+              createdBy: "agent",
+              creationSource: "mcp",
+            },
+          )
+          .pipe(Effect.mapError(toFailure));
       }),
   ),
 });

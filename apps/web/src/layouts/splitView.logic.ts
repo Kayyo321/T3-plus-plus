@@ -52,6 +52,16 @@ function findPaneWithTarget(
   return state.panes.find((pane) => paneTargetKey(pane.target) === key);
 }
 
+/** True when `target` is the one conversation on screen, so a split of it has nothing to add. */
+export function isOnlyShownTarget(
+  state: SplitViewState,
+  routeTarget: ThreadRouteTarget | null,
+  target: ThreadRouteTarget,
+): boolean {
+  const shown = state.panes.length > 0 ? state.panes.map((pane) => pane.target) : [routeTarget];
+  return shown.length === 1 && paneTargetKey(shown[0] ?? null) === paneTargetKey(target);
+}
+
 /** Opens `target` in a new pane, or focuses the pane already showing it. */
 export function openPane(
   state: SplitViewState,

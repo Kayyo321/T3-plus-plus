@@ -5,7 +5,7 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { nestedSessionsByParent } from "@t3tools/client-runtime/state/thread-relationships";
+import { nestedSessionDescendants } from "@t3tools/client-runtime/state/thread-relationships";
 import { canSnooze, threadWokeAt } from "@t3tools/client-runtime/state/thread-settled";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import {
@@ -32,7 +32,7 @@ import { isScratchProject } from "@t3tools/client-runtime/state/projects";
 import { orchestrationEnvironment } from "../state/orchestration";
 import { projectEnvironment } from "../state/projects";
 import { environmentThreadShells, threadEnvironment } from "../state/threads";
-import { requestNestedSessionPolicy } from "../lib/nestedSessionClose";
+import { requestNestedSessionDelete, requestNestedSessionPolicy } from "../lib/nestedSessionClose";
 import { vcsEnvironment } from "../state/vcs";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { refreshArchivedThreadsForEnvironment } from "../lib/archivedThreadsState";
@@ -265,11 +265,34 @@ function threadOperationFailure(target: ScopedThreadRef) {
       );
 }
 
-function readNestedSessions(ref: ScopedThreadRef): number {
+/** Nested sessions at every depth under `ref`, parents first. */
+function readNestedDescendants(ref: ScopedThreadRef): ReadonlyArray<ScopedThreadRef> {
   const threads = appAtomRegistry
     .get(environmentThreadShells.quietThreadShellsAtom)
     .filter((thread) => thread.environmentId === ref.environmentId);
-  return nestedSessionsByParent(threads).get(ref.threadId)?.length ?? 0;
+  return nestedSessionDescendants(threads, ref.threadId).map((thread) =>
+    scopeThreadRef(thread.environmentId, thread.id),
+  );
+}
+
+/** Which nested sessions go with `targets`, deepest first, or null when the owner backs out. */
+export async function chooseNestedSessionsToDelete(
+  targets: ReadonlyArray<ScopedThreadRef>,
+  subject: string,
+): Promise<ReadonlyArray<ScopedThreadRef> | null> {
+  const targetKeys = new Set(targets.map(scopedThreadKey));
+  const descendants = [
+    ...new Map(
+      targets
+        .flatMap(readNestedDescendants)
+        .filter((ref) => !targetKeys.has(scopedThreadKey(ref)))
+        .map((ref) => [scopedThreadKey(ref), ref]),
+    ).values(),
+  ];
+  if (descendants.length === 0) return [];
+  const choice = await requestNestedSessionDelete({ subject, childCount: descendants.length });
+  if (choice === null) return null;
+  return choice === "delete" ? descendants.toReversed() : [];
 }
 
 export function useThreadActions() {
@@ -393,7 +416,7 @@ export function useThreadActions() {
       );
     }
 
-    const nestedSessions = readNestedSessions(threadRef);
+    const nestedSessions = readNestedDescendants(threadRef).length;
     const nestedPolicy =
       nestedSessions === 0
         ? undefined
@@ -940,6 +963,19 @@ export function useThreadActions() {
     if (permissionFailure) return permissionFailure;
     const localApi = readLocalApi();
     const resolved = resolveThreadTarget(target);
+
+    if (readNestedDescendants(target).length > 0) {
+      const subject = resolved ? `“${resolved.thread.title}”` : "this thread";
+      const nested = await chooseNestedSessionsToDelete([target], subject);
+      if (nested === null) return AsyncResult.success(undefined);
+      const deletedThreadKeys = new Set<string>();
+      for (const ref of nested) {
+        const result = await deleteThread(ref, { deletedThreadKeys });
+        if (result._tag === "Failure") return result;
+        deletedThreadKeys.add(scopedThreadKey(ref));
+      }
+      return deleteThread(target, { deletedThreadKeys });
+    }
 
     if (confirmThreadDelete && localApi) {
       const title = resolved?.thread.title ?? "this thread";

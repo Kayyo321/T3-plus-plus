@@ -9,6 +9,7 @@ import {
   closePane,
   COLLAPSED_PANE_WIDTH_PX,
   focusPane,
+  isOnlyShownTarget,
   INITIAL_SPLIT_VIEW,
   MIN_PANE_WIDTH_PX,
   openPane,
@@ -88,6 +89,14 @@ describe("openPane", () => {
       });
     }
     expect(state.panes).toHaveLength(4);
+  });
+});
+
+describe("isOnlyShownTarget", () => {
+  it("is true only for the conversation filling the view", () => {
+    expect(isOnlyShownTarget(INITIAL_SPLIT_VIEW, target("x"), target("x"))).toBe(true);
+    expect(isOnlyShownTarget(INITIAL_SPLIT_VIEW, target("x"), target("y"))).toBe(false);
+    expect(isOnlyShownTarget(split(), target("x"), target("x"))).toBe(false);
   });
 });
 

@@ -127,6 +127,7 @@ import {
 } from "../threadSelectionStore";
 import {
   canTurnThreadIntoProject,
+  chooseNestedSessionsToDelete,
   useAcknowledgeThreadWoke,
   useThreadActions,
 } from "../hooks/useThreadActions";
@@ -275,6 +276,7 @@ import {
   type SidebarSweepAction,
 } from "./sidebar/SidebarThreadRow";
 import { SidebarNestedSessionRows } from "./sidebar/SidebarNestedSessionRows";
+import { openThreadMenuSplit } from "../layouts/layoutActions";
 import { SidebarDraftBlock } from "./sidebar/SidebarDraftBlock";
 import {
   SidebarProjectFolderHeader,
@@ -959,6 +961,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     markThreadUnread,
     archiveThread,
     deleteThread,
+    confirmAndDeleteThread,
   } = useThreadActions();
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
@@ -2522,14 +2525,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         )
       )
         return;
+      const nestedSessions = await chooseNestedSessionsToDelete(
+        threadKeys.flatMap((threadKey) => parseScopedThreadKey(threadKey) ?? []),
+        `${count} threads`,
+      );
+      if (nestedSessions === null) return;
       const { deletedThreadKeys, firstFailure } = await deleteSelectedThreadEntries({
-        entries: threadKeys.map((threadKey) => ({ threadKey })),
+        entries: [...nestedSessions.map(scopedThreadKey), ...threadKeys].map((threadKey) => ({
+          threadKey,
+        })),
         delete: async ({ threadKey }, deletedThreadKeys) => {
-          const thread = threadByKeyRef.current.get(threadKey);
-          if (!thread) return null;
-          return deleteThread(scopeThreadRef(thread.environmentId, thread.id), {
-            deletedThreadKeys,
-          });
+          const threadRef = parseScopedThreadKey(threadKey);
+          if (!threadRef) return null;
+          return deleteThread(threadRef, { deletedThreadKeys });
         },
       });
       if (firstFailure !== null) {
@@ -2613,7 +2621,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           await handleMultiSelectContextMenu(position);
           return;
         }
-        const thread = threadByKeyRef.current.get(threadKey);
+        // Nested sessions sit outside the sidebar's sections, so its section map lacks them.
+        const thread =
+          threadByKeyRef.current.get(threadKey) ??
+          threads.find((candidate) => threadShellKey(candidate) === threadKey);
         if (!thread) return;
         const threadWorkspacePath =
           thread.worktreePath ??
@@ -2695,6 +2706,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           return;
         }
         switch (clicked.value) {
+          case "open-in-split":
+            openThreadMenuSplit(threadRef);
+            return;
           case "filter-by-project":
             if (threadProjectGroup) {
               setProjectScopeKeys(
@@ -2865,19 +2879,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
             return;
           }
           case "delete": {
-            if (confirmThreadDelete) {
-              const confirmed = await settlePromise(() =>
-                api.dialogs.confirm(
-                  [
-                    `Delete thread "${thread.title}"?`,
-                    "This permanently clears conversation history for this thread.",
-                  ].join("\n"),
-                  { variant: "destructive" },
-                ),
-              );
-              if (confirmed._tag === "Failure" || !confirmed.value) return;
-            }
-            const result = await deleteThread(threadRef);
+            const result = await confirmAndDeleteThread(threadRef);
             if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
               const error = squashAtomCommandFailure(result);
               toastManager.add(

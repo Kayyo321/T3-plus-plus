@@ -23,6 +23,7 @@ import {
   assignPane,
   closePane as closePaneState,
   focusPane as focusPaneState,
+  isOnlyShownTarget,
   openPane,
   setPaneCollapsed,
   type SplitPane,
@@ -191,6 +192,13 @@ export function openEmptySplit(): void {
       side: "right",
     }),
   );
+}
+
+/** The thread menu's split. For the conversation already filling the view, it offers the picker. */
+export function openThreadMenuSplit(threadRef: ScopedThreadRef): void {
+  const target: ThreadRouteTarget = { kind: "server", threadRef };
+  if (isOnlyShownTarget(useSplitViewStore.getState(), readRouteTarget(), target)) openEmptySplit();
+  else openThreadInSplit(threadRef);
 }
 
 export function showThreadInPane(paneId: string, threadRef: ScopedThreadRef): void {

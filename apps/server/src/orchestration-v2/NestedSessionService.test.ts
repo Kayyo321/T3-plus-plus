@@ -177,6 +177,52 @@ const startWith = (
   }).pipe(Effect.provide(layer));
 };
 
+describe("deleting a parent", () => {
+  const deleteWith = (children: "keep" | "delete") => {
+    const deleted: Array<ThreadId> = [];
+    const layer = NestedSessionService.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            readShellSnapshot: () => Effect.succeed(Effect.succeed({ threads: family } as never)),
+            dispatch: (command: OrchestrationV2ServerCommand) =>
+              Effect.sync(() => {
+                if (command.type === "thread.delete") deleted.push(command.threadId);
+                return {} as never;
+              }),
+          }),
+          Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+          Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
+          Layer.mock(ProjectStore.ProjectStoreV2)({}),
+          Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
+          Layer.mock(AuditTrail.AuditTrail)({ record: () => Effect.void }),
+          NodeServices.layer,
+        ),
+      ),
+    );
+    return Effect.gen(function* () {
+      const service = yield* NestedSessionService.NestedSessionService;
+      const result = yield* service.deleteParent({ threadId: PARENT, children }, ACTOR);
+      return { result, deleted };
+    }).pipe(Effect.provide(layer));
+  };
+
+  it.effect("delete removes nested sessions deepest first, then the parent", () =>
+    Effect.gen(function* () {
+      const { result, deleted } = yield* deleteWith("delete");
+      assert.deepEqual(deleted, [GRANDCHILD, CHILD, PARENT]);
+      assert.deepEqual(result.deletedThreadIds, deleted);
+    }),
+  );
+
+  it.effect("keep removes only the parent", () =>
+    Effect.gen(function* () {
+      const { deleted } = yield* deleteWith("keep");
+      assert.deepEqual(deleted, [PARENT]);
+    }),
+  );
+});
+
 describe("starting a nested session", () => {
   it.effect("refuses a disabled provider before forking the thread", () =>
     Effect.gen(function* () {

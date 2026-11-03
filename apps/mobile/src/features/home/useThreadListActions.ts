@@ -1,9 +1,10 @@
 import type { ThreadMoveDestination } from "../threads/threadOrder";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { nestedSessionDescendants } from "@t3tools/client-runtime/state/thread-relationships";
 import * as ThreadUndo from "@t3tools/client-runtime/state/thread-undo";
 import { showThreadUndoNotice } from "./thread-undo-notice";
 import { canSnooze } from "@t3tools/client-runtime/state/thread-settled";
-import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
+import { AuthOrchestrationOperateScope, type NestedSessionChildPolicy } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Haptics from "expo-haptics";
 import { useRef } from "react";
@@ -83,10 +84,23 @@ function checkThreadOperationPermission(thread: EnvironmentThreadShell, title: s
   return false;
 }
 
+function readNestedThreads(thread: EnvironmentThreadShell) {
+  const threads = appAtomRegistry
+    .get(environmentThreadShells.threadShellsAtom)
+    .filter((candidate) => candidate.environmentId === thread.environmentId);
+  return nestedSessionDescendants(threads, thread.id);
+}
+
+const nestedThreadCount = (count: number) =>
+  count === 1 ? "1 nested thread" : `${count} nested threads`;
+
 function useThreadActionExecutor(
   onCompleted?: (action: ThreadListAction, thread: EnvironmentThreadShell) => void,
 ) {
   const archiveMutation = useAtomCommand(threadEnvironment.archive, { reportFailure: false });
+  const closeWithNestedSessions = useAtomCommand(threadEnvironment.closeWithNestedSessions, {
+    reportFailure: false,
+  });
   const unarchiveMutation = useAtomCommand(threadEnvironment.unarchive, { reportFailure: false });
   const deleteMutation = useAtomCommand(threadEnvironment.delete, { reportFailure: false });
   const settleMutation = useAtomCommand(threadEnvironment.settle, { reportFailure: false });
@@ -97,6 +111,7 @@ function useThreadActionExecutor(
     action: ThreadListAction,
     thread: EnvironmentThreadShell,
     onStarted?: () => void,
+    nestedThreads?: NestedSessionChildPolicy,
   ) => {
     if (!checkThreadOperationPermission(thread, actionFailureTitle(action))) return false;
     const key = scopedThreadKey(thread.environmentId, thread.id);
@@ -139,18 +154,23 @@ function useThreadActionExecutor(
                 environmentId: thread.environmentId,
                 input: { threadId: thread.id, reason: "user" },
               })
-            : await (
-                action === "settle"
-                  ? settleMutation
-                  : action === "archive"
-                    ? archiveMutation
-                    : action === "unarchive"
-                      ? unarchiveMutation
-                      : deleteMutation
-              )({
-                environmentId: thread.environmentId,
-                input: { threadId: thread.id },
-              }),
+            : nestedThreads !== undefined
+              ? await closeWithNestedSessions({
+                  environmentId: thread.environmentId,
+                  input: { threadId: thread.id, children: nestedThreads },
+                })
+              : await (
+                  action === "settle"
+                    ? settleMutation
+                    : action === "archive"
+                      ? archiveMutation
+                      : action === "unarchive"
+                        ? unarchiveMutation
+                        : deleteMutation
+                )({
+                  environmentId: thread.environmentId,
+                  input: { threadId: thread.id },
+                }),
         (result) => result._tag === "Success",
       );
       if (result._tag === "Failure") {
@@ -178,6 +198,21 @@ function confirmThreadDeletion(
   if (!checkThreadOperationPermission(thread, actionFailureTitle("delete"))) return;
   const title = "Delete thread?";
   const message = `“${thread.title}” will be permanently deleted, including its terminal history.`;
+  const nested = readNestedThreads(thread);
+  if (nested.length > 0) {
+    const deleteAll = async () => {
+      for (const child of [...nested].reverse()) {
+        if (!(await executeAction("delete", child))) return;
+      }
+      await executeAction("delete", thread);
+    };
+    Dialog.alert(title, `${message} It has ${nestedThreadCount(nested.length)}.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Keep nested", onPress: () => void executeAction("delete", thread) },
+      { text: "Delete all", style: "destructive", onPress: deleteAll },
+    ]);
+    return;
+  }
   Dialog.confirm({
     title,
     message,
@@ -223,7 +258,24 @@ export function useThreadListActions(): {
   const snoozeInFlightThreadKeys = useRef(new Set<string>());
   const titleRegenerationInFlightThreadKeys = useRef(new Set<string>());
 
-  const archiveThread = (thread: EnvironmentThreadShell) => executeAction("archive", thread);
+  const archiveThread = (thread: EnvironmentThreadShell) => {
+    const nested = readNestedThreads(thread);
+    if (nested.length === 0) return executeAction("archive", thread);
+    return new Promise<boolean>((resolve) => {
+      const close = (children: NestedSessionChildPolicy) =>
+        resolve(executeAction("archive", thread, undefined, children));
+      Dialog.alert(
+        "Archive thread?",
+        `“${thread.title}” has ${nestedThreadCount(nested.length)}. Archive ${nested.length === 1 ? "it" : "all of them"} as well?`,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Keep nested", onPress: () => close("keep") },
+          { text: "Archive all", onPress: () => close("archive") },
+        ],
+        { onDismiss: () => resolve(false) },
+      );
+    });
+  };
   const offerUndo = (
     thread: EnvironmentThreadShell,
     action: "Settled" | "Snoozed" | "Unpinned",

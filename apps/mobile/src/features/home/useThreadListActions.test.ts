@@ -138,6 +138,7 @@ vi.mock("../../state/threads", () => ({
       "reorderPin",
       "reorderActive",
       "updateMetadata",
+      "closeWithNestedSessions",
     ].map((action) => [
       action,
       async (request: {
@@ -239,6 +240,48 @@ describe("thread list operation permissions", () => {
     await confirm!();
 
     expect(state.requests).toEqual([]);
+  });
+});
+
+describe("threads with nested sessions", () => {
+  const nested = (id: string, parent: string) =>
+    makeThread({
+      id: ThreadId.make(id),
+      lineage: {
+        rootThreadId: ThreadId.make("thread"),
+        parentThreadId: ThreadId.make(parent),
+        nestedSession: true,
+      } as EnvironmentThreadShell["lineage"],
+    });
+  const family = () => {
+    state.shells = [makeThread(), nested("child", "thread"), nested("grandchild", "child")];
+  };
+  const button = (text: string) => state.alerts[0]?.buttons?.find((entry) => entry.text === text);
+
+  it("deletes nested threads deepest first when asked to delete all", async () => {
+    family();
+    useThreadListActions().confirmDeleteThread(makeThread());
+    expect(state.dialogs).toEqual([]);
+
+    await button("Delete all")?.onPress?.();
+
+    expect(state.requests.map(({ action, input }) => [action, input.threadId])).toEqual([
+      ["delete", "grandchild"],
+      ["delete", "child"],
+      ["delete", "thread"],
+    ]);
+  });
+
+  it("archives through the nested close when the owner chooses", async () => {
+    family();
+    const archived = useThreadListActions().archiveThread(makeThread());
+
+    button("Archive all")?.onPress?.();
+
+    await expect(archived).resolves.toBe(true);
+    expect(state.requests).toMatchObject([
+      { action: "closeWithNestedSessions", input: { threadId: "thread", children: "archive" } },
+    ]);
   });
 });
 

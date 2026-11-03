@@ -22,7 +22,7 @@ import {
   type ThreadActionMenuId,
 } from "../components/threadActionMenu.logic";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
-import { openThreadInSplit } from "../layouts/layoutActions";
+import { openThreadMenuSplit } from "../layouts/layoutActions";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { threadEnvironment } from "../state/threads";
@@ -84,7 +84,7 @@ export function useThreadActionMenu(input: {
     confirmAndUnpinThread,
     setThreadAutoSettle,
     archiveThread,
-    deleteThread,
+    confirmAndDeleteThread,
     markThreadUnread,
     turnThreadIntoProject,
   } = useThreadActions();
@@ -92,7 +92,6 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
-  const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
@@ -194,7 +193,7 @@ export function useThreadActionMenu(input: {
           onFind?.(threadRef);
           return;
         case "open-in-split":
-          openThreadInSplit(threadRef);
+          openThreadMenuSplit(threadRef);
           return;
         case "project-settings": {
           const project = projects.find(
@@ -326,19 +325,7 @@ export function useThreadActionMenu(input: {
           return;
         }
         case "delete": {
-          if (confirmThreadDelete) {
-            const confirmed = await settlePromise(() =>
-              api.dialogs.confirm(
-                [
-                  `Delete thread "${thread.title}"?`,
-                  "This permanently clears conversation history for this thread.",
-                ].join("\n"),
-                { variant: "destructive" },
-              ),
-            );
-            if (confirmed._tag === "Failure" || !confirmed.value) return;
-          }
-          const deleted = await deleteThread(threadRef);
+          const deleted = await confirmAndDeleteThread(threadRef);
           if (
             deleted._tag === "Failure" &&
             !isAtomCommandInterrupted(deleted) &&

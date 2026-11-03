@@ -5,6 +5,8 @@ import {
   MessageId,
   NESTED_SESSION_CONTEXT_SEED_MAX_CHARS,
   type NestedSessionCloseParentInput,
+  type NestedSessionDeleteParentInput,
+  type NestedSessionDeleteParentResult,
   type NestedSessionCloseParentResult,
   NestedSessionError,
   type NestedSessionInherit,
@@ -89,6 +91,10 @@ export class NestedSessionService extends Context.Service<
       input: NestedSessionCloseParentInput,
       actor: DispatchActor,
     ) => Effect.Effect<NestedSessionCloseParentResult, NestedSessionError>;
+    readonly deleteParent: (
+      input: NestedSessionDeleteParentInput,
+      actor: DispatchActor,
+    ) => Effect.Effect<NestedSessionDeleteParentResult, NestedSessionError>;
     /** Nested sessions at every depth under a thread, parents first. */
     readonly listChildren: (
       threadId: ThreadId,
@@ -449,7 +455,37 @@ const make = Effect.gen(function* () {
     };
   });
 
-  return NestedSessionService.of({ start, report, closeParent, listChildren });
+  const deleteParent: NestedSessionService["Service"]["deleteParent"] = Effect.fn(
+    "NestedSessionService.deleteParent",
+  )(function* (input, actor) {
+    const nested =
+      input.children === "delete"
+        ? (yield* listChildren(input.threadId)).filter((child) => child.archivedAt === null)
+        : [];
+    const deleteId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+    const deletedThreadIds = [...nested.map((child) => child.id).toReversed(), input.threadId];
+    for (const threadId of deletedThreadIds) {
+      yield* threads
+        .dispatch({
+          type: "thread.delete",
+          commandId: CommandId.make(`command:delete-parent:${deleteId}:${threadId}`),
+          threadId,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            fail(describe(cause, "The conversation could not be deleted.")),
+          ),
+        );
+    }
+    yield* record(actor, {
+      action: `nested-session.delete-parent.${input.children}`,
+      threadId: input.threadId,
+      result: `${nested.length} nested sessions deleted.`,
+    });
+    return { deletedThreadIds };
+  });
+
+  return NestedSessionService.of({ start, report, closeParent, deleteParent, listChildren });
 });
 
 export const layer = Layer.effect(NestedSessionService, make);

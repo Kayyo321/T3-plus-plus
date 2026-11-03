@@ -5,6 +5,7 @@ import * as DateTime from "effect/DateTime";
 import {
   deriveThreadRelationshipGraph,
   immediateThreadRelationships,
+  nestedSessionDescendants,
   nestedSessionsByParent,
   orderWebThreadLineageRows,
   resolveMergeBackTargetThreadId,
@@ -474,6 +475,20 @@ describe("nested sessions and lineage rows", () => {
     ]);
     expect([...grouped.keys()]).toEqual(["root"]);
     expect(grouped.get(ThreadId.make("root"))?.map(({ id }) => id)).toEqual(["child"]);
+  });
+
+  it("lists every nested session under a thread, parents first", () => {
+    const descendants = nestedSessionDescendants(
+      [
+        thread("root", null),
+        thread("child", "root", { nested: true }),
+        thread("grandchild", "child", { nested: true }),
+        thread("sibling", "root", { nested: true }),
+        thread("fork", "root"),
+      ],
+      ThreadId.make("root"),
+    );
+    expect(descendants.map(({ id }) => id)).toEqual(["child", "grandchild", "sibling"]);
   });
 
   it("walks a family depth first and skips what only its parent shows", () => {

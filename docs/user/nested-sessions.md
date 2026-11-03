@@ -29,4 +29,6 @@ A nested session's agent can leave a summary card in the parent with `report_to_
 
 ## Close one
 
-Closing a nested session archives it, and you can bring it back from the archive. Closing a parent asks what happens to its nested sessions: keep them, archive them, or stop them. Kept sessions move up to the list. The undo on that archive restores only the parent.
+Closing a nested session archives it, and you can bring it back from the archive. Archiving a parent asks whether to archive its nested sessions as well, stop them, or keep them. Kept sessions move up to the list. The undo on that archive restores only the parent.
+
+Deleting a conversation that has nested sessions asks whether to delete them too. If you keep them, they move up to the list.

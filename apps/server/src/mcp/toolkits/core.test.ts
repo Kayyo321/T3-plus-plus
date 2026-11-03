@@ -41,6 +41,7 @@ import * as ServerConfig from "../../config.ts";
 import * as ProviderAdapterRegistry from "../../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ThreadLaunchService from "../../orchestration-v2/ThreadLaunchService.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
+import * as NestedSessionService from "../../orchestration-v2/NestedSessionService.ts";
 import * as ThreadManagement from "../../orchestration-v2/ThreadManagementService.ts";
 import * as ThreadSearch from "../../orchestration-v2/ThreadSearch.ts";
 import * as PreviewBrowser from "../../preview/PreviewBrowser.ts";
@@ -308,13 +309,15 @@ it.effect("lets only the orchestrator delete a thread, never its own", () => {
       id: ThreadId,
       capabilities: McpInvocationContext.McpInvocationScope["capabilities"],
     ) =>
-      server.callTool({ name: "t3_thread_delete", arguments: { threadId: id } }).pipe(
-        Effect.provideService(McpInvocationContext.McpInvocationContext, {
-          ...scope,
-          capabilities,
-        }),
-        Effect.provideService(McpSchema.McpServerClient, client),
-      );
+      server
+        .callTool({ name: "t3_thread_delete", arguments: { threadId: id, children: "keep" } })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, {
+            ...scope,
+            capabilities,
+          }),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
     const editor = new Set(["orchestration", "editor"] as const);
     expect(declaredFailure(yield* del(target, scope.capabilities))).toMatchObject({
       code: "capability_denied",
@@ -324,7 +327,7 @@ it.effect("lets only the orchestrator delete a thread, never its own", () => {
     });
     expect(dispatched).toEqual([]);
     expect((yield* del(target, editor)).isError).not.toBe(true);
-    expect(dispatched).toMatchObject([{ type: "thread.delete", threadId: target }]);
+    expect(dispatched).toMatchObject([{ threadId: target, children: "keep" }]);
   }).pipe(
     Effect.provide(
       McpHttpServer.layerEditorToolkit.pipe(
@@ -337,10 +340,16 @@ it.effect("lets only the orchestrator delete a thread, never its own", () => {
               Effect.succeed(
                 McpToolAccessTestkit.idleThreadProjection(McpToolAccessTestkit.liveThreadShell(id)),
               ),
-            dispatch: (command) =>
+            dispatch: () => Effect.die("deletes go through NestedSessionService"),
+          }),
+        ),
+        Layer.provide(
+          Layer.mock(NestedSessionService.NestedSessionService)({
+            listChildren: () => Effect.succeed([]),
+            deleteParent: (input) =>
               Effect.sync(() => {
-                dispatched.push(command);
-                return { sequence: 1 } as never;
+                dispatched.push(input);
+                return { deletedThreadIds: [input.threadId] };
               }),
           }),
         ),

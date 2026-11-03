@@ -212,6 +212,20 @@ export const NestedSessionCloseParentInput = Schema.Struct({
 });
 export type NestedSessionCloseParentInput = typeof NestedSessionCloseParentInput.Type;
 
+export const NestedSessionDeletePolicy = Schema.Literals(["keep", "delete"]);
+export type NestedSessionDeletePolicy = typeof NestedSessionDeletePolicy.Type;
+
+export const NestedSessionDeleteParentInput = Schema.Struct({
+  threadId: ThreadId,
+  children: NestedSessionDeletePolicy,
+});
+export type NestedSessionDeleteParentInput = typeof NestedSessionDeleteParentInput.Type;
+
+export const NestedSessionDeleteParentResult = Schema.Struct({
+  deletedThreadIds: Schema.Array(ThreadId),
+});
+export type NestedSessionDeleteParentResult = typeof NestedSessionDeleteParentResult.Type;
+
 export const NestedSessionCloseParentResult = Schema.Struct({
   archivedThreadIds: Schema.Array(ThreadId),
   stoppedThreadIds: Schema.Array(ThreadId),

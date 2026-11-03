@@ -269,3 +269,17 @@ export function orderWebThreadLineageRows(input: {
     return left.threadId < right.threadId ? -1 : left.threadId > right.threadId ? 1 : 0;
   });
 }
+
+/** Nested sessions at every depth under a thread, parents first. */
+export function nestedSessionDescendants<
+  Thread extends {
+    readonly id: ThreadId;
+    readonly archivedAt: unknown;
+    readonly lineage: OrchestrationV2ThreadShell["lineage"];
+  },
+>(threads: ReadonlyArray<Thread>, threadId: ThreadId): ReadonlyArray<Thread> {
+  const nested = nestedSessionsByParent(threads);
+  const under = (parentId: ThreadId): ReadonlyArray<Thread> =>
+    (nested.get(parentId) ?? []).flatMap((child) => [child, ...under(child.id)]);
+  return under(threadId);
+}

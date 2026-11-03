@@ -1,6 +1,7 @@
 import {
+  NestedSessionDeleteParentResult,
+  NestedSessionDeletePolicy,
   ORCHESTRATOR_SILENT_REPLY,
-  OrchestrationV2DispatchCommandResult,
   OrchestratorMcpFailure,
   OrchestratorReactionEmoji,
   OrchestratorUiDirective,
@@ -14,6 +15,7 @@ import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
+import * as NestedSessionService from "../../../orchestration-v2/NestedSessionService.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as OrchestratorAgent from "../../../orchestratorAgent/OrchestratorAgent.ts";
 import * as SupervisionMonitor from "../../../orchestratorAgent/SupervisionMonitor.ts";
@@ -82,12 +84,13 @@ const SupervisionWatchTool = Tool.make("supervision_watch", {
 const ThreadDeleteTool = Tool.make("t3_thread_delete", {
   ...shared,
   description:
-    "Delete a conversation and its side chats for good, stopping anything it is running. Its files and worktree stay on disk. This cannot be undone, so archive with t3_thread_organize unless the owner asked to delete. You cannot delete your own conversation.",
-  parameters: Schema.Struct({ threadId: ThreadId }),
-  success: OrchestrationV2DispatchCommandResult,
+    "Delete a conversation and its side chats for good, stopping anything it is running. Its files and worktree stay on disk. `children`: delete its nested sessions too, or keep them, which moves them up to the list. Ask the owner which unless they said. This cannot be undone, so archive with t3_thread_organize unless the owner asked to delete. You cannot delete your own conversation.",
+  parameters: Schema.Struct({ threadId: ThreadId, children: NestedSessionDeletePolicy }),
+  success: NestedSessionDeleteParentResult,
   dependencies: [
     ...shared.dependencies,
     ThreadManagementService.ThreadManagementService,
+    NestedSessionService.NestedSessionService,
     Crypto.Crypto,
   ],
 })

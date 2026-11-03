@@ -6,6 +6,7 @@ import {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
+import { MoreHorizontalIcon } from "lucide-react";
 
 import { useConversationFolderViewStore } from "../../conversationFolderViewStore";
 import { cn } from "~/lib/utils";
@@ -114,7 +115,7 @@ export function NestedSessionTreeRow(props: {
   return (
     <div
       data-in-folder
-      className="relative flex h-6 min-w-0 items-center"
+      className="group/nested-thread relative flex h-6 min-w-0 items-center"
       onContextMenu={(event) => {
         event.preventDefault();
         props.onOpenThreadMenu(ref, { x: event.clientX, y: event.clientY });
@@ -146,7 +147,7 @@ export function NestedSessionTreeRow(props: {
         params={buildThreadRouteParams(ref)}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "ms-0.5 flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md ps-1 pe-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+          "ms-0.5 flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md ps-1 pe-2 text-xs outline-none group-focus-within/nested-thread:pe-7 group-hover/nested-thread:pe-7 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring pointer-coarse:pe-7",
           active
             ? "bg-accent text-foreground"
             : "text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
@@ -159,6 +160,17 @@ export function NestedSessionTreeRow(props: {
           <span className="size-1.5 shrink-0 rounded-full bg-success" aria-label="Running" />
         ) : null}
       </Link>
+      <button
+        type="button"
+        aria-label={`Actions for ${thread.title}`}
+        onClick={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          props.onOpenThreadMenu(ref, { x: rect.left, y: rect.bottom });
+        }}
+        className="absolute inset-y-0 right-1 my-auto flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground opacity-0 outline-none group-focus-within/nested-thread:opacity-100 group-hover/nested-thread:opacity-100 hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring pointer-coarse:opacity-100"
+      >
+        <MoreHorizontalIcon className="size-3.5" />
+      </button>
     </div>
   );
 }
