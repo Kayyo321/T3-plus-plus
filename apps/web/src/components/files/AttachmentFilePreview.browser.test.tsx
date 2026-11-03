@@ -2569,7 +2569,10 @@ it("keeps workspace PDF scroll and zoom after reloads", async () => {
   await screen.getByRole("button", { name: "Next page", exact: true }).click();
   await vi.waitFor(() => expect(screen.container.textContent).toContain("2 / 3 pages"));
   await screen.rerender(preview(urls.original, "one", "/repo/another.pdf"));
-  await expect.element(screen.getByText("1 / 3 pages", { exact: true })).toBeVisible();
+  // Another file is a fresh pdf.js load, which can outlast the default poll on CI.
+  await expect
+    .element(screen.getByText("1 / 3 pages", { exact: true }), { timeout: 10_000 })
+    .toBeVisible();
   await vi.waitFor(() => {
     expect(screen.container.textContent).toContain("Fit width");
     expect(region().scrollTop).toBe(0);
