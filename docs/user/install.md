@@ -8,107 +8,89 @@ desktop, web, or mobile app. Set up the machine where the agents will work first
 You need an installed, authenticated provider before starting a thread. You can
 launch T3++ and configure providers afterwards.
 
-## Command line
+## Install
+
+On macOS or Linux:
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.sh | sh
 ```
 
-On Windows, in PowerShell:
+On Windows, in Command Prompt or PowerShell:
 
-```powershell
-irm https://t3.codes/install.ps1 | iex
+```bash
+powershell -c "irm https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.bat | iex"
 ```
 
-This installs the `t3` binary to `~/.local/bin`. If your shell reports `command not found`
-afterwards, that directory is not on your `PATH` yet; the installer prints the
-line to add. Set `T3PP_CHANNEL=nightly` to install the nightly train, or
-`T3PP_VERSION` to pin an exact version.
+You can also download [`install.bat`](https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.bat)
+and double-click it.
+
+This installs the desktop app (into Applications on macOS, your app menu on Linux, or the
+Start menu on Windows) and the `t3pp` command in `~/.local/bin`. On a machine with no
+display, or over SSH, it installs only `t3pp`; set `T3PP_DESKTOP=1` or `T3PP_DESKTOP=0` to
+choose. If your shell reports `command not found`, add `~/.local/bin` to your `PATH`; the
+Windows installer adds it for you. Set `T3PP_CHANNEL=nightly` to install the nightly train,
+or `T3PP_VERSION` to pin an exact version.
+
+Run the same command again to update both. To remove T3++, run it with `uninstall`. Your
+projects, threads, and settings stay in `~/.t3pp`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.sh | sh -s -- uninstall
+```
+
+```bash
+powershell -c "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.bat))) uninstall"
+```
+
+Everything comes from [GitHub Releases](https://github.com/Kayyo321/T3-plus-plus/releases),
+and each download is checked against the release's `SHA256SUMS`. You can also download an
+installer there yourself: `.dmg` for macOS, `.exe` for Windows, and `.AppImage` or `.deb` for
+Linux (`sudo apt install ./T3PP-*.deb`).
 
 | Task                                             | Command                                                                   |
 | ------------------------------------------------ | ------------------------------------------------------------------------- |
-| Start the server and open the web app            | `t3`                                                                      |
+| Start the server and open the web app            | `t3pp`                                                                    |
 | Start the server without a browser               | `t3pp serve`                                                              |
 | Use it from your other devices                   | `t3pp up` ([details](./remote-access.md))                                 |
 | Keep it running in the background (macOS, Linux) | `t3pp service install` ([details](./background-service.md))               |
 | Move to the newest release                       | `t3pp update`                                                             |
 | Reclaim database space                           | `t3pp doctor` ([details](./background-service.md#reclaim-database-space)) |
-| Remove it again                                  | `t3pp uninstall`                                                          |
+| Remove only the `t3pp` command                   | `t3pp uninstall`                                                          |
 
-Run `t3 help` or `t3pp --help` for the full reference. To start in a new working
-directory, use an explicit path such as `t3 ./my-project`. A bare directory name
-is accepted only if it already exists.
+Run `t3pp --help` for the full reference. To start in a new working directory, use an
+explicit path such as `t3pp ./my-project`. A bare directory name is accepted only if it
+already exists.
 
-If `t3` or `t3 start` reports an already running server, connect to that server
-instead. Stop it before starting a replacement, or use a different `--base-dir`
-for an independent server.
+If `t3pp` reports an already running server, connect to that server instead. Stop it
+before starting a replacement, or use a different `--base-dir` for an independent server.
 
-To try T3++ once without installing it, run `npx t3pp@latest` instead (needs
-Node.js for `npx`).
+The desktop app updates itself. Unsigned macOS builds cannot, so on a Mac, run the install
+command again to update.
 
 ### Intel Macs
 
-There is no `t3` executable for Intel Macs (the desktop app is available). To
-run a server there, build it from source with `vp`, which provides the Node version it needs
-([Install vp](https://github.com/pingdotgg/t3code#install-vp)):
+There is no `t3pp` executable for Intel Macs, so the installer installs only the desktop
+app there. To run a headless server on an Intel Mac, build it from source with `vp`, which
+provides the Node version it needs
+([Install vp](https://github.com/Kayyo321/T3-plus-plus#install-vp)):
 
 ```bash
-git clone https://github.com/pingdotgg/t3code
-cd t3code && vp i && vp run build:desktop
+git clone https://github.com/Kayyo321/T3-plus-plus
+cd T3-plus-plus && vp i && vp run build:desktop
 node apps/server/dist/bin.mjs
 ```
 
 `t3pp update` and the background service do not apply to a server run this way;
 update it with `git pull` and a rebuild.
 
-## Desktop app
+### The `t3pp` command in the desktop app
 
-Download a release from [GitHub Releases](https://github.com/pingdotgg/t3code/releases),
-or use a package manager:
-
-| Platform           | Install                                                      |
-| ------------------ | ------------------------------------------------------------ |
-| Windows            | `winget install T3Tools.T3Code`                              |
-| macOS              | `brew install --cask t3-code`                                |
-| Debian, Ubuntu     | `sudo apt install ./T3-Code-*.deb`                           |
-| Arch Linux         | `yay -S t3code-bin`                                          |
-| Arch Linux nightly | `yay -S t3code-nightly-bin`                                  |
-| Nix                | `nix profile add github:NixOS/nixpkgs/nixos-unstable#t3code` |
-
-The `.deb` updates itself like the other desktop builds. It asks for your
-password to install each update. If your desktop has no password prompt, the
-update fails. Download the new `.deb` and install it the same way.
-
-### Nix (nixpkgs)
-
-T3++ is maintained in [nixpkgs](https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/by-name/t3/t3code).
-The command above installs from `nixos-unstable` and requires Nix 2.30 or later with
-`nix-command` and `flakes` enabled. Launch the desktop app with `t3code-desktop`;
-the package also includes the `t3` command.
-
-On NixOS, you can instead add the package to your system configuration, using
-a nixpkgs revision that includes `t3code`:
-
-```nix
-environment.systemPackages = [ pkgs.t3code ];
-```
-
-Apply the change with `sudo nixos-rebuild switch`. For Home Manager, add
-`pkgs.t3code` to `home.packages` and run `home-manager switch`.
-
-Update a profile installation with `nix profile upgrade t3code`. For NixOS or
-Home Manager, update your configuration's nixpkgs input or channel and rebuild.
-Nix manages both the desktop app and the bundled
-`t3` command; use Nix to update them instead of the in-app updater or `t3pp update`.
-
-### The `t3` command
-
-The desktop app includes the `t3` command-line tool. To run it from any
-terminal, open **Settings → About** and choose **Install** next to
-**t3 command**. On macOS and Linux it adds a `t3` link to a folder on your
-`PATH`; on Windows it adds the app's command folder to your `PATH`. Open a new
-terminal afterwards. **Remove** takes it off again. If you already have `t3`
-from npm, it stays as it is.
+The desktop app includes the `t3pp` command-line tool too. To run it from any terminal,
+open **Settings → About** and choose **Install** next to **t3pp command**. On macOS and
+Linux it adds a `t3pp` link to a folder on your `PATH`; on Windows it adds the app's
+command folder to your `PATH`. Open a new terminal afterwards. **Remove** takes it off
+again. A `t3pp` you installed another way stays as it is.
 
 ### Windows Subsystem for Linux
 
@@ -122,28 +104,19 @@ take longer.
 With the desktop app already running on the same machine:
 
 ```bash
-t3 app
+t3pp app
 ```
 
 This opens a new thread for the current directory, adding the project if needed.
-Pass a path, such as `t3 app ../my-project`, to open another directory. It requires
+Pass a path, such as `t3pp app ../my-project`, to open another directory. It requires
 the desktop app, so a standalone server or an SSH session is not enough. If the
 command cannot reach the app, start or update the desktop app and try again.
 
 ## Mobile app
 
-Install T3++ from the
-[App Store](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824) or
-[Google Play](https://play.google.com/store/apps/details?id=com.t3tools.t3code).
-The phone connects to a server on another machine. Follow
-[remote access](./remote-access.md) to link it through T3 Connect or a pairing URL.
-
-Store links and QR codes are also available in **Settings → About → Mobile app**
-on web and desktop. The store apps work with both stable and Nightly servers. Test builds are optional:
-
-- **iPhone and iPad:** TestFlight is invite-only.
-- **Android:** download an APK from the
-  [Android beta releases](https://github.com/pingdotgg/t3code/releases?q=android-beta-).
+T3++ has no app store listing of its own yet. To use it from a phone, open it in the
+phone's browser through [remote access](./remote-access.md). The mobile app in
+`apps/mobile` can be built from source.
 
 If the app crashes during launch, open Settings → Diagnostics on the next launch
 that succeeds. It lists startup crashes from the last 7 days with the error and

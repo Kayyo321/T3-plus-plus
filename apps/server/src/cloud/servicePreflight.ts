@@ -28,7 +28,7 @@ export function runServicePreflight(input: {
       // reinstall itself and report success, so name the exact install and the path check.
       reason: [
         `The installed service launcher speaks protocol ${input.launcherProtocol}, but t3pp@${version} requires protocol ${SERVICE_LAUNCHER_PROTOCOL}.`,
-        `On the server machine, install this exact CLI: \`curl -fsSL https://t3.codes/install.sh | T3PP_VERSION=${version} sh\`.`,
+        `On the server machine, install this exact CLI: \`curl -fsSL https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.sh | T3PP_VERSION=${version} T3PP_DESKTOP=0 sh\`.`,
         `Check that \`t3pp --version\` prints ${version} and that \`which -a t3\` lists no older t3 (such as an npm or nvm install) first, then run \`~/.local/bin/t3 service install\` (the installer's default path).`,
         "Updating the desktop app does not update this CLI, and `t3pp service update` only repairs the service with whichever CLI runs it.",
       ].join(" "),

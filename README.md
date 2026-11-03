@@ -1,14 +1,18 @@
+<p align="center">
+  <img src="./assets/brand/t3pp-art.webp" alt="T3++" width="640" />
+</p>
+
 # T3++
 
-T3++ is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
+T3++ is an "agent harness control surface". It controls the coding agents on your machine from a desktop app, a web app, or any browser on your other devices.
 
 Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, and fx. If they're set up on your computer, T3++ can control them.
 
+T3++ is built on [T3 Code](https://github.com/pingdotgg/t3code) by the T3 team, and wouldn't exist without their work.
+
 ## "Wait, what are you selling me?"
 
-Nothing. We built T3++ because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
-
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
+Nothing. T3++ exists because we wanted the best possible development experience with agents: performant, remote-ready, and truly open. If we ever go the wrong direction, you have everything you need to fork it and build the editor you want.
 
 ## Installation
 
@@ -23,77 +27,35 @@ We wanted something performant, remote-ready, and truly open. If we ever go the 
 > - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
 > - fx: install [fx](https://fx.sh) and run `fx login` on the machine running the T3++ server ([setup guide](./docs/user/providers-fx.md))
 
-### Command line
+Paste one line. It installs the desktop app and the `t3pp` command from the latest [GitHub Release](https://github.com/Kayyo321/T3-plus-plus/releases), and checks every download against the release's checksums.
+
+**macOS and Linux**
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.sh | sh
 ```
 
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
-```
-
-Then run `t3` to start the server and open the local web app. `t3pp service install` keeps it running in the background, `t3pp update` moves to a newer release, and `t3pp --help` has the full reference.
-
-To try it once without installing, run `npx t3pp@latest` instead.
-
-### Desktop app
-
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
-
-#### Windows (`winget`)
+**Windows** (Command Prompt or PowerShell), or download [`install.bat`](https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.bat) and double-click it:
 
 ```bash
-winget install T3Tools.T3Code
+powershell -c "irm https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.bat | iex"
 ```
 
-#### Windows (`scoop`)
+On a machine without a display, or over SSH, it installs only `t3pp`, the headless server. Run `t3pp` to start it and open the web app, or `t3pp up` to use it from your other devices.
+
+**Update:** run the same line again. The desktop app also updates itself, and `t3pp update` updates the command.
+
+**Uninstall:** add `uninstall`. Your projects, threads, and settings are kept.
 
 ```bash
-scoop install extras/t3code
+curl -fsSL https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.sh | sh -s -- uninstall
 ```
-
-#### macOS (Homebrew)
 
 ```bash
-brew install --cask t3-code
+powershell -c "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.bat))) uninstall"
 ```
 
-#### Debian, Ubuntu (`.deb`)
-
-Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
-
-```bash
-sudo apt install ./T3-Code-*.deb
-```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
-#### Nix (nixpkgs)
-
-```bash
-nix profile add github:NixOS/nixpkgs/nixos-unstable#t3code
-```
-
-The package is maintained in [nixpkgs](https://github.com/NixOS/nixpkgs/tree/nixos-unstable/pkgs/by-name/t3/t3code)
-and includes the desktop app (`t3code-desktop`) and the `t3` command.
-See [Nix installation](./docs/user/install.md#nix-nixpkgs) for NixOS configuration and updates.
+[Install and first run](./docs/user/install.md) covers the options, manual downloads, and Intel Macs.
 
 ## Some notes
 
@@ -120,7 +82,7 @@ Full docs live in [docs/](./docs). There's no docs site yet.
 - Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
 - [Run T3++ as a background service](./docs/user/background-service.md)
 
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
+Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md). Cutting a release? See [docs/operations/release.md](./docs/operations/release.md).
 
 ## If you REALLY want to contribute still.... read this first
 
@@ -150,6 +112,6 @@ vp i
 
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
 
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
+## Credits
 
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+T3++ is a fork of [T3 Code](https://github.com/pingdotgg/t3code), made by Theo, Julius, and the T3 team and released under the MIT license. If T3++ is useful to you, star [T3++](https://github.com/Kayyo321/T3-plus-plus) and [T3 Code](https://github.com/pingdotgg/t3code) too.
