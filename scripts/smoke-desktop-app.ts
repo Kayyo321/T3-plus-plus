@@ -57,7 +57,7 @@ try {
   const page = await app.firstWindow({ timeout: STEP_TIMEOUT_MS });
   try {
     step = `finding "${THREAD_TITLE}" in the sidebar`;
-    const thread = page.locator("li[data-thread-item]", { hasText: THREAD_TITLE });
+    const thread = page.getByText(THREAD_TITLE, { exact: true }).filter({ visible: true }).first();
     await thread.waitFor({ timeout: STEP_TIMEOUT_MS });
     step = "opening the thread";
     await thread.click();
