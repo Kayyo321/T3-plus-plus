@@ -4,6 +4,7 @@ import { assert, describe, expect, it } from "@effect/vitest";
 import {
   CLIENT_GUARDED_RPC_SCOPES,
   type ComputerUseActInput,
+  type ComputerUseApproval,
   DEFAULT_SERVER_SETTINGS,
   ThreadId,
   WS_METHODS,
@@ -11,7 +12,9 @@ import {
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
@@ -165,6 +168,50 @@ it.layer(makeLayer(true))("ComputerUseService", (it) => {
     }),
   );
 
+  it.effect("parallel sensitive steps wait their turn for approval", () =>
+    Effect.gen(function* () {
+      const computer = yield* service;
+      const threadId = thread("approve-parallel");
+      yield* computer.start({ threadId, target: "browser" });
+      const nextApproval = (after?: string) =>
+        computer.subscribe(threadId).pipe(
+          Stream.map(({ state }) => state.pendingApproval),
+          Stream.filter(
+            (approval): approval is ComputerUseApproval =>
+              approval !== null && approval.id !== after,
+          ),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+      const before = acted.length;
+      const first = yield* computer
+        .act(threadId, click("Place your order"), browser)
+        .pipe(Effect.forkChild);
+      const firstApproval = yield* nextApproval();
+      // Runs the second step as far as it can go before the first is answered.
+      const second = yield* computer
+        .act(threadId, click("Delete the branch"), browser)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      expect((yield* computer.getState(threadId)).pendingApproval).toEqual(firstApproval);
+      expect(acted.length).toBe(before);
+
+      yield* computer.answerApproval({ threadId, approvalId: firstApproval.id, approved: true });
+      yield* Fiber.join(first);
+      expect(acted.slice(before).map((input) => input.intent)).toEqual(["Place your order"]);
+
+      const secondApproval = yield* nextApproval(firstApproval.id);
+      expect(secondApproval.intent).toBe("Delete the branch");
+      yield* computer.answerApproval({ threadId, approvalId: secondApproval.id, approved: true });
+      yield* Fiber.join(second);
+      expect(acted.slice(before).map((input) => input.intent)).toEqual([
+        "Place your order",
+        "Delete the branch",
+      ]);
+      const { steps } = yield* computer.listSteps({ threadId });
+      expect(steps.map((step) => step.status)).toEqual(["ok", "ok"]);
+    }),
+  );
+
   it.effect("treats no answer as a refusal", () =>
     Effect.gen(function* () {
       const computer = yield* service;
@@ -177,7 +224,11 @@ it.layer(makeLayer(true))("ComputerUseService", (it) => {
       yield* TestClock.adjust("6 minutes");
       expect((yield* Fiber.join(waiting)).code).toBe("denied");
       const { steps } = yield* computer.listSteps({ threadId });
-      expect(steps[0]).toMatchObject({ status: "denied", sensitivity: "message" });
+      expect(steps[0]).toMatchObject({
+        status: "denied",
+        sensitivity: "message",
+        result: "No one answered this step within 5 minutes.",
+      });
     }),
   );
 
