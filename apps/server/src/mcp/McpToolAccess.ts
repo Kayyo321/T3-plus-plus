@@ -130,11 +130,20 @@ export const reads = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>)
 export const readsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare((params: P) => requireThreadCaller.pipe(Effect.flatMap(() => handle(params))), undefined);
 
-export const actsAsCaller = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
+export const actsAsCaller = <P, A, E, R>(
+  handle: (params: P) => Effect.Effect<A, E, R>,
+  options?: {
+    /** What a linked caller is refused, as "change this environment's team sheets". */
+    readonly refused?: string;
+  },
+) =>
   declare(
     (params: P) =>
       requireThreadCaller.pipe(
         Effect.andThen(writingCaller),
+        Effect.tap((caller) =>
+          options?.refused === undefined ? Effect.void : assertNotLinked(caller, options.refused),
+        ),
         Effect.flatMap(() => handle(params)),
       ),
     undefined,
@@ -154,18 +163,19 @@ export const writesOwnConversation = <P, A, E, R>(handle: (params: P) => Effect.
  */
 export const writes = <P, A, E, R>(
   handle: (params: P) => Effect.Effect<A, E, R>,
-  options?: {
+  options:
+    | {
+        /** What a linked caller is refused, as "change this environment's scheduled tasks". */
+        readonly refused: string;
+      }
     /** Whether a linked caller may make it, as for uploads its own sends need. */
-    readonly linkedCallers?: "allowed";
-  },
+    | { readonly linkedCallers: "allowed" },
 ) =>
   declare(
     (params: P) =>
       orchestratingCaller.pipe(
         Effect.tap((caller) =>
-          options?.linkedCallers === "allowed"
-            ? Effect.void
-            : assertNotLinked(caller, "change this environment's scheduled tasks"),
+          "linkedCallers" in options ? Effect.void : assertNotLinked(caller, options.refused),
         ),
         Effect.flatMap(() => handle(params)),
       ),
@@ -306,13 +316,15 @@ export const writesEnvironment = <P, A, E, R>(
      * everything already here as it was.
      */
     readonly linkedCallers?: "allowed";
+    /** What a linked caller is refused. Defaults to projects and settings. */
+    readonly refused?: string;
   },
 ) => {
   const check = orchestratingCaller.pipe(
     Effect.tap((caller) =>
       options?.linkedCallers === "allowed"
         ? Effect.void
-        : assertNotLinked(caller, "change projects or environment settings"),
+        : assertNotLinked(caller, options?.refused ?? "change projects or environment settings"),
     ),
     Effect.tap((caller) => assertFullAccess(caller, fullAccessRequired)),
   );

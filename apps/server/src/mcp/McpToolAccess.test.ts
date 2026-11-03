@@ -135,7 +135,7 @@ const probeHandlers: McpToolAccess.Handlers<typeof ProbeToolkit.tools> = {
   reads: McpToolAccess.reads(() => ran),
   reads_as_caller: McpToolAccess.readsAsCaller(() => ran),
   acts_as_caller: McpToolAccess.actsAsCaller(() => ran),
-  writes: McpToolAccess.writes(() => ran),
+  writes: McpToolAccess.writes(() => ran, { refused: "write the probe" }),
   writes_with_capability: McpToolAccess.writesWithCapability(() => ran),
   writes_threads: McpToolAccess.writesThreads(
     (input) => [input.threadId],
@@ -385,7 +385,7 @@ const linkedProbeServer = McpHttpServer.toolkitRegistration(
   LinkedProbeToolkit,
   McpToolAccess.toLayer(LinkedProbeToolkit, {
     reads: McpToolAccess.reads(ranHere),
-    writes: McpToolAccess.writes(ranHere),
+    writes: McpToolAccess.writes(ranHere, { refused: "write the probe" }),
     writes_with_capability: McpToolAccess.writesWithCapability(ranHere),
     writes_threads: McpToolAccess.writesThreads((input) => [input.threadId], ranHere),
     starts_threads: McpToolAccess.startsThreads((input) => input, ranHere, "stamped"),
