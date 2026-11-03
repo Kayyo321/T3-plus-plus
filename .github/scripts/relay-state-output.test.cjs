@@ -18,7 +18,7 @@ const config = {
 };
 const json = JSON.stringify(config, null, 2);
 
-function runStep(stdout, exitCode = 0) {
+function runStep(stdout, exitCode = 0, cloudflareToken = "fixture-cloudflare-token") {
   const runnerTemp = mkdtempSync(join(tmpdir(), "t3-relay-state-test-"));
   try {
     const result = spawnSync(
@@ -31,6 +31,7 @@ function runStep(stdout, exitCode = 0) {
           RUNNER_TEMP: runnerTemp,
           FIXTURE_STDOUT: stdout,
           FIXTURE_EXIT: String(exitCode),
+          CLOUDFLARE_API_TOKEN: cloudflareToken,
         },
       },
     );
@@ -61,6 +62,17 @@ for (const prefix of [
     );
   });
 }
+
+test("writes empty tracing config without a Cloudflare token", () => {
+  const result = runStep("", 1, "");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    result.envFile,
+    "T3PP_RELAY_CLIENT_OTLP_TRACES_URL=\n" +
+      "T3PP_RELAY_CLIENT_OTLP_TRACES_DATASET=\n" +
+      "T3PP_RELAY_CLIENT_OTLP_TRACES_TOKEN=\n",
+  );
+});
 
 for (const [name, stdout, exitCode] of [
   ["failed CLI even with valid JSON", json, 1],
