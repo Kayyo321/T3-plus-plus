@@ -2,16 +2,6 @@ import { expect, it, vi } from "vite-plus/test";
 import { render } from "../../../test/render";
 import "~/index.css";
 
-// Vite serves the worker module through its transform with an inline source map (6.8 MB for
-// a 1.3 MB file), which dominated this test under CPU contention. A blob of the raw file is the
-// same code without the dev-server cost.
-vi.mock(import("pdfjs-dist/build/pdf.worker.min.mjs?url"), async () => {
-  const { default: source } = await import("pdfjs-dist/build/pdf.worker.min.mjs?raw");
-  return {
-    default: URL.createObjectURL(new Blob([source], { type: "text/javascript" })),
-  };
-});
-
 import PdfViewer from "./PdfViewer";
 
 // Page 1 is a short banner whose title is drawn in two runs with a font change, so pdf.js
