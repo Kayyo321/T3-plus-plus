@@ -1402,18 +1402,16 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     >
       <div
         className={cn(
-          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 border-b border-border pl-2",
-          props.reserveTitlebarControls || (props.mode === "inline" && !props.layoutControls)
-            ? "pr-36"
-            : "pr-3",
+          "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 border-b border-border pr-3 pl-2",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar && "wco:pr-(--workspace-native-controls-inset)",
           props.mode === "inline" && props.maximized && COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}
-        // Embedded groups sit under the window's fixed controls, which start inside its edge.
         style={
-          props.reserveTitlebarControls && !ownsDesktopTitleBar
-            ? { paddingRight: "calc(var(--workspace-controls-right) + 9rem)" }
+          props.reserveTitlebarControls || (props.mode === "inline" && !props.layoutControls)
+            ? {
+                paddingRight: "calc(var(--workspace-titlebar-controls-inset, 9rem) + 0.5rem)",
+              }
             : undefined
         }
         data-right-panel-tabbar
@@ -1591,13 +1589,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           </div>
         ) : null}
         {props.layoutControls}
-        {ownsDesktopTitleBar && !props.layoutControls ? (
-          <span aria-hidden className="hidden w-24 shrink-0 wco:block" />
-        ) : null}
         {ownsDesktopTitleBar ? (
           <span
             aria-hidden
-            className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+            className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-[var(--workspace-titlebar-controls-width,7rem)] [-webkit-app-region:no-drag]"
           />
         ) : null}
       </div>

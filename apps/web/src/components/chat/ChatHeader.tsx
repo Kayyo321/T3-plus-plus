@@ -287,9 +287,14 @@ export const ChatHeader = memo(function ChatHeader({
     <div
       ref={breadcrumbContainerRef}
       className={cn(
-        "flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
-        rightPanelOpen ? "pr-10" : "pr-32",
+        "@container/chat-header flex min-w-0 flex-1 items-center gap-2 sm:gap-3",
+        rightPanelOpen && "pr-10",
       )}
+      style={
+        rightPanelOpen
+          ? undefined
+          : { paddingRight: "calc(var(--workspace-titlebar-controls-width, 8rem) + 0.5rem)" }
+      }
       onContextMenu={handleHeaderContextMenu}
     >
       <WorkspaceBreadcrumb
@@ -442,7 +447,7 @@ export const ChatHeader = memo(function ChatHeader({
         />
       ) : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
-      {isServerThread ? <ComputerUseHeaderControl threadRef={activeThreadRef} /> : null}
+      <ComputerUseHeaderControl threadRef={activeThreadRef} />
     </div>
   );
 });

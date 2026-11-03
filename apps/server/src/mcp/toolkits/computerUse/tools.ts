@@ -46,7 +46,6 @@ export const ComputerScreenshotTool = Tool.make("computer_screenshot", {
     screenshot: Schema.Struct({ mimeType: Schema.Literal("image/png"), data: Schema.String }),
   }),
   failure: OrchestratorMcpFailure,
-  failureMode: "return",
   dependencies,
 })
   .annotate(Tool.Title, "Screenshot the computer")

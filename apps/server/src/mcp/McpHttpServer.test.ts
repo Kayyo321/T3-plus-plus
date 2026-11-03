@@ -7,6 +7,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
   DeviceId,
   DeviceOperationError,
+  ComputerUseError,
   EnvironmentId,
   OrchestratorMcpEnvironmentTarget,
   OrchestratorMcpFailure,
@@ -27,6 +28,7 @@ import { HttpBody, HttpClient, HttpClientRequest, HttpRouter } from "effect/http
 
 import * as ProjectService from "../project/ProjectService.ts";
 import * as DeviceService from "../device/DeviceService.ts";
+import * as ComputerUseService from "../computerUse/ComputerUseService.ts";
 import * as PullRequestReviewGuideService from "../pullRequest/PullRequestReviewGuideService.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -142,6 +144,70 @@ const callTool = (name: string, args: Record<string, unknown>) =>
   });
 
 const callSnapshot = (args: Record<string, unknown>) => callTool("preview_snapshot", args);
+
+it.effect("returns computer screenshots as images and preserves failures after stopping", () => {
+  const png = new Uint8Array([137, 80, 78, 71]);
+  const off = new ComputerUseError({
+    code: "off",
+    message: "Computer use is off. Ask the user to turn it on.",
+  });
+  let stopped = false;
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server.callTool({ name: "computer_screenshot", arguments: {} }).pipe(
+      Effect.provideService(McpInvocationContext.McpInvocationContext, {
+        ...invocation,
+        capabilities: new Set(["computer-use"] as const),
+      }),
+      Effect.provideService(McpSchema.McpServerClient, client),
+    );
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent).toEqual({
+      stepId: "computer-screenshot-step",
+      screenshot: { mimeType: "image/png" },
+    });
+    expect(result.content).toEqual([
+      { type: "text", text: JSON.stringify(result.structuredContent) },
+      { type: "image", mimeType: "image/png", data: png },
+    ]);
+    stopped = true;
+    const denied = yield* server.callTool({ name: "computer_screenshot", arguments: {} }).pipe(
+      Effect.provideService(McpInvocationContext.McpInvocationContext, {
+        ...invocation,
+        capabilities: new Set(["computer-use"] as const),
+      }),
+      Effect.provideService(McpSchema.McpServerClient, client),
+    );
+    expect(denied.isError).toBe(true);
+    expect(denied.content).toEqual([{ type: "text", text: off.message }]);
+    expect(denied.structuredContent).toMatchObject({
+      error: { _tag: "OrchestratorMcpFailure", operation: "screenshot", message: off.message },
+    });
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerComputerUseToolkit.pipe(
+        Layer.provideMerge(McpServer.McpServer.layer),
+        Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+        Layer.provide(
+          Layer.mock(ComputerUseService.ComputerUseService)({
+            screenshot: () =>
+              stopped
+                ? Effect.fail(off)
+                : Effect.succeed({
+                    stepId: "computer-screenshot-step",
+                    mimeType: "image/png",
+                    data: Buffer.from(png).toString("base64"),
+                  }),
+          }),
+        ),
+        Layer.provide(Layer.mock(PreviewAutomationBroker.PreviewAutomationBroker)({})),
+        Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-computer-mcp-test-" })),
+        Layer.provide(NodeServices.layer),
+      ),
+    ),
+    Effect.scoped,
+  );
+});
 
 it.effect.each([
   { input: {}, open: false, message: "No device is open in this thread. Call device_open first." },

@@ -1,4 +1,11 @@
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { useAtomValue } from "@effect/atom-react";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import { computerUseSupportForDriver } from "@t3tools/contracts";
 import type { ComputerUseStep, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Image } from "expo-image";
 import { useState } from "react";
@@ -15,6 +22,9 @@ import { ScreenContent } from "../../components/ui/ScreenContent";
 import { NativeStackScreenOptions, nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 import { NativeHeader, NativeScreen } from "../../native/ThemedScreenStack";
 import { useEnvironmentQuery } from "../../state/query";
+import { useQuietThreadShell } from "../../state/entities";
+import { useAtomCommand } from "../../state/use-atom-command";
+import * as Dialog from "../../components/ui/Dialog";
 import { serverEnvironment } from "../../state/server";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import {
@@ -26,6 +36,80 @@ import {
 const HEADER_SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
 
 type ComputerUseTarget = { readonly environmentId: EnvironmentId; readonly threadId: ThreadId };
+
+function ComputerUseControls({ environmentId, threadId }: ComputerUseTarget) {
+  const live = useEnvironmentQuery(
+    serverEnvironment.computerUseLive({ environmentId, input: { threadId } }),
+  );
+  const support = useEnvironmentQuery(
+    serverEnvironment.computerUseSupport({ environmentId, input: {} }),
+  );
+  const thread = useQuietThreadShell(scopeThreadRef(environmentId, threadId));
+  const providers = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
+  const settings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
+  const instanceId =
+    thread?.runtime?.providerInstanceId ??
+    thread?.modelSelection.instanceId ??
+    settings?.defaultModelSelection?.instanceId;
+  const provider = providers?.find((entry) => entry.instanceId === instanceId);
+  const supported = provider !== undefined && computerUseSupportForDriver(provider.driver) !== null;
+  const canStart = useAtomValue(serverEnvironment.startComputerUse.permissionAtom(environmentId));
+  const canStop = useAtomValue(serverEnvironment.stopComputerUse.permissionAtom(environmentId));
+  const start = useAtomCommand(serverEnvironment.startComputerUse, { reportFailure: false });
+  const stop = useAtomCommand(serverEnvironment.stopComputerUse, { reportFailure: false });
+  const [busy, setBusy] = useState(false);
+  const change = async (target: "browser" | "virtual-display" | null) => {
+    setBusy(true);
+    const result =
+      target === null
+        ? await stop({ environmentId, input: { threadId } })
+        : await start({ environmentId, input: { threadId, target } });
+    setBusy(false);
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      Dialog.alert("Could not change computer use", String(squashAtomCommandFailure(result)));
+    }
+  };
+  if (live.data === null) return null;
+  if (live.data.state.status !== "off") {
+    return canStop ? (
+      <View className="py-4">
+        <Button label="Stop computer use" disabled={busy} onPress={() => void change(null)} />
+      </View>
+    ) : null;
+  }
+  const reason =
+    support.data?.enabled !== true
+      ? "Turn on Computer use in Settings, Labs first."
+      : thread?.capabilityMode === "chat"
+        ? "Computer use is not available in Chat mode."
+        : !supported
+          ? "Choose a supported provider first."
+          : null;
+  return (
+    <View className="gap-3 py-4">
+      {reason ? <Text className="text-sm text-foreground-muted">{reason}</Text> : null}
+      <Button
+        label="Use built-in browser"
+        disabled={busy || !canStart || reason !== null}
+        onPress={() => void change("browser")}
+      />
+      <Button
+        label="Use virtual display"
+        disabled={
+          busy || !canStart || reason !== null || support.data?.virtualDisplay.available !== true
+        }
+        onPress={() => void change("virtual-display")}
+      />
+      {support.data?.virtualDisplay.available === false ? (
+        <Text className="text-xs text-foreground-muted">
+          {support.data.virtualDisplay.missing.length
+            ? `This environment needs ${support.data.virtualDisplay.missing.join(", ")}.`
+            : "A virtual display is not available in this environment."}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 function StepScreenshot(props: ComputerUseTarget & { readonly stepId: string }) {
   const { environmentId, threadId, stepId } = props;
@@ -186,6 +270,7 @@ export function ThreadComputerUseSheet({ route }: StaticScreenProps<ComputerUseT
       contentContainerClassName="px-5"
       contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
     >
+      <ComputerUseControls environmentId={environmentId} threadId={threadId} />
       {live.data === null ? (
         <Text className="pt-6 text-center text-sm text-foreground-muted">
           {live.error ?? "Loading steps…"}

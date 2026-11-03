@@ -81,6 +81,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "~/keybindings";
 import { registerCommands } from "~/shortcuts/dispatcher";
 import { isTerminalFocused } from "~/lib/terminalFocus";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "../chat/PanelLayoutControls";
+import { attachWorkspaceTitlebarControls } from "../../workspaceTitlebar";
 import { Button } from "../ui/button";
 import { SidebarInset } from "../ui/sidebar";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
@@ -1120,6 +1121,7 @@ export function PullRequestsPage() {
   );
   const openPanelControls = (
     <div
+      ref={attachWorkspaceTitlebarControls}
       className="absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
       data-workspace-titlebar-controls
     >
@@ -1449,7 +1451,7 @@ export function PullRequestsPage() {
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
-      <div className="relative flex min-h-0 flex-1">
+      <div data-workspace-titlebar-scope className="relative flex min-h-0 flex-1">
         {pullRequestsSupported && rightPanelPresent ? openPanelControls : null}
         <PullRequestsColumn {...columnProps} />
 

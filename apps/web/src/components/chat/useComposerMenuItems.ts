@@ -226,6 +226,13 @@ export function useComposerMenuItems({
           label: "/model",
           description: "Switch response model for this thread",
         },
+        {
+          id: "slash:computer-use",
+          type: "slash-command",
+          command: "computer-use",
+          label: "/computer-use",
+          description: "Turn computer use on or off for this thread",
+        },
         ...(planModeUiEnabled
           ? ([
               {

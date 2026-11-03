@@ -35,6 +35,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAssetUrls } from "~/assets/assetUrls";
 import { type ChatFileAttachment, isImageAttachment } from "../../types";
 import { buildExpandedImagePreview, type ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -184,12 +185,13 @@ export function GuestShareIndicator({ threadRef }: { readonly threadRef: ScopedT
   // Remote control's queue uses the same slot and has its own switch in the details panel.
   if (share === null || isRemoteControlShare(share)) return null;
   return (
-    <div className="flex shrink-0 items-center gap-1 text-muted-foreground text-xs">
-      <UserIcon aria-hidden className="size-3.5" />
+    <div className="flex min-w-0 items-center gap-1 text-muted-foreground text-xs">
+      <UserIcon aria-hidden className="size-3.5 shrink-0" />
       <GuestShareStatus share={share} />
       <Button
         size="xs"
         variant="ghost-muted"
+        aria-label="Stop sharing"
         disabled={closing}
         onClick={async () => {
           setClosing(true);
@@ -200,7 +202,9 @@ export function GuestShareIndicator({ threadRef }: { readonly threadRef: ScopedT
           setClosing(false);
         }}
       >
-        Stop sharing
+        <span>
+          Stop<span className="@max-[20rem]/chat-header:sr-only"> sharing</span>
+        </span>
       </Button>
     </div>
   );
@@ -209,9 +213,19 @@ export function GuestShareIndicator({ threadRef }: { readonly threadRef: ScopedT
 function GuestShareStatus({ share }: { readonly share: ThreadGuestShare }) {
   const nowMinute = useNowMinute();
   // The share stays on the thread after it expires, until the owner clears it.
-  if (share.expiresAt.slice(0, 16) <= nowMinute) return <span>Guest link expired</span>;
+  const label =
+    share.expiresAt.slice(0, 16) <= nowMinute
+      ? "Guest link expired"
+      : share.guestName !== null
+        ? `${share.guestName} is a guest`
+        : "Guest link active";
   return (
-    <span>{share.guestName !== null ? `${share.guestName} is a guest` : "Guest link active"}</span>
+    <Tooltip>
+      <TooltipTrigger render={<span className="min-w-0 max-w-40 truncate" />}>
+        {label}
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
   );
 }
 

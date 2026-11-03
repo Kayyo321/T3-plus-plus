@@ -1,4 +1,5 @@
 import { AuthPreviewOperateScope, type EnvironmentId } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { AnyRouter } from "@tanstack/react-router";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
@@ -56,6 +57,12 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
   const readRouteThreadRef = () => {
     const target = readRouteTarget();
     return target?.kind === "server" ? target.threadRef : null;
+  };
+  const readComputerUseThreadRef = () => {
+    const target = readRouteTarget();
+    if (target?.kind === "server") return target.threadRef;
+    const draft = target ? useComposerDraftStore.getState().getDraftSession(target.draftId) : null;
+    return draft ? scopeThreadRef(draft.environmentId, draft.threadId) : null;
   };
   const readPreviewOpen = () => {
     const threadRef = readRouteThreadRef();
@@ -118,7 +125,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
     };
 
   const stopRouteComputerUse = () => {
-    const threadRef = readRouteThreadRef();
+    const threadRef = readComputerUseThreadRef();
     if (
       threadRef === null ||
       !appAtomRegistry.get(
@@ -153,7 +160,7 @@ export function installChatRouteCommands(router: AnyRouter): () => void {
   const disposeCommands = registerCommands(
     {
       "computerUse.showSteps": (event) => {
-        const threadRef = readRouteThreadRef();
+        const threadRef = readComputerUseThreadRef();
         if (threadRef === null) return false;
         claim(event);
         showComputerUseSteps(threadRef);

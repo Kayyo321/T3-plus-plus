@@ -505,9 +505,7 @@ function OpenCommandPaletteDialog(props: {
   const canShareActiveThreadWithGuest = useAtomValue(
     canShareWithGuestAtom(activeThread?.environmentId ?? ("" as EnvironmentId)),
   );
-  const computerUseItems = useCommandPaletteComputerUseItems(
-    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
-  );
+  const computerUseItems = useCommandPaletteComputerUseItems(layoutThreadRef);
   const teamworkThread =
     activeThread && (activeThread.capabilityMode ?? "code") === "code" ? activeThread : null;
   const teamworkThreadSheet = useEnvironmentQuery(

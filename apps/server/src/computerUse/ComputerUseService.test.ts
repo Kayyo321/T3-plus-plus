@@ -11,11 +11,13 @@ import {
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as ServerConfig from "../config.ts";
 import * as Sqlite from "../persistence/Sqlite.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { classifyStep } from "./classifyStep.ts";
 import * as ComputerUseService from "./ComputerUseService.ts";
@@ -292,4 +294,52 @@ describe("xdotoolArguments", () => {
       VirtualDisplay.xdotoolArguments({ action: "navigate", intent: "Go", url: "https://a.test" }),
     ).toBeNull();
   });
+
+  it.each([
+    ["Enter", "Return"],
+    ["Backspace", "BackSpace"],
+    ["ArrowDown", "Down"],
+    ["PageDown", "Page_Down"],
+    ["Control+Shift+t", "ctrl+Shift+t"],
+    ["Tab", "Tab"],
+  ])("presses the browser key %s as the X key %s", (key, xKey) => {
+    expect(VirtualDisplay.xdotoolArguments({ action: "key", intent: "Press", key })).toEqual([
+      "key",
+      "--",
+      xKey,
+    ]);
+  });
+
+  it.effect("fails a key xdotool ignores instead of reporting it done", () =>
+    Effect.gen(function* () {
+      const display = yield* VirtualDisplay.VirtualDisplay;
+      const error = yield* display
+        .act(":110", { action: "key", intent: "Press", key: "Hyper_Q" })
+        .pipe(Effect.flip);
+      expect(error.message).toBe(
+        'No key is named "Hyper_Q". Try Enter, Tab, Escape, or Control+A.',
+      );
+    }).pipe(
+      Effect.provide(
+        VirtualDisplay.layerXvfb.pipe(
+          Layer.provide(
+            Layer.mock(ProcessRunner.ProcessRunner)({
+              run: () =>
+                Effect.succeed({
+                  stdout: "",
+                  stderr: "(symbol) No such key name 'Hyper_Q'. Ignoring it.\n",
+                  code: ChildProcessSpawner.ExitCode(0),
+                  timedOut: false,
+                  stdoutTruncated: false,
+                  stderrTruncated: false,
+                  stdoutInvalidUtf8: false,
+                  stderrInvalidUtf8: false,
+                }),
+            }),
+          ),
+          Layer.provide(NodeServices.layer),
+        ),
+      ),
+    ),
+  );
 });

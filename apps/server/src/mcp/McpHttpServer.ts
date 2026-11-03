@@ -635,8 +635,8 @@ interface ImageToolResult {
   readonly screenshot: {
     readonly mimeType: "image/png";
     readonly data: string;
-    readonly width: number;
-    readonly height: number;
+    readonly width?: number;
+    readonly height?: number;
   };
   readonly [key: string]: unknown;
 }
@@ -744,8 +744,8 @@ const registerImageTool = Effect.fn("McpHttpServer.registerImageTool")(function*
                 ...rest,
                 screenshot: {
                   mimeType: screenshot.mimeType,
-                  width: screenshot.width,
-                  height: screenshot.height,
+                  ...(screenshot.width === undefined ? {} : { width: screenshot.width }),
+                  ...(screenshot.height === undefined ? {} : { height: screenshot.height }),
                 },
               };
               return Effect.succeed(
@@ -1176,7 +1176,7 @@ export const layerProjectRegistration = toolkitRegistration(ProjectToolkit, Proj
 const layerWorkspacesToolkit = toolkitRegistration(WorkspacesToolkit, WorkspacesHandlers.layer);
 const layerDocumentsToolkit = toolkitRegistration(DocumentsToolkit, DocumentsHandlers.layer);
 
-const layerComputerUseToolkit = Layer.mergeAll(
+export const layerComputerUseToolkit = Layer.mergeAll(
   toolkitRegistration(ComputerUseStandardToolkit, ComputerUseHandlers.layerStandard),
   imageToolRegistration(registerComputerScreenshot(), ComputerUseHandlers.layerScreenshot),
 );

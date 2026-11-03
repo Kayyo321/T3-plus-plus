@@ -4,6 +4,7 @@ import { MorphIcon } from "~/components/MorphIcon";
 import { memo, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { attachWorkspaceTitlebarControls } from "~/workspaceTitlebar";
 
 import type { ThreadPanelPresentation } from "../../rightPanelLayout";
 import { PopoverCreateHandle, PopoverTrigger } from "../ui/popover";
@@ -192,6 +193,7 @@ export function WorkspaceTitlebarControls(props: {
 }) {
   return (
     <div
+      ref={attachWorkspaceTitlebarControls}
       className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]"
       data-workspace-titlebar-controls
     >

@@ -3450,6 +3450,7 @@ export default function ChatView(props: ChatViewProps) {
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
+      data-workspace-titlebar-scope
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
       {embedded ? null : (
@@ -3499,7 +3500,7 @@ export default function ChatView(props: ChatViewProps) {
             {isElectron && rightPanelControlsAtRoot ? (
               <span
                 aria-hidden
-                className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
+                className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-[var(--workspace-titlebar-controls-width,7rem)] [-webkit-app-region:no-drag]"
               />
             ) : null}
             {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
@@ -3557,7 +3558,7 @@ export default function ChatView(props: ChatViewProps) {
               setDismissedProviderStatusBannerKey={setDismissedProviderStatusBannerKey}
               onOpenProviderSetup={openProviderSetupStable}
               threadId={activeThread.id}
-              computerUseEnvironmentId={isServerThread ? activeThread.environmentId : null}
+              computerUseEnvironmentId={activeThread.environmentId}
               threadError={timelineThreadError}
               threadErrorClass={
                 threadErrorIsServerRuntimeError ? (serverRuntime?.lastErrorClass ?? null) : null

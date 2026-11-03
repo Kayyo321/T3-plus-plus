@@ -512,13 +512,8 @@ export const layerWithOptions = (
                         .pipe(Effect.orElseSucceed(() => false))
                     : false;
                 if (documentTools) capabilities.add("documents");
-                const computerTools =
-                  limitedTo === undefined && Option.isSome(serverSettings)
-                    ? yield* serverSettings.value.getSettings.pipe(
-                        Effect.map((settings) => settings.computerUseEnabled),
-                        Effect.orElseSucceed(() => false),
-                      )
-                    : false;
+                // Providers cache their tools; screen access is gated by the user-started session.
+                const computerTools = limitedTo === undefined;
                 if (computerTools) capabilities.add("computer-use");
                 const existing = yield* mcpSessions.read(threadId);
                 if (existing !== undefined) {

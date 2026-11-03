@@ -170,7 +170,7 @@ function ComputerUseRow() {
       serverScoped
       {...searchableSetting("computer-use")}
       settingKeys={["computerUseEnabled"]}
-      description="Let agents see and operate the app's built-in browser or a virtual display. Agents can only use it in a conversation where someone turns it on. It needs a new agent session to take effect."
+      description="Let agents see and operate the app's built-in browser or a virtual display. Agents can only use it in a conversation where someone turns it on. Use /computer-use in a thread to choose a target or stop it."
       {...(virtualDisplay === null || virtualDisplay.available
         ? {}
         : { status: computerUseVirtualDisplayReason(virtualDisplay) })}

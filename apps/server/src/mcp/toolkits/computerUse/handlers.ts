@@ -4,6 +4,7 @@ import {
   OrchestratorMcpFailure,
   type PreviewAutomationOperation,
   type PreviewAutomationSnapshot,
+  type PreviewAutomationStatus,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
@@ -70,6 +71,17 @@ const browserDriver = Effect.fn("ComputerUseToolkit.browserDriver")(function* (
   scope: McpInvocationContext.McpThreadInvocationScope,
 ) {
   const broker = yield* PreviewAutomationBroker.PreviewAutomationBroker;
+  const ensureTab = yield* Effect.cached(
+    broker
+      .invoke<PreviewAutomationStatus>({ scope, operation: "status", input: {} })
+      .pipe(
+        Effect.flatMap((status) =>
+          status.tabId === null
+            ? broker.invoke({ scope, operation: "open", input: {} })
+            : Effect.void,
+        ),
+      ),
+  );
   return {
     act: (input: ComputerUseActInput) => {
       const step = browserOperation(input);
@@ -81,16 +93,19 @@ const browserDriver = Effect.fn("ComputerUseToolkit.browserDriver")(function* (
           }),
         );
       }
-      return broker
-        .invoke({ scope, operation: step.operation, input: step.input })
-        .pipe(Effect.as("Done."), Effect.mapError(browserFailure));
-    },
-    screenshot: broker
-      .invoke<PreviewAutomationSnapshot>({ scope, operation: "snapshot", input: {} })
-      .pipe(
-        Effect.map((snapshot) => Buffer.from(snapshot.screenshot.data, "base64")),
+      return ensureTab.pipe(
+        Effect.andThen(broker.invoke({ scope, operation: step.operation, input: step.input })),
+        Effect.as("Done."),
         Effect.mapError(browserFailure),
+      );
+    },
+    screenshot: ensureTab.pipe(
+      Effect.andThen(
+        broker.invoke<PreviewAutomationSnapshot>({ scope, operation: "snapshot", input: {} }),
       ),
+      Effect.map((snapshot) => Buffer.from(snapshot.screenshot.data, "base64")),
+      Effect.mapError(browserFailure),
+    ),
   };
 });
 

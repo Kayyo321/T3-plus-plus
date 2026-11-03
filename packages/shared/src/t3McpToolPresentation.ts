@@ -190,6 +190,8 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "browser",
   ),
   computer_act: tool(["Use", "Using", "Used", "the computer"], "browser", "browser"),
+  computer_stop: tool(["Stop", "Stopping", "Stopped", "computer use"], "browser", "browser"),
+  computer_steps: tool(["Read", "Reading", "Read", "computer steps"], "browser", "browser"),
   document_list: tool(["List", "Listing", "Listed", "documents"], "document"),
   document_read: tool(["Read", "Reading", "Read", "a document"], "document"),
   document_create: tool(["Create", "Creating", "Created", "a document"], "document"),

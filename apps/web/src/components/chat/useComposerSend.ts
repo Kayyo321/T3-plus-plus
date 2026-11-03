@@ -15,8 +15,11 @@ import {
   makeThreadErrorSetter,
 } from "../ChatView.logic";
 import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
+import { parseComputerUseCommand } from "@t3tools/shared/composerTrigger";
+import { executeComputerUseCommand } from "../computerUse/computerUseActions";
 import {
   AuthOrchestrationOperateScope,
+  computerUseSupportForDriver,
   DEFAULT_MODEL,
   type EnvironmentId,
   type ModelSelection,
@@ -659,6 +662,33 @@ export function useComposerSend(input: ComposerSendInput) {
         composerThreadContexts.length +
         composerEnvironmentContexts.length,
     });
+    const computerUseCommand = parseComputerUseCommand(trimmed);
+    if (computerUseCommand !== null && !draftHasNonPromptContent(composerDraftTarget)) {
+      if (
+        computerUseCommand !== "off" &&
+        computerUseCommand !== "open" &&
+        (activeThread.capabilityMode === "chat" ||
+          computerUseSupportForDriver(ctxSelectedProvider) === null ||
+          multipleModelSelections !== null)
+      ) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "warning",
+            title: "Computer use unavailable",
+            description: "Choose one supported provider in Code mode first.",
+          }),
+        );
+        return;
+      }
+      await executeComputerUseCommand(
+        scopeThreadRef(environmentId, activeThread.id),
+        computerUseCommand,
+      );
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
+      return;
+    }
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&

@@ -242,6 +242,14 @@ Provider commands must start the message to run. T3++ commands such as
 Send `/compact` in an existing conversation to reduce context usage when the
 provider supports it, even with the context meter turned off.
 
+Enable **Settings → Labs → Computer use**, then use `/computer-use` to choose the
+built-in browser or a virtual display for this thread, including before its first
+message. Send `/computer-use on` (or `/computer-use browser`) to enable the browser,
+`/computer-use virtual-display` to enable a virtual display, or `/computer-use off`
+to stop. A virtual display needs Linux with Xvfb, xdotool, and ImageMagick installed
+on the environment's machine. Starting computer use in a new draft keeps its first
+turn on that environment.
+
 On web and desktop, turn on **Settings → Labs → Legacy → Context
 window indicator (legacy)** to see context usage. The meter is off by default
 and appears once the provider reports usage. Open it for usage details and

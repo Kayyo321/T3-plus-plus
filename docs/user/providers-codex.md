@@ -25,6 +25,15 @@ T3++ can use your installed Codex and its existing login. Run `codex login`
 on the environment's machine to sign in. [Provider setup](./install.md#providers)
 covers installation and custom configuration.
 
+## Browser and computer use
+
+Codex in T3++ uses T3++'s built-in browser and
+[computer use](./composer.md#commands-and-skills). The Codex app's Browser,
+Chrome, and Computer Use plugins only work inside that app, so T3++ turns them
+off for its Codex sessions. To turn one back on, add a flag such as
+`-c plugins.chrome@openai-bundled.enabled=true` to **Settings → Providers →
+Codex → Launch arguments**.
+
 ## Use multiple accounts
 
 Add another ChatGPT account in **Settings → Providers**, then select the account

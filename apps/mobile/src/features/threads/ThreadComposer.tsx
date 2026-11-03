@@ -1,5 +1,9 @@
 import { useSidebarWorkspaceTabs } from "../workspace/useSystemWorkspaceTabBar";
 import { Button } from "../../components/ui/Button";
+import { parseComputerUseCommand } from "@t3tools/shared/composerTrigger";
+import { computerUseSupportForDriver } from "@t3tools/contracts";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { serverEnvironment } from "../../state/server";
 import * as Dialog from "../../components/ui/Dialog";
 import type { ComposerTextPaste } from "../../native/T3ComposerEditor.types";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
@@ -535,6 +539,19 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
   };
 
   const mentionableEnvironments = useMentionableEnvironments();
+  const startComputerUse = useAtomCommand(serverEnvironment.startComputerUse, {
+    reportFailure: false,
+  });
+  const stopComputerUse = useAtomCommand(serverEnvironment.stopComputerUse, {
+    reportFailure: false,
+  });
+  const openComputerUse = () => {
+    Keyboard.dismiss();
+    navigation.navigate("ThreadComputerUse", {
+      environmentId: props.environmentId,
+      threadId: props.selectedThread.id,
+    });
+  };
   const composerMenu = useComposerCommandMenu({
     draftMessage: draftMessage,
     ownerKey: composerDraftKey,
@@ -558,6 +575,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         ? undefined
         : props.onUpdateInteractionMode,
     offersUsageLimits: usageLimitsOffered,
+    onComputerUse: openComputerUse,
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
   });
@@ -668,6 +686,49 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
       pendingNativeImagePasteCountRef.current > 0
     )
       return;
+    const computerUseCommand = parseComputerUseCommand(draftMessage);
+    if (
+      computerUseCommand !== null &&
+      draftAttachments.length === 0 &&
+      (getComposerDraftSnapshot(composerDraftKey).context?.records.length ?? 0) === 0
+    ) {
+      if (computerUseCommand === "open") {
+        openComputerUse();
+      } else {
+        if (
+          computerUseCommand !== "off" &&
+          (props.selectedThread.capabilityMode === "chat" ||
+            !selectedProviderStatus ||
+            computerUseSupportForDriver(selectedProviderStatus.driver) === null)
+        ) {
+          Dialog.alert(
+            "Computer use unavailable",
+            "Choose a supported provider in Code mode first.",
+          );
+          return;
+        }
+        const input = {
+          environmentId: props.environmentId,
+          input: { threadId: props.selectedThread.id },
+        };
+        const result =
+          computerUseCommand === "off"
+            ? await stopComputerUse(input)
+            : await startComputerUse({
+                ...input,
+                input: {
+                  ...input.input,
+                  target: computerUseCommand === "virtual-display" ? "virtual-display" : "browser",
+                },
+              });
+        if (result._tag === "Failure") {
+          Dialog.alert("Could not change computer use", String(squashAtomCommandFailure(result)));
+          return;
+        }
+      }
+      onChangeDraftMessage("");
+      return;
+    }
     if (usageLimitsOffered && isUsageLimitsCommand(draftMessage) && draftAttachments.length === 0) {
       if (openUsageLimits()) onChangeDraftMessage("");
       return;

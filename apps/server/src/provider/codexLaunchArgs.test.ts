@@ -5,10 +5,21 @@ import { describe, it } from "vite-plus/test";
 import { codexAppServerArgs, codexExecLaunchArgs } from "./codexLaunchArgs.ts";
 
 describe("codexAppServerArgs", () => {
-  it("preserves escaped TOML quotes in config values", () => {
+  it("turns off Codex Desktop's browser plugins before preserving escaped TOML quotes", () => {
     NodeAssert.deepStrictEqual(
       codexAppServerArgs(String.raw`--config model=\"gpt-6.1-sol\" --strict-config`),
-      ["app-server", "--config", 'model="gpt-6.1-sol"', "--strict-config"],
+      [
+        "app-server",
+        "-c",
+        "plugins.browser@openai-bundled.enabled=false",
+        "-c",
+        "plugins.chrome@openai-bundled.enabled=false",
+        "-c",
+        "plugins.unified-computer-use@openai-bundled.enabled=false",
+        "--config",
+        'model="gpt-6.1-sol"',
+        "--strict-config",
+      ],
     );
   });
 });

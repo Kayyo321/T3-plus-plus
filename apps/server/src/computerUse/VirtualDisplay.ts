@@ -41,6 +41,29 @@ export class VirtualDisplay extends Context.Service<
   }
 >()("t3pp/computerUse/VirtualDisplay") {}
 
+/** `computer_act` documents browser key names, such as Enter; X calls some of them otherwise. */
+const X_KEY_NAMES: Readonly<Record<string, string>> = {
+  enter: "Return",
+  backspace: "BackSpace",
+  esc: "Escape",
+  arrowup: "Up",
+  arrowdown: "Down",
+  arrowleft: "Left",
+  arrowright: "Right",
+  pageup: "Page_Up",
+  pagedown: "Page_Down",
+  space: "space",
+  control: "ctrl",
+  controlormeta: "ctrl",
+  meta: "super",
+};
+
+const xKey = (key: string) =>
+  key
+    .split("+")
+    .map((part) => X_KEY_NAMES[part.toLowerCase()] ?? part)
+    .join("+");
+
 /** The `xdotool` arguments for a step. Null when a display has no such step. */
 export function xdotoolArguments(input: ComputerUseActInput): ReadonlyArray<string> | null {
   const moved =
@@ -55,7 +78,7 @@ export function xdotoolArguments(input: ComputerUseActInput): ReadonlyArray<stri
     case "type":
       return input.text === undefined ? null : ["type", "--delay", "12", "--", input.text];
     case "key":
-      return input.key === undefined ? null : ["key", "--", input.key];
+      return input.key === undefined ? null : ["key", "--", xKey(input.key)];
     case "scroll": {
       const button = (input.deltaY ?? 0) < 0 ? "4" : "5";
       const notches = Math.max(1, Math.min(20, Math.round(Math.abs(input.deltaY ?? 120) / 120)));
@@ -155,11 +178,18 @@ export const layerXvfb = Layer.effect(
         })
         .pipe(
           Effect.mapError((cause) => failed("The step could not run.", cause)),
-          Effect.flatMap((output) =>
-            output.code === 0
+          Effect.flatMap((output) => {
+            // xdotool skips a key name it does not know and still exits 0.
+            const unknownKey = /No such key name '([^']*)'/.exec(output.stderr)?.[1];
+            if (unknownKey !== undefined) {
+              return Effect.fail(
+                failed(`No key is named "${unknownKey}". Try Enter, Tab, Escape, or Control+A.`),
+              );
+            }
+            return output.code === 0
               ? Effect.succeed("Done.")
-              : Effect.fail(failed(output.stderr.trim() || "The step failed.")),
-          ),
+              : Effect.fail(failed(output.stderr.trim() || "The step failed."));
+          }),
         );
 
     const screenshot: VirtualDisplay["Service"]["screenshot"] = Effect.fn(

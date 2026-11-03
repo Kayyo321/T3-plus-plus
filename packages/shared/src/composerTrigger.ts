@@ -169,3 +169,21 @@ export function replaceTextRange(
   const nextText = `${text.slice(0, safeStart)}${replacement}${text.slice(safeEnd)}`;
   return { text: nextText, cursor: safeStart + replacement.length };
 }
+
+export function parseComputerUseCommand(
+  text: string,
+): "open" | "on" | "off" | "virtual-display" | null {
+  const match = /^\/computer-use(?:\s+(on|off|browser|virtual-display))?\s*$/i.exec(text.trim());
+  if (match === null) return null;
+  switch (match[1]?.toLowerCase()) {
+    case "on":
+    case "browser":
+      return "on";
+    case "off":
+      return "off";
+    case "virtual-display":
+      return "virtual-display";
+    default:
+      return "open";
+  }
+}

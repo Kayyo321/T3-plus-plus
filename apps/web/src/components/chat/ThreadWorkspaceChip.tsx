@@ -110,6 +110,7 @@ export function ThreadWorkspaceChip(props: {
             <MenuTrigger
               render={
                 <Button
+                  className="min-w-0 shrink"
                   size="xs"
                   variant={blocked ? "destructive-outline" : "ghost"}
                   aria-label={

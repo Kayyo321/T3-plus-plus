@@ -20,7 +20,6 @@ export function ChatBannerLane(props: {
   setDismissedProviderStatusBannerKey: Dispatch<SetStateAction<string | null>>;
   onOpenProviderSetup: (instanceId: ProviderInstanceId) => void;
   threadId: ThreadId;
-  /** Null for a draft, which has no server thread to watch. */
   computerUseEnvironmentId: EnvironmentId | null;
   threadError: string | null;
   threadErrorClass: OrchestrationV2ProviderFailureClass | null;

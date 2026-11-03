@@ -5,11 +5,13 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ComputerUseTarget, ScopedThreadRef } from "@t3tools/contracts";
+import type { parseComputerUseCommand } from "@t3tools/shared/composerTrigger";
 
 import { readThreadPreviewState } from "../../previewStateStore";
 import { rightPanelHostRef, useRightPanelStore } from "../../rightPanelStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { serverEnvironment } from "../../state/server";
+import { useComposerDraftStore } from "../../composerDraftStore";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 
 async function run<W, A, E>(
@@ -34,8 +36,16 @@ const threadInput = (threadRef: ScopedThreadRef) => ({
   input: { threadId: threadRef.threadId },
 });
 
-export const startComputerUse = (threadRef: ScopedThreadRef, target: ComputerUseTarget) =>
-  run(
+export const startComputerUse = async (threadRef: ScopedThreadRef, target: ComputerUseTarget) => {
+  // A display belongs to this environment; auto-balancing the first turn would leave it behind.
+  const drafts = useComposerDraftStore.getState();
+  if (drafts.getDraftSessionByRef(threadRef) !== null) {
+    drafts.setDraftThreadContext(threadRef, {
+      environmentSelection: "manual",
+      loadBalancedEnvironmentId: null,
+    });
+  }
+  await run(
     serverEnvironment.startComputerUse,
     {
       environmentId: threadRef.environmentId,
@@ -43,6 +53,24 @@ export const startComputerUse = (threadRef: ScopedThreadRef, target: ComputerUse
     },
     "Could not turn on computer use",
   );
+};
+
+export async function executeComputerUseCommand(
+  threadRef: ScopedThreadRef,
+  command: NonNullable<ReturnType<typeof parseComputerUseCommand>>,
+): Promise<void> {
+  if (command === "off") {
+    await stopComputerUse(threadRef);
+    return;
+  }
+  showComputerUseSteps(threadRef);
+  if (command !== "open") {
+    await startComputerUse(
+      threadRef,
+      command === "virtual-display" ? "virtual-display" : "browser",
+    );
+  }
+}
 
 export const stopComputerUse = (threadRef: ScopedThreadRef) =>
   run(serverEnvironment.stopComputerUse, threadInput(threadRef), "Could not stop computer use");

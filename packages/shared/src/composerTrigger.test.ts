@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { detectComposerTrigger, serializeComposerFileLink } from "./composerTrigger.ts";
+import {
+  detectComposerTrigger,
+  parseComputerUseCommand,
+  serializeComposerFileLink,
+} from "./composerTrigger.ts";
+
+describe("parseComputerUseCommand", () => {
+  it.each([
+    ["/computer-use", "open"],
+    [" /COMPUTER-USE on ", "on"],
+    ["/computer-use browser", "on"],
+    ["/computer-use off", "off"],
+    ["/computer-use virtual-display", "virtual-display"],
+    ["Explain /computer-use", null],
+    ["/computer-use on and check the page", null],
+    ["/computer-use invalid", null],
+  ])("parses %j as %j", (text, expected) => {
+    expect(parseComputerUseCommand(text)).toBe(expected);
+  });
+});
 
 describe("detectComposerTrigger", () => {
   it.each([

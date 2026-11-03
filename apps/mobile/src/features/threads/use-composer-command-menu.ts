@@ -122,6 +122,13 @@ export function buildComposerSlashCommandItems(input: {
       description: "Switch model",
     },
     {
+      id: "cmd:computer-use",
+      type: "slash-command",
+      command: "computer-use",
+      label: "/computer-use",
+      description: "Turn computer use on or off for this thread",
+    },
+    {
       id: "cmd:plan",
       type: "slash-command",
       command: "plan",
@@ -137,7 +144,9 @@ export function buildComposerSlashCommandItems(input: {
     },
   ] satisfies ComposerCommandItem[];
   const items: ComposerCommandItem[] = builtIn.filter(
-    (item) => item.command.includes(query) && (item.command === "model" || allowInteractionMode),
+    (item) =>
+      item.command.includes(query) &&
+      (item.command === "model" || item.command === "computer-use" || allowInteractionMode),
   );
 
   // Providers expand commands only at the start of a message. T3 commands
@@ -225,6 +234,7 @@ export function useComposerCommandMenu({
   onChangeDraftMessage,
   onUpdateInteractionMode,
   onUsageLimits,
+  onComputerUse,
 }: {
   readonly draftMessage: string;
   readonly ownerKey: string | null;
@@ -246,6 +256,7 @@ export function useComposerCommandMenu({
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onUpdateInteractionMode?: (mode: ProviderInteractionMode) => void;
   readonly onUsageLimits?: () => void;
+  readonly onComputerUse?: () => void;
 }) {
   const [localSelection, setLocalSelection] = useState(() => ({
     ownerKey,
@@ -594,6 +605,13 @@ export function useComposerCommandMenu({
       return;
     }
 
+    if (item.type === "slash-command" && item.command === "computer-use" && onComputerUse) {
+      const cleared = replaceTextRange(draftMessage, trigger.rangeStart, trigger.rangeEnd, "");
+      setSelection({ start: cleared.cursor, end: cleared.cursor });
+      onChangeDraftMessage(cleared.text);
+      onComputerUse();
+      return;
+    }
     const result = resolveComposerCommandSelection({
       draftMessage,
       trigger,

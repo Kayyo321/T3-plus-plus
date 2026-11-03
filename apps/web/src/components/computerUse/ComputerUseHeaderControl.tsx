@@ -24,7 +24,7 @@ export function ComputerUseHeaderControl({ threadRef }: { readonly threadRef: Sc
         render={<Button size="xs" variant="ghost-muted" aria-label="Turn on computer use" />}
       >
         <MonitorIcon aria-hidden className="size-3.5" />
-        <span className="max-sm:hidden">Computer use</span>
+        <span className="ml-0.5 max-sm:hidden @max-[20rem]/chat-header:hidden">Computer use</span>
       </MenuTrigger>
       <MenuPopup align="end" sideOffset={6} className="max-w-72">
         <MenuGroup>

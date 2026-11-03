@@ -13,6 +13,8 @@ import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { providersIgnoringCheckedAtAtom, serverEnvironment } from "../../state/server";
 import { useEnvironmentScope } from "../../state/session";
+import { useComposerDraftStore } from "../../composerDraftStore";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   computerUseBannerModel,
   computerUseStartModel,
@@ -65,6 +67,14 @@ export function useComputerUseControls(threadRef: ScopedThreadRef | null) {
   const permissions = useComputerUsePermissions(environmentId);
   const settings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
   const thread = useQuietThreadShell(threadRef);
+  const draft = useComposerDraftStore((state) =>
+    threadRef === null ? null : state.getDraftSessionByRef(threadRef),
+  );
+  const draftInstanceId = useComposerDraftStore((state) =>
+    threadRef === null || draft === null
+      ? null
+      : (state.getComposerDraft(threadRef)?.activeProvider ?? state.stickyActiveProvider),
+  );
   const providers = useAtomValue(providersIgnoringCheckedAtAtom(environmentId));
   const settingEnabled = settings?.computerUseEnabled === true;
   const support = useEnvironmentQuery(
@@ -72,9 +82,15 @@ export function useComputerUseControls(threadRef: ScopedThreadRef | null) {
       ? serverEnvironment.computerUseSupport({ environmentId, input: {} })
       : null,
   );
-  const instanceId = thread?.runtime?.providerInstanceId ?? thread?.modelSelection?.instanceId;
+  const instanceId =
+    thread?.runtime?.providerInstanceId ??
+    thread?.modelSelection?.instanceId ??
+    draftInstanceId ??
+    (settings && draft
+      ? resolveProjectSettings(settings, draft.projectId).settings.defaultModelSelection?.instanceId
+      : undefined);
   const provider = providers.find((entry) => entry.instanceId === instanceId) ?? null;
-  const capabilityMode = thread?.capabilityMode;
+  const capabilityMode = thread?.capabilityMode ?? draft?.capabilityMode;
   const status = snapshot?.state.status ?? "off";
   return {
     settingEnabled,
@@ -83,7 +99,7 @@ export function useComputerUseControls(threadRef: ScopedThreadRef | null) {
     canStop: permissions.stop,
     status,
     start:
-      thread === null || snapshot === null
+      (thread === null && draft === null) || snapshot === null
         ? null
         : computerUseStartModel({
             settingEnabled,

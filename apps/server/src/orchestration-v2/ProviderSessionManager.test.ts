@@ -1864,7 +1864,7 @@ it.effect(
         assert.equal(resolved?.thread.threadId, threadId);
         assert.deepEqual(
           resolved?.capabilities,
-          new Set(["preview", "orchestration", "worktree", "pull-requests"]),
+          new Set(["preview", "orchestration", "worktree", "pull-requests", "computer-use"]),
         );
 
         yield* manager.close(providerSessionId);
@@ -1972,9 +1972,9 @@ it.effect.each([
     }),
 );
 
-it.effect(
-  "ProviderSessionManagerV2 withholds the preview capability when agent browser access is off",
-  () =>
+it.effect.each([false, true])(
+  "ProviderSessionManagerV2 keeps computer tools with Labs enabled=%s and browser access off",
+  (computerUseEnabled) =>
     Effect.gen(function* () {
       const state = yield* Ref.make(emptyState);
       const mcpConfigs = yield* Ref.make<
@@ -2009,7 +2009,7 @@ it.effect(
         const resolved = yield* registry.resolve(token!);
         assert.deepEqual(
           resolved?.capabilities,
-          new Set(["orchestration", "worktree", "pull-requests"]),
+          new Set(["orchestration", "worktree", "pull-requests", "computer-use"]),
         );
 
         yield* manager.close(providerSessionId);
@@ -2023,6 +2023,7 @@ it.effect(
             mcpConfigs,
             serverSettingsLayer: ServerSettings.layerTest({
               enableAgentBrowserAccess: false,
+              computerUseEnabled,
             }).pipe(Layer.orDie),
           }),
         ),
