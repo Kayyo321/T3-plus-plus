@@ -33,6 +33,8 @@ export const TEAM_LEAD_MEMBER_ID = TeamMemberId.make("lead");
 
 const SheetName = TrimmedNonEmptyString.check(Schema.isMaxLength(80));
 const Instructions = Schema.String.check(Schema.isMaxLength(8_000));
+export const TEAM_SHEET_MAX_NODES = 32;
+export const TEAM_SHEET_MAX_EDGES = 128;
 
 export const TeamWorkKind = Schema.Literals(["build", "review", "validate"]);
 export type TeamWorkKind = typeof TeamWorkKind.Type;
@@ -101,8 +103,8 @@ export const TeamSheet = Schema.Struct({
   revision: NonNegativeInt,
   builtIn: Schema.Boolean,
   nestedSessions: Schema.Boolean,
-  nodes: Schema.Array(TeamSheetNode).check(Schema.isMaxLength(32)),
-  edges: Schema.Array(TeamSheetEdge).check(Schema.isMaxLength(128)),
+  nodes: Schema.Array(TeamSheetNode).check(Schema.isMaxLength(TEAM_SHEET_MAX_NODES)),
+  edges: Schema.Array(TeamSheetEdge).check(Schema.isMaxLength(TEAM_SHEET_MAX_EDGES)),
   updatedAt: IsoDateTime,
 });
 export type TeamSheet = typeof TeamSheet.Type;

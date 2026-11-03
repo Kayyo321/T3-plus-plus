@@ -21,11 +21,13 @@ import {
   type OrchestrationV2CommandOutputFrame,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2GetTurnItemResult,
+  type OrchestrationV2RuntimeRequest,
   type OrchestrationV2ThreadHistoryPage,
   type OrchestrationV2ThreadStreamItem,
   REMOTE_CONTROL_CODE_DIGITS,
   REMOTE_CONTROL_DEFAULT_ACCESS_LEVEL,
   REMOTE_CONTROL_DEVICE_ACCESS_INFO,
+  REMOTE_CONTROL_DEVICE_UPLOAD_BYTES_PER_HOUR,
   REMOTE_CONTROL_INACTIVITY_TTL_MS,
   REMOTE_CONTROL_LEVEL_INFO,
   REMOTE_CONTROL_LINK_TTL_MS,
@@ -73,6 +75,7 @@ import {
   type RemoteControlSwitch,
   RemoteControlSwitchId,
   type RemoteControlThreadInput,
+  type RemoteControlTeamRequests,
   type RemoteControlUpdateInput,
   type RemoteControlView,
   remoteControlLevelAllows,
@@ -88,6 +91,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Schedule from "effect/Schedule";
@@ -117,6 +121,7 @@ import * as OrchestratorAgent from "../orchestratorAgent/OrchestratorAgent.ts";
 import * as OrchestrationEventStore from "../persistence/OrchestrationEventStore.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import * as TeamworkStore from "../teamwork/TeamworkStore.ts";
 import { CONFIRMATION_WORDS } from "./confirmationWords.ts";
 import { RemoteRelayTunnel } from "./RemoteRelayTunnel.ts";
 import { rankRemoteRoutes, type RemoteTransport } from "./remoteRoutes.ts";
@@ -136,6 +141,28 @@ const SWEEP_INTERVAL = Duration.minutes(1);
 const ACTIVE_STREAM_TOUCH_INTERVAL = Duration.minutes(1);
 const TOUCH_THROTTLE_MS = 30_000;
 const MAX_BACKOFF_MS = 60_000;
+const UPLOAD_WINDOW_MS = 60 * 60 * 1000;
+
+interface UploadWindow {
+  readonly startedAt: number;
+  readonly bytes: number;
+}
+
+/** A device's upload window once it sends `bytes`, or null when that passes its hourly budget. */
+export const chargeUploadWindow = (
+  current: UploadWindow | undefined,
+  now: number,
+  bytes: number,
+): UploadWindow | null => {
+  const window =
+    current === undefined || now - current.startedAt >= UPLOAD_WINDOW_MS
+      ? { startedAt: now, bytes: 0 }
+      : current;
+  return window.bytes + bytes > REMOTE_CONTROL_DEVICE_UPLOAD_BYTES_PER_HOUR
+    ? null
+    : { startedAt: window.startedAt, bytes: window.bytes + bytes };
+};
+
 /** Who an owner action is recorded as. MCP tools pass the agent. */
 export interface RemoteControlActor {
   readonly kind: Extract<AuditActorKind, "user" | "agent">;
@@ -166,6 +193,11 @@ export interface RemotePairingOutcome {
 const access = (reason: RemoteControlAccessFailureReason) =>
   new RemoteControlAccessError({ reason });
 const refused = (reason: RemoteControlError["reason"]) => new RemoteControlError({ reason });
+
+/** A device answers approvals and questions, not sign-ins or tool calls. */
+const answerableRemotely = (request: OrchestrationV2RuntimeRequest) =>
+  request.kind !== "auth_refresh" && request.kind !== "dynamic_tool_call";
+
 const fromShared = <A, R>(effect: Effect.Effect<A, SharedThreadError, R>) =>
   Effect.mapError(effect, (error) => access(error.reason));
 
@@ -394,6 +426,7 @@ type SharedThreadAccess = Effect.Success<typeof makeSharedThreadAccess>;
 const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const computerUse = yield* Effect.serviceOption(ComputerUseService.ComputerUseService);
+  const teamwork = yield* Effect.serviceOption(TeamworkStore.TeamworkStore);
   const directEndpoints = yield* DirectEndpoints.DirectEndpoints;
   const managedEndpoint = yield* CloudManagedEndpointRuntime;
   const remoteRelay = yield* RemoteRelayTunnel;
@@ -522,6 +555,8 @@ const make = Effect.gen(function* () {
     ).pipe(Effect.map((watcher) => watcher.ended));
 
   const connectedStreams = new Map<string, number>();
+  // Kept in memory: only a restart of the owner's own server resets it.
+  const uploadWindows = new Map<string, UploadWindow>();
   const holdConnected = (device: StoredDevice) =>
     Effect.acquireRelease(
       Effect.suspend(() => {
@@ -990,6 +1025,10 @@ const make = Effect.gen(function* () {
         ) {
           return yield* refused("not_found");
         }
+        // A code-mode device pairs with the code; the owner can only refuse it.
+        if (input.decision === "approve" && pairing.confirmationWord === null) {
+          return yield* refused("not_found");
+        }
         const approved = input.decision === "approve";
         yield* store.setPairingStatus(pairing.id, approved ? "approved" : "denied");
         yield* recordAudit({
@@ -1188,6 +1227,7 @@ const make = Effect.gen(function* () {
     if (row === null) return yield* access("ended");
     if (row.linkState === "locked") return yield* access("locked");
     if ((yield* nowMillis) >= pairing.expiresAt) return yield* access("pairing_expired");
+    if (pairing.status === "denied") return yield* access("denied");
     return { row, pairing };
   });
 
@@ -1197,7 +1237,6 @@ const make = Effect.gen(function* () {
     return yield* serialized(
       Effect.gen(function* () {
         const { row, pairing } = yield* openPairing(credential);
-        if (pairing.status === "denied") return yield* access("denied");
         if (pairing.status === "pending") {
           return { progress: progressOf(row, pairing, "waiting"), sessionToken: null };
         }
@@ -1362,6 +1401,51 @@ const make = Effect.gen(function* () {
       : Math.min(device.expiresAt - now, MAX_COOKIE_MS);
   });
 
+  /** The member sessions of the conversation's active team run, which its devices may answer. */
+  const teamMembersOf = Effect.fn("RemoteControlService.teamMembersOf")(function* (
+    parentThreadId: ThreadId,
+  ) {
+    if (Option.isNone(teamwork)) return [];
+    const run = yield* teamwork.value
+      .activeRun(parentThreadId)
+      .pipe(Effect.orElseSucceed(() => null));
+    return (run?.members ?? []).flatMap((member) =>
+      member.threadId === null || member.threadId === parentThreadId
+        ? []
+        : [{ threadId: member.threadId, name: member.name }],
+    );
+  });
+
+  const teamRequestsOf = Effect.fn("RemoteControlService.teamRequestsOf")(function* (
+    parentThreadId: ThreadId,
+  ) {
+    const requests: Array<RemoteControlTeamRequests> = [];
+    for (const member of yield* teamMembersOf(parentThreadId)) {
+      const records = yield* orchestrator
+        .getThreadRecords(member.threadId, ["runtimeRequests", "turnItems"], {
+          turnItemTypes: ["approval_request", "user_input_request"],
+        })
+        .pipe(Effect.option);
+      if (Option.isNone(records)) continue;
+      const runtimeRequests = records.value.runtimeRequests.filter(
+        (request) => request.status === "pending" && answerableRemotely(request),
+      );
+      if (runtimeRequests.length === 0) continue;
+      const ids = new Set(runtimeRequests.map((request) => request.id));
+      requests.push({
+        threadId: member.threadId,
+        memberName: member.name,
+        runtimeRequests,
+        turnItems: records.value.turnItems.filter(
+          (item) =>
+            (item.type === "approval_request" || item.type === "user_input_request") &&
+            ids.has(item.requestId),
+        ),
+      });
+    }
+    return requests;
+  });
+
   const viewOf = Effect.fn("RemoteControlService.viewOf")(function* (
     deviceId: string,
     switchId: string,
@@ -1375,14 +1459,15 @@ const make = Effect.gen(function* () {
     const peers = yield* store.devicesOf(switchId);
     const now = yield* nowMillis;
     const queue = thread.guestShare?.id === row.shareId ? thread.guestShare.messages : [];
+    const level = transport.encrypted
+      ? row.accessLevel
+      : lowerRemoteControlLevel(row.accessLevel, REMOTE_CONTROL_UNENCRYPTED_LEVEL_CAP);
     return {
       shareId: RemoteControlSwitchId.make(row.switchId),
       title: thread.title,
       deviceId: RemoteControlDeviceId.make(device.id),
       deviceLabel: GuestDisplayName.make(device.label),
-      level: transport.encrypted
-        ? row.accessLevel
-        : lowerRemoteControlLevel(row.accessLevel, REMOTE_CONTROL_UNENCRYPTED_LEVEL_CAP),
+      level,
       grantedLevel: row.accessLevel,
       encrypted: transport.encrypted,
       ownerReview: row.ownerReview,
@@ -1399,6 +1484,9 @@ const make = Effect.gen(function* () {
           label: GuestDisplayName.make(peer.label),
           connected: connectedStreams.has(peer.id),
         })),
+      teamRequests: remoteControlLevelAllows(level, "approve")
+        ? yield* teamRequestsOf(thread.id)
+        : [],
     } satisfies RemoteControlView;
   });
 
@@ -1504,6 +1592,26 @@ const make = Effect.gen(function* () {
           Stream.mapEffect(() => refreshedView(null)),
           Stream.flattenIterable,
         );
+        // A team member's request is an event of its own thread, so the view watches for those.
+        const teamChanges =
+          Option.isNone(teamwork) || !remoteControlLevelAllows(initialView.level, "approve")
+            ? Stream.empty
+            : orchestrator.streamDomainEvents.pipe(
+                Stream.filter(
+                  (event) =>
+                    event.type === "runtime-request.updated" && event.threadId !== thread.id,
+                ),
+                Stream.mapEffect((event) =>
+                  Effect.gen(function* () {
+                    const members = yield* teamMembersOf(thread.id);
+                    return members.some((member) => member.threadId === event.threadId)
+                      ? yield* refreshedView(null)
+                      : [];
+                  }),
+                ),
+                Stream.flattenIterable,
+                Stream.catchCause(() => Stream.empty),
+              );
         const ending = Stream.fromEffect(end).pipe(
           Stream.map((reason): RemoteControlStreamEvent => ({ type: "ended", reason })),
         );
@@ -1514,9 +1622,13 @@ const make = Effect.gen(function* () {
         return stillOpen
           ? opening.pipe(
               Stream.concat(
-                Stream.merge(Stream.merge(threadEvents, viewChanges), ending, {
-                  haltStrategy: "either",
-                }),
+                Stream.merge(
+                  Stream.merge(threadEvents, Stream.merge(viewChanges, teamChanges)),
+                  ending,
+                  {
+                    haltStrategy: "either",
+                  },
+                ),
               ),
               Stream.takeUntil((event) => event.type === "ended"),
             )
@@ -1634,6 +1746,17 @@ const make = Effect.gen(function* () {
   const dispatchThroughIntake = (command: OrchestrationV2Command) =>
     ThreadMessageIntake.dispatchCommand(command).pipe(Effect.provideContext(threadServices));
 
+  const spendUploadBudget = Effect.fn("RemoteControlService.spendUploadBudget")(function* (
+    deviceId: string,
+    bytes: number,
+  ) {
+    if (bytes === 0) return;
+    const now = yield* nowMillis;
+    const next = chargeUploadWindow(uploadWindows.get(deviceId), now, bytes);
+    if (next === null) return yield* access("upload_budget");
+    uploadWindows.set(deviceId, next);
+  });
+
   const submit: RemoteControlService["Service"]["submit"] = Effect.fn(
     "RemoteControlService.submit",
   )(function* (credential, request, uploads) {
@@ -1642,6 +1765,10 @@ const make = Effect.gen(function* () {
     if (request.text === "" && uploads.length === 0) return yield* access("empty");
     const attachments = yield* fromShared(shared.storeUploads(thread.id, uploads));
     yield* Effect.gen(function* () {
+      yield* spendUploadBudget(
+        device.id,
+        attachments.reduce((total, attachment) => total + attachment.sizeBytes, 0),
+      );
       yield* ensureShare(row, thread).pipe(Effect.mapError(() => access("rejected")));
       const guestMessageId = GuestMessageId.make(yield* crypto.randomUUIDv4().pipe(Effect.orDie));
       yield* orchestrator
@@ -1696,26 +1823,38 @@ const make = Effect.gen(function* () {
     if ((request.decision === undefined) === (request.answers === undefined)) {
       return yield* access("rejected");
     }
-    const { runtimeRequests } = yield* orchestrator
-      .getThreadRecords(thread.id, ["runtimeRequests"])
-      .pipe(Effect.mapError(() => access("unavailable")));
-    const pending = runtimeRequests.find((candidate) => candidate.id === request.requestId);
+    const target = request.threadId ?? thread.id;
     if (
-      pending === undefined ||
-      pending.kind === "auth_refresh" ||
-      pending.kind === "dynamic_tool_call"
+      target !== thread.id &&
+      !(yield* teamMembersOf(thread.id)).some((member) => member.threadId === target)
     ) {
       return yield* access("unavailable");
     }
+    const requestStatus = orchestrator.getThreadRecords(target, ["runtimeRequests"]).pipe(
+      Effect.map(
+        ({ runtimeRequests }) =>
+          runtimeRequests.find((candidate) => candidate.id === request.requestId) ?? null,
+      ),
+      Effect.mapError(() => access("unavailable")),
+    );
+    const pending = yield* requestStatus;
+    if (pending === null || !answerableRemotely(pending)) return yield* access("unavailable");
     if (pending.status !== "pending") return yield* access("answered");
     yield* dispatchThroughIntake({
       type: "runtime-request.respond",
       commandId: yield* commandId("respond"),
-      threadId: thread.id,
+      threadId: target,
       requestId: request.requestId,
       ...(request.decision === undefined ? {} : { decision: request.decision }),
       ...(request.answers === undefined ? {} : { answers: request.answers }),
-    }).pipe(Effect.mapError(() => access("answered")));
+    }).pipe(
+      // Another answer may have won the race; anything else was this answer's own fault.
+      Effect.catch(() =>
+        Effect.flatMap(requestStatus, (latest) =>
+          Effect.fail(access(latest?.status === "pending" ? "rejected" : "answered")),
+        ),
+      ),
+    );
     yield* noteAction(device, thread.id, {
       action: "approval.answered",
       label:

@@ -50,6 +50,16 @@ const isTailscaleInterface = (
   /^tailscale/i.test(name) ||
   entries.some((entry) => entry.family === "IPv6" && isTailnetHost(entry.address));
 
+/** The addresses this machine holds on its Tailscale interfaces. */
+export const tailscaleInterfaceAddresses = (
+  interfaces: NetworkInterfacesMap,
+): ReadonlySet<string> =>
+  new Set(
+    Object.entries(interfaces).flatMap(([name, entries = []]) =>
+      isTailscaleInterface(name, entries) ? entries.map((entry) => entry.address) : [],
+    ),
+  );
+
 // Windows adapter names are mutable; Linux bridges can inherit these MACs.
 const WINDOWS_HOST_ADAPTER_MAC = /^(0a:00:27|00:50:56:c0:00):/i;
 
@@ -62,11 +72,7 @@ export function resolveBoundEndpoints(input: {
   readonly onCloudVm?: boolean;
 }): ReadonlyArray<ServerDirectEndpoint> {
   if (isLoopbackHost(input.host)) return [];
-  const tailscaleAddresses = new Set(
-    Object.entries(input.interfaces).flatMap(([name, entries = []]) =>
-      isTailscaleInterface(name, entries) ? entries.map((entry) => entry.address) : [],
-    ),
-  );
+  const tailscaleAddresses = tailscaleInterfaceAddresses(input.interfaces);
   const addresses = isWildcardHost(input.host)
     ? Object.entries(input.interfaces)
         .flatMap(([name, entries]) => (VIRTUAL_INTERFACE.test(name) ? [] : (entries ?? [])))

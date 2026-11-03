@@ -809,10 +809,25 @@ function RemoteConversation({
           onAct={(url, body) => void act(url, body)}
         />
         {canApprove && !offline ? (
-          <PendingRequests
-            projection={projection}
-            onRespond={(body) => act(routeFor(REMOTE_CONTROL_RESPOND_ROUTE, switchId), body)}
-          />
+          <>
+            <PendingRequests
+              requests={projection}
+              onRespond={(body) => act(routeFor(REMOTE_CONTROL_RESPOND_ROUTE, switchId), body)}
+            />
+            {view.teamRequests.map((member) => (
+              <PendingRequests
+                key={member.threadId}
+                from={member.memberName}
+                requests={member}
+                onRespond={(body) =>
+                  act(routeFor(REMOTE_CONTROL_RESPOND_ROUTE, switchId), {
+                    ...body,
+                    threadId: member.threadId,
+                  })
+                }
+              />
+            ))}
+          </>
         ) : null}
         {heldBack ? (
           <p className="text-xs text-muted-foreground">
@@ -860,21 +875,30 @@ function RemoteConversation({
   );
 }
 
+/** `from` names the team member whose session asks, when it is not this conversation. */
 function PendingRequests({
-  projection,
+  requests,
+  from,
   onRespond,
 }: {
-  readonly projection: OrchestrationV2ThreadProjection;
+  readonly requests: Parameters<typeof derivePendingThreadRequests>[0];
+  readonly from?: string;
   readonly onRespond: (body: {
     readonly requestId: RuntimeRequestId;
     readonly decision?: "accept" | "decline";
     readonly answers?: unknown;
   }) => Promise<void>;
 }) {
-  const { approvals, userInputs } = derivePendingThreadRequests(projection);
+  const { approvals, userInputs } = derivePendingThreadRequests(requests);
   if (approvals.length === 0 && userInputs.length === 0) return null;
   return (
-    <ul className="flex flex-col gap-2" aria-label="Waiting for an answer">
+    <ul
+      className="flex flex-col gap-2"
+      aria-label={from === undefined ? "Waiting for an answer" : `${from} is waiting for an answer`}
+    >
+      {from === undefined ? null : (
+        <li className="text-xs text-muted-foreground">From the team: {from}</li>
+      )}
       {approvals.map((approval) => (
         <li key={approval.requestId}>
           <ApprovalCard approval={approval} onRespond={onRespond} />

@@ -79,7 +79,7 @@ export const layer = McpToolAccess.toLayer(SessionsToolkit, {
           link: McpInvocationContext.threadLinkFor(scope, started.threadId),
         };
       }),
-    { refused: "A linked environment cannot nest sessions under a thread here." },
+    { refused: "nest sessions under a thread here" },
   ),
   nested_session_family: McpToolAccess.readsAsCaller(() =>
     Effect.gen(function* () {

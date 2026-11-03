@@ -11,7 +11,11 @@ import { ComputerUseAnswerApprovalInput } from "./computerUse.ts";
 import { GuestDisplayName, ThreadGuestMessage } from "./guestShare.ts";
 import { GuestThreadModel } from "./guestStream.ts";
 import { ModelSelection } from "./modelSelection.ts";
-import { OrchestrationV2ThreadStreamItem } from "./orchestrationV2.ts";
+import {
+  OrchestrationV2RuntimeRequest,
+  OrchestrationV2ThreadStreamItem,
+  OrchestrationV2TurnItem,
+} from "./orchestrationV2.ts";
 import { OrchestratorBrainAvailability, OrchestratorReaction } from "./orchestratorAgent.ts";
 import { ProviderInteractionMode, RuntimeMode, ThreadCapabilityMode } from "./providerPolicy.ts";
 import { ServerProvider } from "./server.ts";
@@ -136,6 +140,8 @@ export const REMOTE_CONTROL_PAIRING_TTL_MS = 5 * 60 * 1000;
 export const REMOTE_CONTROL_MAX_FAILED_ATTEMPTS = 5;
 export const REMOTE_CONTROL_CODE_DIGITS = 8;
 export const REMOTE_CONTROL_MAX_DEVICES = 8;
+/** Files one device may send in an hour, so a paired device cannot fill the owner's disk. */
+export const REMOTE_CONTROL_DEVICE_UPLOAD_BYTES_PER_HOUR = 100 * 1024 * 1024;
 
 export const RemoteControlRouteKind = Schema.Literals(["relay", "lan", "tailnet", "connect"]);
 export type RemoteControlRouteKind = typeof RemoteControlRouteKind.Type;
@@ -386,6 +392,8 @@ export type RemoteControlPairCodeRequest = typeof RemoteControlPairCodeRequest.T
 
 export const RemoteControlRespondRequest = Schema.Struct({
   requestId: RuntimeRequestId,
+  /** A member session of the conversation's active team run; the conversation itself when absent. */
+  threadId: Schema.optional(ThreadId),
   /** Approvals take a decision; questions take answers. Standing approvals stay with the owner. */
   decision: Schema.optional(Schema.Literals(["accept", "decline"])),
   answers: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
@@ -455,6 +463,7 @@ const REMOTE_CONTROL_ACCESS_MESSAGES = {
   unsupported_file: "This file cannot be attached. Images must be PNG, JPEG, GIF, or WebP.",
   busy: "Wait for the owner to answer your earlier messages.",
   files_busy: "Wait for the owner to answer your earlier messages before you attach more files.",
+  upload_budget: "This device sent a lot of files in the last hour. Try again later.",
   answered: "Someone already answered this.",
 } as const;
 
@@ -490,6 +499,15 @@ export const RemoteControlFailureBody = Schema.Struct({
 export type RemoteControlFailureBody = typeof RemoteControlFailureBody.Type;
 
 /** The conversation as one device sees it. `level` is what this device can do right now. */
+/** A team member's open requests: the slice of its thread that approval cards are drawn from. */
+export const RemoteControlTeamRequests = Schema.Struct({
+  threadId: ThreadId,
+  memberName: Schema.String,
+  runtimeRequests: Schema.Array(OrchestrationV2RuntimeRequest),
+  turnItems: Schema.Array(OrchestrationV2TurnItem),
+});
+export type RemoteControlTeamRequests = typeof RemoteControlTeamRequests.Type;
+
 export const RemoteControlView = Schema.Struct({
   /** The page follows the switch it names, as a guest page follows its share. */
   shareId: RemoteControlSwitchId,
@@ -515,6 +533,8 @@ export const RemoteControlView = Schema.Struct({
   model: GuestThreadModel,
   /** Other paired devices, so people sharing a conversation can see who else is here. */
   otherDevices: Schema.Array(Schema.Struct({ label: GuestDisplayName, connected: Schema.Boolean })),
+  /** Requests waiting in the active team run's member sessions, for a device that may approve. */
+  teamRequests: Schema.Array(RemoteControlTeamRequests),
 });
 export type RemoteControlView = typeof RemoteControlView.Type;
 

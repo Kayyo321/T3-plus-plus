@@ -11,6 +11,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { WorkspacesToolkit } from "./tools.ts";
 
 const AGENT_ACTOR = { actor: "agent" } as const;
+const workspacesRefused = "change this environment's workspaces";
 
 const invalidRequest = (error: WorkspaceError | ConversationFolderError) =>
   new OrchestratorMcpFailure({ code: "invalid_request", message: error.message });
@@ -22,33 +23,39 @@ const notAttachable = () =>
   });
 
 export const layer = McpToolAccess.toLayer(WorkspacesToolkit, {
-  t3_workspace_upsert: McpToolAccess.writesEnvironment((params, check) =>
-    Effect.gen(function* () {
-      yield* check;
-      const workspaces = yield* Workspaces.WorkspaceService;
-      const workspace = yield* workspaces
-        .upsert({ ...params, settings: {} }, AGENT_ACTOR)
-        .pipe(Effect.mapError(invalidRequest));
-      return { id: workspace.id };
-    }),
+  t3_workspace_upsert: McpToolAccess.writesEnvironment(
+    (params, check) =>
+      Effect.gen(function* () {
+        yield* check;
+        const workspaces = yield* Workspaces.WorkspaceService;
+        const workspace = yield* workspaces
+          .upsert({ ...params, settings: {} }, AGENT_ACTOR)
+          .pipe(Effect.mapError(invalidRequest));
+        return { id: workspace.id };
+      }),
+    { refused: workspacesRefused },
   ),
-  t3_workspace_delete: McpToolAccess.writesEnvironment((params, check) =>
-    Effect.gen(function* () {
-      yield* check;
-      yield* (yield* Workspaces.WorkspaceService)
-        .remove(params, AGENT_ACTOR)
-        .pipe(Effect.mapError(invalidRequest));
-      return {};
-    }),
+  t3_workspace_delete: McpToolAccess.writesEnvironment(
+    (params, check) =>
+      Effect.gen(function* () {
+        yield* check;
+        yield* (yield* Workspaces.WorkspaceService)
+          .remove(params, AGENT_ACTOR)
+          .pipe(Effect.mapError(invalidRequest));
+        return {};
+      }),
+    { refused: workspacesRefused },
   ),
-  t3_workspace_restore: McpToolAccess.writesEnvironment((params, check) =>
-    Effect.gen(function* () {
-      yield* check;
-      const workspace = yield* (yield* Workspaces.WorkspaceService)
-        .restore(params, AGENT_ACTOR)
-        .pipe(Effect.mapError(invalidRequest));
-      return { id: workspace.id };
-    }),
+  t3_workspace_restore: McpToolAccess.writesEnvironment(
+    (params, check) =>
+      Effect.gen(function* () {
+        yield* check;
+        const workspace = yield* (yield* Workspaces.WorkspaceService)
+          .restore(params, AGENT_ACTOR)
+          .pipe(Effect.mapError(invalidRequest));
+        return { id: workspace.id };
+      }),
+    { refused: workspacesRefused },
   ),
   t3_workspace_list: McpToolAccess.reads((params) =>
     Effect.gen(function* () {
@@ -80,38 +87,40 @@ export const layer = McpToolAccess.toLayer(WorkspacesToolkit, {
     }),
   ),
   // Which credentials a process receives is an environment setting, not thread metadata.
-  t3_workspace_attach: McpToolAccess.writesEnvironment((params, check) =>
-    Effect.gen(function* () {
-      yield* check;
-      const workspaces = yield* Workspaces.WorkspaceService;
-      const target: WorkspaceAttachmentTarget | undefined =
-        params.threadId !== undefined && params.projectId === undefined
-          ? { kind: "thread", threadId: params.threadId }
-          : params.projectId !== undefined && params.threadId === undefined
-            ? { kind: "project", projectId: params.projectId }
-            : undefined;
-      if (target === undefined) return yield* notAttachable();
-      if (params.name === null) {
+  t3_workspace_attach: McpToolAccess.writesEnvironment(
+    (params, check) =>
+      Effect.gen(function* () {
+        yield* check;
+        const workspaces = yield* Workspaces.WorkspaceService;
+        const target: WorkspaceAttachmentTarget | undefined =
+          params.threadId !== undefined && params.projectId === undefined
+            ? { kind: "thread", threadId: params.threadId }
+            : params.projectId !== undefined && params.threadId === undefined
+              ? { kind: "project", projectId: params.projectId }
+              : undefined;
+        if (target === undefined) return yield* notAttachable();
+        if (params.name === null) {
+          yield* workspaces
+            .attach({ target, workspaceId: null }, AGENT_ACTOR)
+            .pipe(Effect.mapError(invalidRequest));
+          return { attached: false };
+        }
+        const catalog = yield* workspaces.catalog.pipe(Effect.mapError(invalidRequest));
+        const workspace = catalog.workspaces.find(
+          (candidate) => candidate.deletedAt === null && candidate.name === params.name,
+        );
+        if (workspace === undefined) {
+          return yield* new OrchestratorMcpFailure({
+            code: "invalid_request",
+            message: "No workspace has that name. t3_workspace_list shows them.",
+          });
+        }
         yield* workspaces
-          .attach({ target, workspaceId: null }, AGENT_ACTOR)
+          .attach({ target, workspaceId: workspace.id }, AGENT_ACTOR)
           .pipe(Effect.mapError(invalidRequest));
-        return { attached: false };
-      }
-      const catalog = yield* workspaces.catalog.pipe(Effect.mapError(invalidRequest));
-      const workspace = catalog.workspaces.find(
-        (candidate) => candidate.deletedAt === null && candidate.name === params.name,
-      );
-      if (workspace === undefined) {
-        return yield* new OrchestratorMcpFailure({
-          code: "invalid_request",
-          message: "No workspace has that name. t3_workspace_list shows them.",
-        });
-      }
-      yield* workspaces
-        .attach({ target, workspaceId: workspace.id }, AGENT_ACTOR)
-        .pipe(Effect.mapError(invalidRequest));
-      return { attached: true };
-    }),
+        return { attached: true };
+      }),
+    { refused: workspacesRefused },
   ),
   t3_folder_list: McpToolAccess.reads((params) =>
     Effect.gen(function* () {
@@ -135,13 +144,15 @@ export const layer = McpToolAccess.toLayer(WorkspacesToolkit, {
       };
     }),
   ),
-  t3_folder_update: McpToolAccess.writes((params) =>
-    Effect.gen(function* () {
-      const folders = yield* ConversationFolders.ConversationFolderService;
-      const result = yield* folders
-        .mutate(params.mutation, AGENT_ACTOR)
-        .pipe(Effect.mapError(invalidRequest));
-      return result.folder === undefined ? {} : { folderId: result.folder.id };
-    }),
+  t3_folder_update: McpToolAccess.writes(
+    (params) =>
+      Effect.gen(function* () {
+        const folders = yield* ConversationFolders.ConversationFolderService;
+        const result = yield* folders
+          .mutate(params.mutation, AGENT_ACTOR)
+          .pipe(Effect.mapError(invalidRequest));
+        return result.folder === undefined ? {} : { folderId: result.folder.id };
+      }),
+    { refused: "change this environment's conversation folders" },
   ),
 });

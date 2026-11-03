@@ -2,6 +2,8 @@ import {
   DEFAULT_TEAM_SHEET_ID,
   TEAM_LEAD_MEMBER_ID,
   TEAM_SESSION_SLOT,
+  TEAM_SHEET_MAX_EDGES,
+  TEAM_SHEET_MAX_NODES,
   TeamMemberId,
   TeamNodeId,
   type TeamSheet,
@@ -145,6 +147,10 @@ export function teamSheetProblems(
   if (leads.length === 0) return ["This sheet has no Project Lead."];
   if (leads.length > 1) return ["This sheet has more than one Project Lead."];
   const problems: Array<string> = [];
+  if (sheet.nodes.length > TEAM_SHEET_MAX_NODES)
+    problems.push(`A sheet has room for ${TEAM_SHEET_MAX_NODES} teams at most.`);
+  if (sheet.edges.length > TEAM_SHEET_MAX_EDGES)
+    problems.push(`A sheet has room for ${TEAM_SHEET_MAX_EDGES} lines at most.`);
   const ids = new Set(sheet.nodes.map((node) => node.id));
   if (ids.size !== sheet.nodes.length) problems.push("Two nodes share an id.");
   const names = new Set(sheet.nodes.map((node) => node.name.toLocaleLowerCase()));

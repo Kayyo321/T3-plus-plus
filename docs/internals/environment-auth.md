@@ -42,7 +42,8 @@ the request's Host header is not checked, because a LAN client can forge it.
 ### Remote control is narrower than any scope
 
 [Remote control](../user/remote-control.md) reaches one conversation from a
-paired device. Its credentials live in the `remote_control_*` tables and in
+paired device, plus the member sessions of a team run active in it, whose
+approvals a device at Approve may answer. Its credentials live in the `remote_control_*` tables and in
 cookies scoped to `/api/remote`, never in `SessionStore`, so a device has no
 environment scope at all: every remote route checks the session, its two
 expiries, and the access level on each request
@@ -56,7 +57,9 @@ Secure cookie set over plain HTTP and pairing would dead-end on every LAN. A
 plain HTTP session therefore has no Secure flag, is tied to its peer address,
 and is capped at Chat: anyone on that network can read the traffic, so
 approving and stopping need an encrypted route. A tailnet peer counts as
-encrypted even though the browser sees HTTP. `X-Forwarded-Proto` is believed
+encrypted even though the browser sees HTTP, but a 100.64.0.0/10 address counts
+only when it arrived on a Tailscale interface: carrier-grade NAT networks number
+their hosts from the same range. `X-Forwarded-Proto` is believed
 only from loopback, where Tailscale Serve and the T3 Connect tunnel arrive;
 from any other peer it would be a way to lift the cap.
 

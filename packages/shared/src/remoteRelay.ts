@@ -88,10 +88,12 @@ export function encodeRemoteRelayChunk(id: number, payload: Uint8Array): Uint8Ar
   return frame;
 }
 
+/** Null for a frame too short to carry an id. */
 export function decodeRemoteRelayChunk(frame: Uint8Array): {
   readonly id: number;
   readonly payload: Uint8Array;
-} {
+} | null {
+  if (frame.byteLength < 4) return null;
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
   return { id: view.getUint32(0), payload: frame.subarray(4) };
 }

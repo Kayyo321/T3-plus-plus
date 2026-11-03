@@ -130,7 +130,9 @@ export class HostRoom extends DurableObject<Env> {
       this.#onFrame(JSON.parse(message) as RemoteRelayHostFrame);
       return;
     }
-    const { id, payload } = decodeRemoteRelayChunk(new Uint8Array(message));
+    const chunk = decodeRemoteRelayChunk(new Uint8Array(message));
+    if (chunk === null) return;
+    const { id, payload } = chunk;
     const pending = this.#pending.get(id);
     if (pending === undefined) return;
     pending.writes = pending.writes

@@ -150,24 +150,36 @@ function inferOs(userAgent: string | undefined): string | undefined {
   return undefined;
 }
 
-function readRemoteAddressFromSource(source: unknown): string | undefined {
+function readAddressFromSource(
+  source: unknown,
+  key: "remoteAddress" | "localAddress",
+): string | undefined {
   if (!source || typeof source !== "object") {
     return undefined;
   }
 
   const candidate = source as {
     readonly remoteAddress?: string | null;
+    readonly localAddress?: string | null;
     readonly socket?: {
       readonly remoteAddress?: string | null;
+      readonly localAddress?: string | null;
     };
   };
 
-  return normalizeIpAddress(candidate.socket?.remoteAddress ?? candidate.remoteAddress);
+  return normalizeIpAddress(candidate.socket?.[key] ?? candidate[key]);
 }
+
+const readRemoteAddressFromSource = (source: unknown) =>
+  readAddressFromSource(source, "remoteAddress");
 
 /** The address of the direct peer, which behind a local proxy is that proxy. */
 export const requestPeerAddress = (request: HttpServerRequest.HttpServerRequest) =>
   readRemoteAddressFromSource(request.source);
+
+/** This server's address that the request arrived on. */
+export const requestLocalAddress = (request: HttpServerRequest.HttpServerRequest) =>
+  readAddressFromSource(request.source, "localAddress");
 
 export function deriveAuthClientMetadata(input: {
   readonly request: HttpServerRequest.HttpServerRequest;
