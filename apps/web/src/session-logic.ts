@@ -2,7 +2,6 @@ import type { ThreadStructure, ThreadStructureRuntime } from "@t3tools/client-ru
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import {
   type AssetResource,
-  type OrchestrationV2Checkpoint,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2PlanArtifact,
   type OrchestrationV2ProjectedTurnItem,
@@ -1057,6 +1056,8 @@ export function deriveTimelineEntriesFromVisibleTurnItemsWithState(
 export function deriveRevertTurnCountByUserMessageId(input: {
   readonly timelineEntries: ReadonlyArray<TimelineEntry>;
   readonly checkpoints: ReadonlyArray<ThreadCheckpointSummary>;
+  /** Turns a conversation can return to, whether or not they kept a file checkpoint. */
+  readonly conversationTurnCountByRunId?: ReadonlyMap<RunId, number> | undefined;
   readonly threadStartCheckpointReady: boolean;
   readonly availableRevertTurnCounts?: ReadonlySet<number> | undefined;
   readonly unsettledRunId?: RunId | null;
@@ -1090,7 +1091,8 @@ export function deriveRevertTurnCountByUserMessageId(input: {
           ? input.threadStartCheckpointReady
             ? 0
             : undefined
-          : readyTurnCountByRunId.get(previousRunId),
+          : (readyTurnCountByRunId.get(previousRunId) ??
+              input.conversationTurnCountByRunId?.get(previousRunId)),
       );
       previousRunId = runId;
     }
@@ -1106,19 +1108,6 @@ export function deriveRevertTurnCountByUserMessageId(input: {
       byUserMessageId.set(message.id, target);
   }
   return byUserMessageId;
-}
-
-export function findRevertCheckpoint(
-  checkpoints: ReadonlyArray<OrchestrationV2Checkpoint>,
-  turnCount: number,
-): OrchestrationV2Checkpoint | undefined {
-  return checkpoints.findLast(
-    (checkpoint) =>
-      checkpoint.status === "ready" &&
-      (turnCount === 0
-        ? checkpoint.ordinalWithinScope === 0 && checkpoint.appRunOrdinal === null
-        : checkpoint.appRunOrdinal === turnCount),
-  );
 }
 
 export function derivePhase(runtime: ThreadStructureRuntime | null): SessionPhase {

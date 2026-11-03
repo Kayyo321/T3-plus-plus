@@ -1461,6 +1461,11 @@ export const OrchestrationV2Checkpoint = Schema.Struct({
 });
 export type OrchestrationV2Checkpoint = typeof OrchestrationV2Checkpoint.Type;
 
+/** A run's baseline rewrites the previous run's row, and without git that clears `appRunOrdinal`. */
+export const checkpointRunOrdinal = (
+  checkpoint: Pick<OrchestrationV2Checkpoint, "appRunOrdinal" | "ordinalWithinScope">,
+): number => checkpoint.appRunOrdinal ?? checkpoint.ordinalWithinScope;
+
 export const OrchestrationV2CheckpointRollbackRequest = Schema.Struct({
   scopeId: CheckpointScopeId,
   checkpointId: CheckpointId,

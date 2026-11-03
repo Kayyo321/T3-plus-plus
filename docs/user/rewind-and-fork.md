@@ -16,7 +16,7 @@ What a rewind discards stays on an archived branch. Find it under **History** in
 
 If files changed outside the agent since its last turn, the dialog lists them. You can stash them first, which leaves an ordinary `git stash` entry, or leave them only on the archived branch.
 
-Restoring files needs a worktree this conversation has to itself. A conversation sharing its folder can still rewind its conversation.
+Restoring files needs a worktree this conversation has to itself. A conversation sharing its folder can still rewind its conversation, and so can one in a folder without git, such as a Chat thread, where no file snapshots exist.
 
 ### Which agents can rewind
 

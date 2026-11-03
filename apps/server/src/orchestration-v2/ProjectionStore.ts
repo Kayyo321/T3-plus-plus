@@ -1,4 +1,4 @@
-import { pendingGuestMessageCount } from "@t3tools/contracts";
+import { checkpointRunOrdinal, pendingGuestMessageCount } from "@t3tools/contracts";
 import { applyThreadPullRequestLinkUpdate } from "../sourceControl/threadPullRequests.ts";
 import { projectTurnItemForWire } from "./WireProjection.ts";
 import * as Stream from "effect/Stream";
@@ -5237,13 +5237,13 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               checkpoint === undefined ||
               scope === undefined ||
               checkpoint.scopeId !== scope.id ||
-              checkpoint.status !== "ready" ||
+              checkpoint.status === "stale" ||
               providerThread.id !== thread.activeProviderThreadId ||
               providerThread.providerInstanceId !== thread.modelSelection.instanceId
             )
               return context;
 
-            const targetOrdinal = checkpoint.appRunOrdinal ?? 0;
+            const targetOrdinal = checkpointRunOrdinal(checkpoint);
             const [attemptRows, runRows, sessionRows, rolledBackAttempts, staleRows] =
               yield* Effect.all([
                 sql`SELECT attempt.attempt_id AS id, attempt.provider_turn_id AS "providerTurnId"

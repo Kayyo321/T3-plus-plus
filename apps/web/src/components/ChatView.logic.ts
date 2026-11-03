@@ -1,4 +1,8 @@
-import { type OrchestrationV2ProviderTurn, type RunAttemptId } from "@t3tools/contracts";
+import {
+  checkpointRunOrdinal,
+  type OrchestrationV2ProviderTurn,
+  type RunAttemptId,
+} from "@t3tools/contracts";
 import {
   deriveLatestThreadRun,
   deriveThreadRuntime,
@@ -1574,6 +1578,23 @@ export function deriveThreadPendingBackgroundTasks(projection: ThreadStructure |
  * active provider thread, plus 0 for the thread start. Empty without a live provider session
  * on the thread's selected instance.
  */
+/** Where a conversation can return to. Unlike a file restore, this needs no ready checkpoint. */
+export function deriveConversationTurnCounts(projection: ThreadStructure | null) {
+  const ordinals = new Set(
+    projection?.checkpoints
+      .filter((checkpoint) => checkpoint.status !== "stale")
+      .map(checkpointRunOrdinal),
+  );
+  return {
+    threadStart: ordinals.has(0),
+    byRunId: new Map(
+      projection?.runs
+        .filter((run) => ordinals.has(run.ordinal))
+        .map((run) => [run.id, run.ordinal]),
+    ),
+  };
+}
+
 export function deriveAvailableRevertTurnCounts(projection: ThreadStructure | null) {
   const available = new Set<number>();
   const providerThread = projection?.providerThreads.find(

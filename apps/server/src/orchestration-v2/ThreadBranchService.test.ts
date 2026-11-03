@@ -77,9 +77,36 @@ describe("checkpointForTarget", () => {
     });
     assert.equal(found?.appRunOrdinal, null);
   });
+
+  it("finds a turn with no file snapshot, even once a later baseline cleared its ordinal", () => {
+    const missing = (ordinalWithinScope: number, appRunOrdinal: number | null) =>
+      ({ ...checkpoint(appRunOrdinal), ordinalWithinScope, status: "missing" }) as never;
+    const found = ThreadBranchService.checkpointForTarget({
+      target,
+      checkpoints: [missing(0, null), missing(1, null), missing(2, 2)],
+      runs: [run(1), run(2)],
+      message: { role: "user", runId: RunId.make("run:2") },
+    });
+    assert.equal(found?.ordinalWithinScope, 1);
+  });
+
+  it("never returns to a stale checkpoint", () => {
+    const stale = { ...checkpoint(1), status: "stale" } as never;
+    const found = ThreadBranchService.checkpointForTarget({
+      target,
+      checkpoints: [checkpoint(null), stale],
+      runs: [run(1), run(2)],
+      message: { role: "user", runId: RunId.make("run:2") },
+    });
+    assert.equal(found?.ordinalWithinScope, 0);
+  });
 });
 
-const harness = (dispatched: Array<OrchestrationV2ServerCommand>, deletedRefs: Array<string>) =>
+const harness = (
+  dispatched: Array<OrchestrationV2ServerCommand>,
+  deletedRefs: Array<string>,
+  status: OrchestrationV2Checkpoint["status"] = "ready",
+) =>
   ThreadBranchService.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -96,7 +123,7 @@ const harness = (dispatched: Array<OrchestrationV2ServerCommand>, deletedRefs: A
               thread: { id: THREAD },
               runs: [run(1), run(2)],
               messages: [],
-              checkpoints: [checkpoint(1), checkpoint(2)],
+              checkpoints: [checkpoint(1), checkpoint(2)].map((row) => ({ ...row, status })),
               checkpointScopes: [{ id: SCOPE, cwd: "/work" }],
               providerThreads: [],
             }) as never,
@@ -163,5 +190,29 @@ describe("rewinding over changes made outside the agent", () => {
         stashPaths: ["edited-by-hand.txt"],
       });
     }).pipe(Effect.provide(harness(dispatched, [])));
+  });
+});
+
+describe("rewinding where there are no file snapshots", () => {
+  it.effect("rewinds the conversation and leaves files out of it", () => {
+    const dispatched: Array<OrchestrationV2ServerCommand> = [];
+    return Effect.gen(function* () {
+      const service = yield* ThreadBranchService.ThreadBranchService;
+      yield* service.rewind({ ...input(), mode: "conversation" }, ACTOR);
+      const command = dispatched[0];
+      assert.equal(command?.type, "checkpoint.rollback");
+      if (command?.type !== "checkpoint.rollback") return;
+      assert.isFalse(command.restoreFiles);
+    }).pipe(Effect.provide(harness(dispatched, [], "missing")));
+  });
+
+  it.effect.each(["files", "both"] as const)("refuses to restore %s", (mode) => {
+    const dispatched: Array<OrchestrationV2ServerCommand> = [];
+    return Effect.gen(function* () {
+      const service = yield* ThreadBranchService.ThreadBranchService;
+      const error = yield* service.rewind({ ...input(), mode }, ACTOR).pipe(Effect.flip);
+      assert.equal(error.reason, "target-invalid");
+      assert.deepEqual(dispatched, []);
+    }).pipe(Effect.provide(harness(dispatched, [], "missing")));
   });
 });

@@ -609,7 +609,7 @@ const seedRollbackHistory = Effect.gen(function* () {
       ),
     ),
   );
-  const rollback = (ordinal: number) =>
+  const rollback = (ordinal: number, restoreFiles?: boolean) =>
     Effect.gen(function* () {
       const service = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
       yield* service.execute({
@@ -617,6 +617,7 @@ const seedRollbackHistory = Effect.gen(function* () {
         providerThreadId,
         scopeId,
         checkpointId: checkpointId(ordinal),
+        ...(restoreFiles === undefined ? {} : { restoreFiles }),
       });
     }).pipe(Effect.provide(serviceLayer));
 
@@ -638,6 +639,38 @@ const seedRollbackHistory = Effect.gen(function* () {
 it.layer(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory)))(
   "rollback history reads",
   (it) => {
+    it.effect("rewinds the conversation to a turn a later baseline left without an ordinal", () =>
+      Effect.gen(function* () {
+        const history = yield* seedRollbackHistory;
+        const sql = yield* SqlClient.SqlClient;
+        const { threadId, checkpointId } = history;
+        yield* sql`UPDATE orchestration_v2_projection_checkpoints
+          SET status = 'missing', app_run_ordinal = NULL,
+            payload_json = json_set(payload_json, '$.status', 'missing', '$.appRunOrdinal', NULL)
+          WHERE checkpoint_id = ${checkpointId(2)}`;
+
+        yield* history.rollback(2, false);
+
+        assert.deepEqual(history.rollbackCounts, [4]);
+        assert.deepEqual(history.restored, []);
+        const runs = yield* sql<{ status: string }>`
+          SELECT status FROM orchestration_v2_projection_runs
+          WHERE thread_id = ${threadId} ORDER BY ordinal`;
+        assert.deepEqual(
+          runs.map((run) => run.status),
+          [
+            "completed",
+            "completed",
+            "rolled_back",
+            "rolled_back",
+            "rolled_back",
+            "rolled_back",
+            "rolled_back",
+          ],
+        );
+      }),
+    );
+
     it.effect("rolls back later terminal runs despite obsolete unrelated SQLite payloads", () =>
       Effect.gen(function* () {
         const history = yield* seedRollbackHistory;

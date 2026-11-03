@@ -1,6 +1,7 @@
 import {
   CheckpointId,
   CheckpointScopeId,
+  checkpointRunOrdinal,
   ContextTransferId,
   latestProviderTurnForAttempt,
   type OrchestrationV2DomainEvent,
@@ -290,7 +291,7 @@ export const layer: Layer.Layer<
                     ...current,
                     filesRewound: {
                       at: DateTime.formatIso(now),
-                      appRunOrdinal: checkpoint.appRunOrdinal ?? 0,
+                      appRunOrdinal: checkpointRunOrdinal(checkpoint),
                     },
                     updatedAt: now,
                   },
@@ -315,7 +316,8 @@ export const layer: Layer.Layer<
         checkpoint === undefined ||
         scope === undefined ||
         checkpoint.scopeId !== scope.id ||
-        checkpoint.status !== "ready"
+        checkpoint.status === "stale" ||
+        (checkpoint.status !== "ready" && input.restoreFiles !== false)
       ) {
         return yield* new CheckpointRollbackExecutionError({
           reason: "rollback-target-invalid",
@@ -336,7 +338,7 @@ export const layer: Layer.Layer<
         });
       }
 
-      const targetOrdinal = checkpoint.appRunOrdinal ?? 0;
+      const targetOrdinal = checkpointRunOrdinal(checkpoint);
       const rollbackTarget: ProviderAdapter.ProviderAdapterV2RollbackTarget =
         targetOrdinal === 0
           ? {

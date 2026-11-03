@@ -1116,6 +1116,26 @@ it.layer(layerTest)("OrchestrationV2LayerLive", (it) => {
             error.cause,
             `Checkpoint ${checkpointId} is ${status} and cannot be restored.`,
           );
+          const conversationOnly = orchestrator.dispatch({
+            type: "checkpoint.rollback",
+            commandId: CommandId.make(`runtime-rollback-${status}-conversation`),
+            threadId,
+            checkpointId,
+            scopeId: scope.id,
+            restoreFiles: false,
+          });
+          if (status === "stale") {
+            assert.instanceOf(
+              yield* conversationOnly.pipe(Effect.flip),
+              Orchestrator.OrchestratorDispatchError,
+            );
+          } else {
+            assert.deepEqual(
+              (yield* conversationOnly).storedEvents.map((stored) => stored.event.type),
+              ["thread.metadata-updated", "checkpoint.rollback-requested"],
+            );
+            continue;
+          }
           assert.equal(yield* orchestrator.getThreadEventSequence(threadId), previousSequence);
           assert.deepEqual(
             yield* eventSink.readByCommandId({ commandId }).pipe(Stream.runCollect),

@@ -6,6 +6,7 @@ import {
   snapshotComposerSend,
   withMessageContext,
   deriveAvailableRevertTurnCounts,
+  deriveConversationTurnCounts,
   deriveWorkspaceMutationId,
 } from "./ChatView.logic";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
@@ -1148,6 +1149,33 @@ describe("boundAttachmentIds", () => {
     expect(
       boundAttachmentIds([{ id: "upload-1" }, {}], [{ id: "local-1" }, { id: "local-2" }]),
     ).toEqual(["upload-1", "local-2"]);
+  });
+});
+
+describe("deriveConversationTurnCounts", () => {
+  const row = (
+    ordinalWithinScope: number,
+    status: string,
+    appRunOrdinal: number | null = null,
+  ) => ({
+    ordinalWithinScope,
+    appRunOrdinal,
+    status,
+  });
+  const run = (ordinal: number) => ({ id: RunId.make(`run-${ordinal}`), ordinal });
+
+  it("recovers turns from checkpoints without files, and skips stale ones", () => {
+    const counts = deriveConversationTurnCounts({
+      ...makeThreadProjectionFixture(),
+      runs: [run(1), run(2), run(3)],
+      checkpoints: [row(0, "missing"), row(1, "missing"), row(2, "stale"), row(3, "missing", 3)],
+    } as unknown as ReturnType<typeof makeThreadProjectionFixture>);
+    expect(counts.threadStart).toBe(true);
+    expect([...counts.byRunId.values()]).toEqual([1, 3]);
+  });
+
+  it("has no thread start without its baseline", () => {
+    expect(deriveConversationTurnCounts(null).threadStart).toBe(false);
   });
 });
 

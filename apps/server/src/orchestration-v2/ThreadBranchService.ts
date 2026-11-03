@@ -6,6 +6,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2ThreadForkSourcePoint,
   THREAD_REWIND_PREVIEW_MAX_PATHS,
+  checkpointRunOrdinal,
   ThreadBranchError,
   type ThreadForkPreview,
   type ThreadForkPreviewInput,
@@ -67,19 +68,15 @@ export function checkpointForTarget(input: {
   const liveOrdinals = new Set(
     runs.filter((candidate) => candidate.status !== "rolled_back").map(({ ordinal }) => ordinal),
   );
-  const ready = checkpoints.filter((checkpoint) => checkpoint.status === "ready");
+  const current = checkpoints.filter((checkpoint) => checkpoint.status !== "stale");
   return (
-    ready
-      .filter(
-        (checkpoint) =>
-          checkpoint.appRunOrdinal !== null &&
-          checkpoint.appRunOrdinal < ceiling &&
-          liveOrdinals.has(checkpoint.appRunOrdinal),
-      )
-      .toSorted((left, right) => (right.appRunOrdinal ?? 0) - (left.appRunOrdinal ?? 0))[0] ??
-    ready.find(
-      (checkpoint) => checkpoint.appRunOrdinal === null && checkpoint.ordinalWithinScope === 0,
-    )
+    current
+      .filter((checkpoint) => {
+        const ordinal = checkpointRunOrdinal(checkpoint);
+        return ordinal < ceiling && liveOrdinals.has(ordinal);
+      })
+      .toSorted((left, right) => checkpointRunOrdinal(right) - checkpointRunOrdinal(left))[0] ??
+    current.find((checkpoint) => checkpointRunOrdinal(checkpoint) === 0)
   );
 }
 
@@ -150,7 +147,7 @@ const make = Effect.gen(function* () {
     const scope = projection.checkpointScopes.find(
       (candidate) => candidate.id === checkpoint?.scopeId,
     );
-    if (checkpoint === undefined || scope === undefined || checkpoint.status !== "ready") {
+    if (checkpoint === undefined || scope === undefined || checkpoint.status === "stale") {
       return yield* fail("target-invalid", "That point has no checkpoint to return to.");
     }
     if (projection.runs.some(isActiveRun)) {
@@ -201,7 +198,7 @@ const make = Effect.gen(function* () {
   )(function* (input) {
     const { projection, checkpoint, scope } = yield* loadRewind(input.threadId, input.target);
     const { thread, runs, messages } = projection;
-    const targetOrdinal = checkpoint.appRunOrdinal ?? 0;
+    const targetOrdinal = checkpointRunOrdinal(checkpoint);
     const capabilities = yield* adapters.get(thread.modelSelection.instanceId).pipe(
       Effect.flatMap((adapter) => adapter.getCapabilities()),
       Effect.option,
@@ -224,12 +221,15 @@ const make = Effect.gen(function* () {
     const hasProviderThread = projection.providerThreads.some(
       (candidate) => candidate.id === thread.activeProviderThreadId,
     );
-    const isolated = yield* isCheckpointRestoreIsolated(thread, scope, {
-      fileSystem,
-      projections,
-      projects,
-      path,
-    }).pipe(Effect.mapError(unexpected));
+    const hasFiles = checkpoint.status === "ready";
+    const isolated =
+      hasFiles &&
+      (yield* isCheckpointRestoreIsolated(thread, scope, {
+        fileSystem,
+        projections,
+        projects,
+        path,
+      }).pipe(Effect.mapError(unexpected)));
     const latest = latestReadyCheckpoint(projection.checkpoints, scope) ?? checkpoint;
     const reads = isolated
       ? yield* readOutsideChanges({
@@ -250,9 +250,11 @@ const make = Effect.gen(function* () {
       : !hasProviderThread
         ? "This conversation has no agent session to rewind."
         : null;
-    const filesBlock = isolated
-      ? null
-      : "Restoring files needs a worktree this conversation has to itself.";
+    const filesBlock = !hasFiles
+      ? "No file snapshot was saved at this point."
+      : isolated
+        ? null
+        : "Restoring files needs a worktree this conversation has to itself.";
     const modePreview = (
       mode: OrchestrationV2RewindMode,
       blocks: ReadonlyArray<string | null>,
@@ -301,6 +303,9 @@ const make = Effect.gen(function* () {
     function* (input, actor) {
       const { projection, checkpoint, scope } = yield* loadRewind(input.threadId, input.target);
       const restoresFiles = input.mode !== "conversation";
+      if (restoresFiles && checkpoint.status !== "ready") {
+        return yield* fail("target-invalid", "No file snapshot was saved at this point.");
+      }
       const latest = latestReadyCheckpoint(projection.checkpoints, scope) ?? checkpoint;
       const reads = restoresFiles
         ? yield* readOutsideChanges({
@@ -351,7 +356,7 @@ const make = Effect.gen(function* () {
               outcome: "pending",
               threadId: input.threadId,
               target: { kind: "checkpoint", id: checkpoint.id },
-              result: `Back to turn ${checkpoint.appRunOrdinal ?? 0}. What it discards stays on an archived branch.`,
+              result: `Back to turn ${checkpointRunOrdinal(checkpoint)}. What it discards stays on an archived branch.`,
               undo: {
                 tool: "t3_thread_rewind",
                 input: { action: "reopen", threadId: input.tailThreadId },

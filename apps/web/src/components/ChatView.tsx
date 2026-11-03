@@ -8,6 +8,7 @@ import { usePasteToFocusComposer } from "./chat/usePasteToFocusComposer";
 import { announcedRun, isDetailBehindShell } from "./chat/threadActivityAnnouncement";
 import {
   deriveAvailableRevertTurnCounts,
+  deriveConversationTurnCounts,
   deriveThreadPendingBackgroundTasks,
   deriveWorkspaceMutationId,
   presentThreadShellFromProjection,
@@ -157,7 +158,6 @@ import {
   deriveActiveWorkStartedAt,
   deriveCanInterruptRunningThread,
   findLatestProposedPlan,
-  findRevertCheckpoint,
   hasActionableProposedPlan,
   isLatestRunSettled,
 } from "../session-logic";
@@ -1635,10 +1635,10 @@ export default function ChatView(props: ChatViewProps) {
   );
   const turnDiffSummaries = useThreadCheckpointSummaries(routeThreadDetailRef);
   const availableRevertTurnCounts = deriveAvailableRevertTurnCounts(serverProjection);
+  const conversationTurnCounts = deriveConversationTurnCounts(serverProjection);
   // A paged history window cannot identify the first loaded run as the thread start.
   const threadStartCheckpointReady =
-    !serverThreadHistory.hasMoreHistory &&
-    findRevertCheckpoint(serverProjection?.checkpoints ?? [], 0) !== undefined;
+    !serverThreadHistory.hasMoreHistory && conversationTurnCounts.threadStart;
 
   const workspaceMutationId = deriveWorkspaceMutationId(
     serverVisibleTurnItems,
@@ -3644,6 +3644,7 @@ export default function ChatView(props: ChatViewProps) {
                 supportsConversationRollback={supportsConversationRollback}
                 threadStartCheckpointReady={threadStartCheckpointReady}
                 availableRevertTurnCounts={availableRevertTurnCounts}
+                conversationTurnCountByRunId={conversationTurnCounts.byRunId}
                 onRevertToTurnCount={onRevertTimelineTurnStable}
                 onUseArtifactTemplate={insertArtifactTemplateStable}
                 onSendAppMessage={sendAppMessageStable}

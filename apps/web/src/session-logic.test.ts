@@ -378,6 +378,22 @@ describe("V2 session presentation", () => {
       );
     });
 
+    it("offers a conversation rewind where turns have no file checkpoint", () => {
+      expect(
+        Object.fromEntries(
+          deriveRevertTurnCountByUserMessageId({
+            timelineEntries: [1, 2, 3].flatMap(turn),
+            checkpoints: [],
+            conversationTurnCountByRunId: new Map([
+              [runId(1), 1],
+              [runId(3), 3],
+            ]),
+            threadStartCheckpointReady: true,
+          }),
+        ),
+      ).toEqual({ "user-1": 0, "user-2": 1 });
+    });
+
     it("can edit a cancelled run but cannot target its checkpoint without a provider turn", () => {
       expect(
         Object.fromEntries(
