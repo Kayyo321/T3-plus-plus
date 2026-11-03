@@ -27,7 +27,9 @@ it.each([1])("blocks legacy launcher protocol %i with exact recovery steps", (la
   const reason = result.status === "blocked" ? result.reason : "";
   expect(reason).toMatch(new RegExp(`\\b${launcherProtocol}\\b`));
   expect(reason).toMatch(new RegExp(`\\b${SERVICE_LAUNCHER_PROTOCOL}\\b`));
-  expect(reason).toContain("curl -fsSL https://t3.codes/install.sh | T3PP_VERSION=9.8.7 sh");
+  expect(reason).toContain(
+    "curl -fsSL https://raw.githubusercontent.com/Kayyo321/T3-plus-plus/main/install.sh | T3PP_VERSION=9.8.7 T3PP_DESKTOP=0 sh",
+  );
   expect(reason).toContain("~/.local/bin/t3 service install");
   expect(reason).toContain("t3pp --version");
   expect(reason).toContain("which -a t3");

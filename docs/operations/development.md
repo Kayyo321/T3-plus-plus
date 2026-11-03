@@ -27,8 +27,8 @@ GitCafe.
 
 ```sh
 git remote set-url origin https://git.cafe/pingdotgg/t3code.git
-git remote add github https://github.com/pingdotgg/t3code.git
-gh repo set-default pingdotgg/t3code   # `gh` is still used for merging
+git remote add github https://github.com/Kayyo321/T3-plus-plus.git
+gh repo set-default Kayyo321/T3-plus-plus   # `gh` is still used for merging
 bun install -g @gitcafe/cli@latest   # `cafe` needs Bun 1.2 or newer
 cafe auth login && cafe auth http setup
 cafe skills install --global  # optional: cafe-* skills for coding agents
@@ -41,7 +41,7 @@ With `origin` on git.cafe, work through GitCafe and leave GitHub's API alone:
   github.com one, wherever a tool tracks the PR, so polling stays on GitCafe.
 - Read checks with `cafe pr status <n>`, and GitHub Actions logs with `cafe ci logs <run>` (run ids
   from `cafe ci list --pr <n>`). `cafe ci rerun <run>` reruns one. These need `cafe` 0.11 or newer.
-- Write closing references as `Fixes pingdotgg/t3code#<n>`. GitCafe turns a bare `#<n>` in text it
+- Write closing references as `Fixes Kayyo321/T3-plus-plus#<n>`. GitCafe turns a bare `#<n>` in text it
   syncs to GitHub into a git.cafe link, and GitHub does not close issues from those.
 - Merge with `gh pr merge <n> --match-head-commit <sha>`, because `cafe pr merge` cannot pin the
   commit you reviewed.

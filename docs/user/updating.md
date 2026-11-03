@@ -36,6 +36,12 @@ The confirmation counts the running threads that the restarts will interrupt,
 and how many can resume afterwards. See **Continue threads after restarts**
 below.
 
+## Update from a terminal
+
+If you installed T3++ with the [one-line installer](./install.md#install), run it again to
+update both the desktop app and the `t3pp` command. On a Mac, this is how an unsigned
+desktop build updates, since it cannot update itself.
+
 ## Switch between Stable and Nightly
 
 In the desktop app, change **Settings → About → Update track**. T3++ shows each
