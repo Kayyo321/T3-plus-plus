@@ -5,7 +5,7 @@ to keep a terminal open.
 
 ## Manage the service
 
-Install the `t3` CLI first ([Install T3++](./install.md#command-line)), then
+Install the `t3pp` command first ([Install T3++](./install.md#install)), then
 run these commands on the machine that will host T3++:
 
 | Task                                  | Command                  |
@@ -22,8 +22,8 @@ Uninstalling the service leaves your projects, threads, and settings intact.
 Running `t3pp service install` again repairs a service that `t3pp service status`
 reports as broken.
 
-`t3pp update` downloads the newest release on your channel and switches `t3`
-and the service to it. Restarting interrupts running agent turns, terminals,
+`t3pp update` downloads the newest release on your channel and switches the
+`t3pp` command and the service to it. Restarting interrupts running agent turns, terminals,
 and remote clients, so it asks first; answer no and the service keeps running
 the old version until you run `t3pp service restart`. Pass `--yes` from a
 script. A server you started by hand is left running; stop and start it again
@@ -37,21 +37,21 @@ maintainers' test train: its builds can be broken and are never offered as
 updates, so the installer and `t3pp update` ask for confirmation before
 installing one.
 
-`t3pp uninstall` removes the background service, the `t3` launcher, and the
+`t3pp uninstall` removes the background service, the `t3pp` command, and the
 downloaded versions after showing you the list and asking once. Your projects,
 threads, and settings under `~/.t3pp/userdata` are kept, along with `service.env`
 under T3 home. Pass `--yes` from a script.
 
 ## Local network access
 
-A new service answers only on this machine. Other devices reach it through
-T3 Connect, or directly once you choose the local network in `t3pp up` (or run
-`t3pp up --lan`, which sets `T3PP_LAN=true` in `service.env`). It then listens on
-your local network and Tailscale addresses, so the desktop and mobile apps on
-the same network connect directly instead of through T3 Connect. It still does
-not answer on public addresses. Anyone on the same network can reach the port,
-so a pairing code is all that keeps them out. The hosted web app at app.t3.codes
-stays on T3 Connect, because browsers block plain HTTP from an HTTPS page.
+A new service answers only on this machine. Other devices reach it once you choose
+the local network in `t3pp up` (or run `t3pp up --lan`, which sets
+`T3PP_LAN=true` in `service.env`). It then listens on your local network and
+Tailscale addresses, so the desktop and mobile apps on the same network connect
+directly. It still does not answer on public addresses. Anyone on the same network
+can reach the port, so a pairing code is all that keeps them out. The hosted web
+app at app.t3.codes is a T3 Code service and is not available in T3++ release
+builds; open the web app your own server serves instead.
 
 A service installed before `T3PP_LAN` existed keeps listening on the local
 network. `t3pp status` says so, and `t3pp up --no-lan` turns it off. Any
@@ -92,14 +92,13 @@ Mac logged in and awake for unattended remote access. Installing over SSH while
 nobody is logged in at the Mac's screen can fail at the final start step; the
 service is still installed and will start at the next login.
 
-Windows background services are not supported. To keep a Windows host available
-through T3 Connect, leave the desktop app running with its local environment
+Windows background services are not supported. To keep a Windows host available,
+leave the desktop app running with its local environment
 enabled, or keep `t3pp serve` running in a terminal. Minimize the desktop app rather
-than closing its last window, which stops its local server. Linking T3 Connect
-does not configure automatic startup at Windows sign-in.
+than closing its last window, which stops its local server.
 
-`t3pp up` installs the service when you set up T3 Connect, but the two are managed
-separately. Signing out of T3 Connect does not stop or uninstall the service.
+`t3pp up` installs the service when you choose remote access. Remove it with
+`t3pp service uninstall`.
 
 ## Keep the server responsive when agents use all memory
 
@@ -152,12 +151,11 @@ that session open.
 
 On macOS, check **System Settings → General → Login Items** if the service no
 longer starts at login. If agent work cannot access Desktop, Documents, or
-Downloads, it may need Full Disk Access for the `t3` executable listed in
+Downloads, it may need Full Disk Access for the `t3pp` executable listed in
 `ProgramArguments` in
 `~/Library/LaunchAgents/com.t3pp.t3pp.service.plist`.
 
-For failures after signing in to T3 Connect, see
-[connection troubleshooting](./t3-connect-troubleshooting.md).
+For remote access failures, see [Remote access](./remote-access.md).
 
 ## Reclaim database space
 

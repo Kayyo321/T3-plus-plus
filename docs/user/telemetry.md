@@ -1,8 +1,8 @@
 # Product usage data
 
-The T3++ server sends product usage events to T3++'s own endpoint at `ingest.t3.codes`,
+The T3++ server sends product usage events to `ingest.t3.codes`, an endpoint the T3 Code team runs,
 associated with a hashed account or installation identifier. To count how many installations one person
-uses, the server also sends hashed account identifiers: your T3 Connect account, your OpenAI and
+uses, the server also sends hashed account identifiers: your OpenAI and
 Claude accounts when you are signed in, and a random identifier for each device that connects. The endpoint keeps a copy of each
 event and forwards events to PostHog. Events include the provider, model, reasoning effort,
 permission mode, turn result, duration, release channel, and main-agent token totals when
@@ -11,23 +11,23 @@ available.
 Events do not include prompts, responses, file contents, authentication tokens, conversation IDs,
 raw provider events, or child-agent output. Child-agent token use is excluded from the totals.
 
-T3++ also sends relay connection traces to Axiom to diagnose T3 Connect connectivity.
+When a build connects through a relay, it also sends relay connection traces to Axiom to diagnose connectivity.
 
 To disable product events and relay tracing, set `T3PP_TELEMETRY_ENABLED=false` in the server's
 environment before starting it. Relay tracing also stops when `T3PP_OTEL_SDK_DISABLED` or
 `OTEL_SDK_DISABLED` turns OpenTelemetry export off. The web app in a browser, including one the
-`t3` CLI opens, does not read these variables.
+`t3pp` command opens, does not read these variables.
 
 The desktop app reads `T3PP_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 
 ## Mobile app crash reports
 
-When the iOS or Android app crashes or hits an error, it sends a report to T3++: the error
+When the iOS or Android app crashes or hits an error, it sends a report to the relay the app was built with (`T3PP_RELAY_URL`): the error
 message, the stack trace, the app version, and the device model and OS version. Each launch also
 sends startup timings, and every report carries a random ID for the install. Reports go through
-the T3 Connect relay to Axiom. They do not include your threads, prompts, or connection details,
-but an error message can quote a value the app was handling.
+that relay to Axiom. They do not include your threads, prompts, or connection details,
+but an error message can quote a value the app was handling. A build without a relay sends no crash reports.
 
 To stop sending them, turn off **Send crash reports** in **Settings > About T3++ > Diagnostics**.
 

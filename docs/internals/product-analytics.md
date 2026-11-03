@@ -16,12 +16,12 @@ Every event also carries `installId` when the server can save its state: the has
 of a random id in the state directory, which never changes for the install. If
 that file cannot be written, events still go out under `distinct_id`, as before. Count installs
 with it. Who an install belongs to is a separate fact, sent as
-`install.owner_observed`. Owners are resolved at query time in our own store, so
+`install.owner_observed`. Owners are resolved at query time in the ingest store, so
 a rule can change and apply to all history.
 
 [Owner sources](../../apps/server/src/telemetry/Identify.ts), strongest first:
-T3 Connect, then the OpenAI and Claude person ids, then the client device. The
-server reports what it can read itself: the linked Connect account and provider
+T3 Connect, then the OpenAI and Claude person ids, then the client device. T3 Connect
+is a T3 Code service that T3++ release builds do not include. The server reports what it can read itself: the linked Connect account and provider
 logins. A connecting client reports its signed-in Connect account and its device,
 which links every environment opened from one phone, browser, or desktop. Use the
 OpenAI `user_id` claim, not the Codex `account_id` (the ChatGPT workspace, which a
@@ -93,8 +93,8 @@ repeating the call's outcome and duration, so event counts are not call counts.
 
 ## Delivery
 
-The server sends batches to the ingest endpoint at `ingest.t3.codes`, which archives
-every event and forwards some of them to PostHog. A send can fail after the endpoint
+The server sends batches to the ingest endpoint at `ingest.t3.codes`, which the T3 Code
+team runs. It archives every event and forwards some of them to PostHog. A send can fail after the endpoint
 has stored the batch, so every retry is a copy.
 [Delivery](../../apps/server/src/telemetry/AnalyticsService.ts) gives each event a
 uuid when it is recorded (the endpoint rejects events without one), backs off after

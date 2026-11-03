@@ -6,7 +6,7 @@ You can think of T3++ as an open source "bring-your-own-subscription" alternativ
 
 ## What makes T3++ special?
 
-We have over 500,000 users who love T3++. It's important we maintain the things they love as we continue to iterate on the product. Here's a brief list of the things we can never compromise on.
+T3++ is a fork of [T3 Code](https://github.com/pingdotgg/t3code), and people choose it for what it kept from T3 Code as much as for what it adds. It's important we maintain those things as we continue to iterate on the product. Here's a brief list of the things we can never compromise on.
 
 ### 1. Open at the core
 
@@ -18,19 +18,21 @@ Lots of apps have gotten bogged down with bad tech decisions and "slop". We have
 
 ### 3. Remote ready
 
-The architecture of T3++'s websocket layer (npx t3pp) enables a lot of awesome remote features. These have become core to the product. Whether users are connecting directly over their local network, using Tailscale, or leaning in fully with T3 Connect (our tunnel solution, also in this repo), we need to make sure new features are properly supported.
+The architecture of T3++'s websocket layer (npx t3pp) enables a lot of awesome remote features. These have become core to the product. Whether users are connecting directly over their local network, using Tailscale, or running their own Private relay (`infra/remote-relay`), we need to make sure new features are properly supported.
 
 ### 4. Multi-surface
 
 T3++ has 3 key app surfaces: **web**, **desktop**, and **mobile**.
 
-**Web** is kind of two surfaces, as we have the public facing "app.t3.codes" as well as locally hosting the web app through the `npx t3pp` command. Both need to be supported by all new features where reasonable.
+**Web** is the web app that the `t3pp` command and the desktop app host, opened from any browser that can reach the server. T3 Code's hosted client at app.t3.codes and its T3 Connect tunnel are T3 Code's services; T3++ release builds ship without them, but the code for both stays in this repo, so don't break it.
 
-**Desktop** is the main surface most users install first. It's a full Electron app that bundles the server runner as well. The desktop app can also be used as the host server, allowing remote connections from app.t3.codes or the mobile app.
+**Desktop** is the main surface most users install first. It's a full Electron app that bundles the server runner as well. The desktop app can also be used as the host server, allowing remote connections from other browsers or the mobile app.
 
-**Mobile** is a React Native app for both iOS and Android, available on the App Store and Google Play. The mobile app allows for connecting to any T3++ server to control work remotely.
+**Mobile** is a React Native app for both iOS and Android, built from `apps/mobile` (T3++ has no store listing yet). The mobile app allows for connecting to any T3++ server to control work remotely.
 
-## A note from Theo
+## A note from Theo (T3 Code's creator)
+
+T3++ keeps this note because it is still how we want to build.
 
 I like ambitious ideas, simple systems, and software that feels obvious. Do not preserve complexity just because it already exists. Do not introduce machinery because it looks architecturally impressive. Understand the real constraint, then fight for the smallest model that makes the correct behavior unsurprising.
 
@@ -45,7 +47,7 @@ Of note: Most T3++ contributions will come from T3++ itself, often controlled re
 We need to be on the same page with terminology. When communicating, use this language:
 
 - **you** means the agent reading this file and changing T3++.
-- **we, us, and maintainers** mean Theo, Julius and the people building T3++. These are who you are talking to now.
+- **we, us, and maintainers** mean Kayyo321 and the people building T3++. These are who you are talking to now.
 - **user** means the person using T3++ to direct coding agents.
 - **agent** means the coding agent a user runs inside T3++. Depending on context, that may also include you.
 - **provider** means the agent runtime or harness T3++ talks to, such as Codex, Claude, Cursor, or OpenCode.

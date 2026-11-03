@@ -1,5 +1,9 @@
 # T3 Connect troubleshooting
 
+T3 Connect is a hosted service run by the T3 Code team. T3++ release builds do not include
+it, so this page applies only to builds configured for T3 Connect. For other remote access,
+see [Remote access](./remote-access.md).
+
 A T3 Connect connection goes through four parts, in this order:
 
 1. **This device** reaches T3 Connect over the internet.
@@ -112,9 +116,7 @@ T3 Connect does not have an active link between your account and the host.
 - **This device's sign-in expired, or the host no longer accepts this
   device.** Sign out of T3 Connect and sign in again.
 - **Your account reached its tunnel limit.** Remove an environment you do not
-  use from your T3 account's T3 Connect page, or
-  [link a paid T3 Chat account](./remote-access.md#more-machines-with-t3-chat)
-  for a higher limit. Then restart T3++ on the host.
+  use from your T3 Connect page. Then restart T3++ on the host.
 
 ## The clock is off
 
@@ -131,7 +133,7 @@ This app needs a newer T3++ on the host. Update T3++ on the host. See
 
 | Error                                                     | Fix                                                                                                                                               |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment or link a paid T3 Chat account, then restart T3++ on the host.                                                       |
+| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment, then restart T3++ on the host.                                                                                      |
 | `auth_invalid` or `invalid_bearer`                        | Run `t3pp connect login`. If credentials were revoked, run `t3pp connect logout`, then `t3pp connect` again. Restart the server after signing in. |
 | Expired or invalid link proof                             | Check the host's date and time, update T3++, then restart it.                                                                                     |
 | HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                                     |

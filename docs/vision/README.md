@@ -39,7 +39,7 @@ client; gaps are named in the row. Mobile and desktop were not run for this tabl
 
 | Feature                         | State   | What exists / what is missing                                                                                                                                                  |
 | ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Remote access to an environment | Exists  | Direct, Tailscale, SSH, T3 Connect ([remote](../internals/remote.md)). Missing: a per-conversation switch.                                                                     |
+| Remote access to an environment | Exists  | Direct, Tailscale, SSH, relay, T3 Connect ([remote](../internals/remote.md); a T3 Code service, not in T3++ builds). Missing: a per-conversation switch.                       |
 | Guest links                     | Partial | One-person, 24h, approve-each-message links ([guest links](../user/guest-links.md)). Beta, needs T3 Connect, read-mostly. Remote control builds on and generalizes it.         |
 | MCP orchestration               | Partial | Server MCP can create and steer threads and sub-agents ([orchestrator MCP](../orchestration-v2/orchestrator-mcp-server.md)). Missing: editor-wide reach, and the side-chat UI. |
 | Outside agents over MCP         | Exists  | [Outside agents](../user/outside-agents.md).                                                                                                                                   |
@@ -47,7 +47,7 @@ client; gaps are named in the row. Mobile and desktop were not run for this tabl
 | Checkpoints and restore         | Exists  | Per-turn hidden git refs; restore returns the saved workspace.                                                                                                                 |
 | Source control and PRs          | Partial | Diff pane, commit review, PRs on many hosts ([source control](../user/source-control.md)). Missing: graph view and the action surface.                                         |
 | Secret providers                | Partial | 1Password provider package exists. Missing: environments as a user concept that scope folders and secrets.                                                                     |
-| Background service              | Exists  | `t3 service` ([background service](../user/background-service.md)). Distinct from background _tasks_ inside a conversation.                                                    |
+| Background service              | Exists  | `t3pp service` ([background service](../user/background-service.md)). Distinct from background _tasks_ inside a conversation.                                                  |
 | Terminal                        | Exists  | [Terminal](../user/terminal.md). Basis for IDE mode.                                                                                                                           |
 | Nested sessions                 | Partial | Services, MCP, and sidebar rows exist; not exercised in a real client.                                                                                                         |
 | Teamwork                        | Partial | Being rebuilt as flow-chart sheets, durable rosters, and a run board; not yet exercised end to end; mobile not run.                                                            |

@@ -19,16 +19,17 @@ https://<environment-address>/mcp
 The copied URL uses the route this device is connected over, so an agent on the
 same device can reach it.
 
-- **An agent on your own computers** can use `localhost` on the host, T3
-  Connect, or any `https` address, such as
+- **An agent on your own computers** can use `localhost` on the host, or any
+  `https` address, such as
   [Tailscale HTTPS](./remote-access.md#tailscale-https). Signing in sends the
   agent's credentials to the environment, and agents only do that over `https`
   or to `localhost`. A plain-`http` LAN or Tailscale address, like
   `http://100.x.y.z:3773`, lets an agent find the environment but not finish
   signing in.
 - **A hosted agent**, such as ChatGPT or a bot running in the cloud, must reach
-  the environment from the internet. Use the T3 Connect address. A Tailscale
-  address only works from your own tailnet.
+  the environment from the internet, so it needs a public `https` address that you
+  set up, such as a reverse proxy. A Tailscale address only works from your own
+  tailnet.
 
 ## Approve a sign-in
 
@@ -56,32 +57,32 @@ Then choose what the agent may do:
 ## Claude Code
 
 ```sh
-claude mcp add --transport http t3 https://<environment-address>/mcp
-claude mcp login t3
+claude mcp add --transport http t3pp https://<environment-address>/mcp
+claude mcp login t3pp
 ```
 
 `claude mcp login` opens the sign-in page in your browser. On a machine
 without a browser, add `--no-browser`, open the printed URL elsewhere, and
-paste the final URL back when asked. `claude mcp list` shows `t3` as connected
+paste the final URL back when asked. `claude mcp list` shows `t3pp` as connected
 once you approve.
 
 ## Codex
 
 ```sh
-codex mcp add t3 --url https://<environment-address>/mcp
-codex mcp login t3
+codex mcp add t3pp --url https://<environment-address>/mcp
+codex mcp login t3pp
 ```
 
 `codex mcp login --no-browser` prints the sign-in URL instead of opening it.
-`codex mcp list` shows `t3` with OAuth once you approve.
+`codex mcp list` shows `t3pp` with OAuth once you approve.
 
 ## ChatGPT
 
 Add the environment as a custom MCP app in ChatGPT's apps settings:
 
 1. Create a new app or plugin with a custom MCP server.
-2. Set the server URL to `https://<environment-address>/mcp`, using the T3
-   Connect address.
+2. Set the server URL to `https://<environment-address>/mcp`, using the public
+   address from above.
 3. Choose **OAuth** for authentication. ChatGPT discovers the rest; you do not
    need a client ID or secret.
 4. Create the app, then approve the sign-in page that opens.
@@ -94,14 +95,14 @@ Agents without OAuth support cannot connect.
 
 ## Scripts on the host
 
-On the machine that runs the environment, `t3 thread` uses the same tools
+On the machine that runs the environment, `t3pp thread` uses the same tools
 without a sign-in:
 
 ```sh
-id=$(t3 thread start . "Find why the tests are slow")
-t3 thread send "$id" "Now fix it" --wait
-t3 thread show "$id"
-t3 thread list
+id=$(t3pp thread start . "Find why the tests are slow")
+t3pp thread send "$id" "Now fix it" --wait
+t3pp thread show "$id"
+t3pp thread list
 ```
 
 `.` means the project that contains the current folder; a project id also

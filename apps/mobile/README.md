@@ -1,7 +1,7 @@
 # T3++ Mobile
 
 > [!NOTE]
-> To install the released app from the App Store or Google Play, see [Mobile app](../../docs/user/install.md#mobile-app). This guide covers building it from source.
+> T3++ has no App Store or Google Play listing; the store apps are T3 Code's. This guide covers building the T3++ app from source. See [Mobile app](../../docs/user/install.md#mobile-app) for other ways to use T3++ from a phone.
 
 ## Quickstart
 
