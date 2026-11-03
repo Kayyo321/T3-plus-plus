@@ -2,6 +2,8 @@
 
 > For maintainers. Using T3++? See [docs/user](../user/).
 
+The relay in `infra/relay` is the hosted relay behind T3 Connect, which the T3 Code team runs. T3++ release builds do not use it.
+
 The relay Alchemy stack owns a shared Axiom trace setup:
 
 - `t3-code-relay-traces-prod`, the OpenTelemetry trace dataset shared by the Worker, mobile app, and
@@ -17,7 +19,7 @@ The relay Alchemy stack owns a shared Axiom trace setup:
   `t3-code-mobile-sourcemaps-upload-prod`, a Cloudflare token that can only write objects to it
 
 Alchemy stages append their sanitized stage name to isolate resources, for example
-`t3-code-relay-traces-dev-julius` for a personal stage.
+`t3-code-relay-traces-dev-<name>` for a personal stage.
 
 Deploy from `infra/relay` with the normal Alchemy workflow:
 

@@ -1,5 +1,8 @@
 # T3 Connect
 
+T3 Connect is T3 Code's hosted service. T3++ release builds ship without its configuration, so
+this describes code that only builds configured with a relay and Clerk use.
+
 T3 Connect uses Clerk for cloud identity. The relay manages environment links,
 credentials for reaching environments, and managed tunnel allocations. After
 bootstrap, clients send application traffic through the environment's tunnel

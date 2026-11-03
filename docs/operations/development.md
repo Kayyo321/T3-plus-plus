@@ -19,7 +19,7 @@ Prefer a container? See [Dev container](../internals/devcontainer.md) for VS Cod
 
 GitHub is the source of truth. [git.cafe/pingdotgg/t3code](https://git.cafe/pingdotgg/t3code) is a
 two-way synced mirror with much higher API rate limits, which helps when many agents work at once.
-You never need it to contribute.
+You never need it to contribute. This mirror belongs to the upstream repository, pingdotgg/t3code, and does not apply to this fork.
 
 Pushes, PRs, comments, reviews, labels, and issue edits made on GitCafe sync to GitHub within
 about a minute, and PR and issue numbers match. CI runs on GitHub, and its checks show up on

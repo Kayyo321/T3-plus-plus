@@ -42,7 +42,7 @@ without expanding shell expressions.
 ## Where agents run
 
 Registry agents always run on the machine that hosts your T3++ server. That stays true when you
-connect through `app.t3.codes`, T3 Connect, or a relay.
+connect from a browser, the desktop app, or a relay.
 
 Agents install under `tools/<agent-id>/<version>/` inside T3 home. T3++ verifies SHA-256 when the Registry entry
 provides one; entries without a checksum retain the Registry's HTTPS distribution guarantee.
@@ -122,7 +122,7 @@ Devin runs its commands through T3++'s terminals, and those commands follow the 
 permission mode. For other agents, T3++ shows the command, output, and exit status the agent
 reports but does not run or stop their terminals.
 
-Registry agents can schedule work and use T3's MCP tools. Child-task presentation depends on what
+Registry agents can schedule work and use T3++'s MCP tools. Child-task presentation depends on what
 the agent exposes: ACP has no portable native subagent-lineage contract, so richer delegation views
 remain agent-specific.
 
@@ -132,7 +132,7 @@ Checkpoint rollback restores your files as usual. ACP agents cannot rewind their
 so the next turn after a rollback starts a fresh agent session that no longer remembers the
 conversation from before the checkpoint.
 
-Registry instances are not used for T3's app-owned text generation, such as thread titles, commit
+Registry instances are not used for T3++'s app-owned text generation, such as thread titles, commit
 messages, branch names, or pull request descriptions. Configure a text-generation-capable provider
 for those actions.
 

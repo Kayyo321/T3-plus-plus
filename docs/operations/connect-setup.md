@@ -1,5 +1,8 @@
 # T3 Connect setup
 
+T3 Connect is T3 Code's hosted service; T3++ release builds ship without it. Follow this only to run
+your own deployment of the relay and Clerk.
+
 Deployment and client configuration for T3 Connect. The [architecture note](../internals/t3-connect.md)
 explains the trust boundaries; the [relay README](../../infra/relay/README.md#deployment) owns relay
 provisioning instructions.
