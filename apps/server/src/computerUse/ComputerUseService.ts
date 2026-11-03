@@ -21,6 +21,7 @@ import {
   type ComputerUseTarget,
   ThreadId,
 } from "@t3tools/contracts";
+import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -29,6 +30,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -151,6 +153,8 @@ export const layer = Layer.effect(
     const sessions = yield* Ref.make<ReadonlyMap<ThreadId, Session>>(new Map());
     // Subscribers re-read, so a dropped signal is covered by the next one.
     const changes = yield* PubSub.sliding<ThreadId>(64);
+    // One step at a time per conversation: steps share one screen and one approval slot.
+    const stepLocks = yield* KeyedLock.make<ThreadId>();
     const nowIso = DateTime.now.pipe(Effect.map(DateTime.formatIso));
     const newId = crypto
       .randomUUIDv4()
@@ -289,7 +293,6 @@ export const layer = Layer.effect(
         }),
       );
 
-    /** One approval at a time: the agent runs one step at a time. */
     const requestApproval = Effect.fn("ComputerUseService.requestApproval")(function* (
       threadId: ThreadId,
       input: ComputerUseActInput,
@@ -310,13 +313,13 @@ export const layer = Layer.effect(
       if (!placed) return yield* refuse("off", OFF_MESSAGE);
       yield* announce(threadId);
       yield* record(threadId, `approval.${sensitivity}`, "pending", input.intent);
-      const approved = yield* Deferred.await(answer).pipe(
+      const clear = updateSession(threadId, (session) =>
+        session.approval?.info.id === info.id ? { ...session, approval: null } : session,
+      ).pipe(Effect.andThen(announce(threadId)));
+      return yield* Deferred.await(answer).pipe(
         Effect.timeoutOption(APPROVAL_TIMEOUT),
-        Effect.map((result) => result._tag === "Some" && result.value),
+        Effect.ensuring(clear),
       );
-      yield* updateSession(threadId, (session) => ({ ...session, approval: null }));
-      yield* announce(threadId);
-      return approved;
     });
 
     const driverFor = (session: Session, browser: BrowserDriver): BrowserDriver => {
@@ -357,9 +360,11 @@ export const layer = Layer.effect(
           return yield* refuse("refused", message);
         }
         if (sensitivity !== null) {
-          const approved = yield* requestApproval(threadId, input, sensitivity);
-          if (!approved) {
-            const message = "The user did not approve this step.";
+          const answer = yield* requestApproval(threadId, input, sensitivity);
+          if (Option.isNone(answer) || !answer.value) {
+            const message = Option.isNone(answer)
+              ? `No one answered this step within ${APPROVAL_TIMEOUT}.`
+              : "The user did not approve this step.";
             yield* log("denied", message, null);
             return yield* refuse("denied", message);
           }
@@ -373,31 +378,35 @@ export const layer = Layer.effect(
         yield* log("ok", result, screenshot);
         return { stepId, result };
       },
+      (effect, threadId) => stepLocks.withLock(threadId, effect),
     );
 
     const screenshot: ComputerUseService["Service"]["screenshot"] = Effect.fn(
       "ComputerUseService.screenshot",
-    )(function* (threadId, browser) {
-      const session = yield* requireControl(threadId);
-      const bytes = yield* driverFor(session, browser).screenshot;
-      const stepId = `step:${yield* newId}`;
-      yield* logStepSafely({
-        id: stepId,
-        threadId,
-        target: session.target,
-        action: "screenshot",
-        intent: "Looked at the screen",
-        sensitivity: null,
-        status: "ok",
-        result: null,
-        screenshot: bytes,
-      });
-      return {
-        stepId,
-        mimeType: "image/png" as const,
-        data: Buffer.from(bytes).toString("base64"),
-      };
-    });
+    )(
+      function* (threadId, browser) {
+        const session = yield* requireControl(threadId);
+        const bytes = yield* driverFor(session, browser).screenshot;
+        const stepId = `step:${yield* newId}`;
+        yield* logStepSafely({
+          id: stepId,
+          threadId,
+          target: session.target,
+          action: "screenshot",
+          intent: "Looked at the screen",
+          sensitivity: null,
+          status: "ok",
+          result: null,
+          screenshot: bytes,
+        });
+        return {
+          stepId,
+          mimeType: "image/png" as const,
+          data: Buffer.from(bytes).toString("base64"),
+        };
+      },
+      (effect, threadId) => stepLocks.withLock(threadId, effect),
+    );
 
     const start: ComputerUseService["Service"]["start"] = Effect.fn("ComputerUseService.start")(
       function* (input) {
