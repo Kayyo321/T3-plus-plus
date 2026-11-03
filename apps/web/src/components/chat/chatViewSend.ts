@@ -160,16 +160,27 @@ export async function rewindToMessage(input: {
   readonly turnCount: number;
   readonly draftTarget: ScopedThreadRef | DraftId;
   readonly composerHasPendingAttachments: boolean;
+  readonly restoresPrompt: boolean;
   readonly createAssetUrl: Parameters<
     typeof prepareRevertedMessageAttachments
   >[0]["createAssetUrl"];
   readonly rewind: (commandId: CommandId) => Promise<AtomCommandResult<unknown, unknown>>;
 }): Promise<
   | { readonly error: string; readonly prompt?: never }
-  | { readonly error: null; readonly prompt: string }
+  | { readonly error: null; readonly prompt: string | null }
 > {
   const { message, environmentId, draftTarget } = input;
+  const commandId = CommandId.make(randomUUID());
+  const rewind = () =>
+    waitForRevertedMessage(input.routeThreadRef, input.turnCount, commandId, async () => {
+      const result = await input.rewind(commandId);
+      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
+    });
   try {
+    if (!input.restoresPrompt) {
+      await rewind();
+      return { error: null, prompt: null };
+    }
     if (input.composerHasPendingAttachments) {
       throw new Error("Wait for attachments to finish preparing before rewinding.");
     }
@@ -189,11 +200,7 @@ export async function rewindToMessage(input: {
     ) {
       throw new Error("Make room for this message's attachments in the composer before rewinding.");
     }
-    const commandId = CommandId.make(randomUUID());
-    await waitForRevertedMessage(input.routeThreadRef, input.turnCount, commandId, async () => {
-      const result = await input.rewind(commandId);
-      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    });
+    await rewind();
     const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
     const restoredPrompt = recallableComposerPrompt(message.text);
     const nextPrompt =

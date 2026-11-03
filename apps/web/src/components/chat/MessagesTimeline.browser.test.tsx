@@ -684,7 +684,7 @@ describe("MessagesTimeline automation prompts", () => {
     );
   });
 
-  it("shows edit-from-here once an automation prompt is expanded", async () => {
+  it("shows edit-from-here and rewind once an automation prompt is expanded", async () => {
     setup();
     const runId = RunId.make("run-1");
     await using screen = await renderTimeline(
@@ -713,8 +713,10 @@ describe("MessagesTimeline automation prompts", () => {
       },
     );
     expect(screen.buttons("Edit from here")).toHaveLength(0);
+    expect(screen.buttons("Rewind conversation to this point")).toHaveLength(0);
     await click(screen.button(/^Automation/));
     expect(screen.buttons("Edit from here")).toHaveLength(1);
+    expect(screen.buttons("Rewind conversation to this point")).toHaveLength(1);
   });
 });
 

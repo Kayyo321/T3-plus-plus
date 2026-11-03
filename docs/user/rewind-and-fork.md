@@ -4,7 +4,7 @@ Rewind returns a conversation to an earlier point. Fork starts a new conversatio
 
 ## Rewind
 
-Use the pencil on one of your messages, **Rewind this thread** in the command palette, or `mod+alt+z`. The dialog shows what each choice would do before anything changes:
+Use the rewind icon under one of your messages, **Rewind this thread** in the command palette, or `mod+alt+z`. The rewind icon goes back to before that message and leaves your composer alone. The other two return the message to the composer, as [editing an earlier prompt](./composer.md#edit-an-earlier-prompt) does. The dialog shows what each choice would do before anything changes:
 
 - **Conversation only** drops the later messages. Files stay as they are.
 - **Files only** restores files from that turn's checkpoint. The conversation stays, and the agent is told its earlier edits may be gone.

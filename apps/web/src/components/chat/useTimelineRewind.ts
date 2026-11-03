@@ -88,6 +88,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
   const onRevertToTurnCount = async (
     turnCount: number,
     messageId: MessageId,
+    restoresPrompt = true,
     choice?: RewindChoice,
   ) => {
     const localApi = readLocalApi();
@@ -113,7 +114,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
       return;
     }
     if (choice === undefined) {
-      openRevertConfirm(routeThreadKey, { turnCount, messageId });
+      openRevertConfirm(routeThreadKey, { turnCount, messageId, restoresPrompt });
       return;
     }
     const rewindInput = {
@@ -150,6 +151,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
       turnCount,
       draftTarget: composerDraftTarget,
       composerHasPendingAttachments: composerRef.current?.hasPendingAttachments() === true,
+      restoresPrompt,
       createAssetUrl: createAttachmentAssetUrl,
       rewind: (commandId) => rewindThread({ environmentId, input: { ...rewindInput, commandId } }),
     });
@@ -162,7 +164,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
       setThreadError(activeThread.id, rewind.error);
       return;
     }
-    if (currentRouteThreadKeyRef.current === routeThreadKey) {
+    if (rewind.prompt !== null && currentRouteThreadKeyRef.current === routeThreadKey) {
       const nextPrompt = rewind.prompt;
       promptRef.current = nextPrompt;
       composerRef.current?.resetCursorState({ prompt: nextPrompt, cursor: nextPrompt.length });
@@ -172,8 +174,13 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     }
   };
   const onRevertToTurnCountStable = useStableCallback(onRevertToTurnCount);
-  const onConfirmRevert = (turnCount: number, messageId: MessageId, choice: RewindChoice) => {
-    void onRevertToTurnCount(turnCount, messageId, choice);
+  const onConfirmRevert = (
+    turnCount: number,
+    messageId: MessageId,
+    restoresPrompt: boolean,
+    choice: RewindChoice,
+  ) => {
+    void onRevertToTurnCount(turnCount, messageId, restoresPrompt, choice);
   };
   const onConfirmRevertStable = useStableCallback(onConfirmRevert);
 
@@ -233,8 +240,12 @@ export function useTimelineRewind(input: TimelineRewindInput) {
   const onConfirmForkStable = useStableCallback((input: Parameters<typeof onConfirmFork>[0]) => {
     void onConfirmFork(input);
   });
-  const onRevertTimelineTurn = (targetTurnCount: number, messageId: MessageId) => {
-    void onRevertToTurnCountStable(targetTurnCount, messageId);
+  const onRevertTimelineTurn = (
+    targetTurnCount: number,
+    messageId: MessageId,
+    restoresPrompt?: boolean,
+  ) => {
+    void onRevertToTurnCountStable(targetTurnCount, messageId, restoresPrompt);
   };
   const onRevertTimelineTurnStable = useStableCallback(onRevertTimelineTurn);
   return {

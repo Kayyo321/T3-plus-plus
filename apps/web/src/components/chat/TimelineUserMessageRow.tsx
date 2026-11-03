@@ -37,6 +37,7 @@ import {
   MessagesSquareIcon,
   Redo2Icon,
   PencilIcon,
+  RewindIcon,
 } from "lucide-react";
 import { Link as LinkIconNode } from "lucide";
 import { Button, InlineButton } from "../ui/button";
@@ -333,7 +334,18 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
             />
             <div className="flex items-center gap-0.5">
               {typeof revertTurnCount === "number" && (
-                <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
+                <>
+                  <RevertUserMessageButton
+                    turnCount={revertTurnCount}
+                    messageId={row.message.id}
+                    restoresPrompt
+                  />
+                  <RevertUserMessageButton
+                    turnCount={revertTurnCount}
+                    messageId={row.message.id}
+                    restoresPrompt={false}
+                  />
+                </>
               )}
               {forkRunId === null || forkPoint === undefined ? null : (
                 <ForkUserMessageButton
@@ -794,7 +806,18 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       </Tooltip>
       <div className={cn("flex items-center gap-0.5", floatActions && "flex-wrap justify-end")}>
         {typeof revertTurnCount === "number" && (
-          <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
+          <>
+            <RevertUserMessageButton
+              turnCount={revertTurnCount}
+              messageId={row.message.id}
+              restoresPrompt
+            />
+            <RevertUserMessageButton
+              turnCount={revertTurnCount}
+              messageId={row.message.id}
+              restoresPrompt={false}
+            />
+          </>
         )}
         {forkRunId === null || forkPoint === undefined ? null : (
           <ForkUserMessageButton
@@ -1112,12 +1135,16 @@ function ForkUserMessageButton({
 function RevertUserMessageButton({
   turnCount,
   messageId,
+  restoresPrompt,
 }: {
   turnCount: number;
   messageId: MessageId;
+  restoresPrompt: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
+  const label = restoresPrompt ? "Edit from here" : "Rewind conversation to this point";
+  const Icon = restoresPrompt ? PencilIcon : RewindIcon;
 
   return (
     <Tooltip>
@@ -1128,14 +1155,14 @@ function RevertUserMessageButton({
             size="xs"
             variant="ghost"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
-            onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
-            aria-label="Edit from here"
+            onClick={() => ctx.onRevertToTurnCount(turnCount, messageId, restoresPrompt)}
+            aria-label={label}
           />
         }
       >
-        <PencilIcon className="size-3" />
+        <Icon className="size-3" />
       </TooltipTrigger>
-      <TooltipPopup side="top">Edit from here</TooltipPopup>
+      <TooltipPopup side="top">{label}</TooltipPopup>
     </Tooltip>
   );
 }

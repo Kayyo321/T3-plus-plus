@@ -186,6 +186,7 @@ export function BranchRestoreConfirmHost(props: {
 interface PendingRevert {
   readonly turnCount: number;
   readonly messageId: MessageId;
+  readonly restoresPrompt: boolean;
 }
 
 const revertConfirmAtom = makeThreadOverlayAtom<PendingRevert>("revert-confirm");
@@ -198,7 +199,12 @@ export function RevertConfirmHost(props: {
   readonly threadKey: string;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
-  readonly onConfirm: (turnCount: number, messageId: MessageId, choice: RewindChoice) => void;
+  readonly onConfirm: (
+    turnCount: number,
+    messageId: MessageId,
+    restoresPrompt: boolean,
+    choice: RewindChoice,
+  ) => void;
 }) {
   const pending = useThreadOverlay(revertConfirmAtom, props.threadKey);
   if (pending === null) return null;
@@ -207,11 +213,11 @@ export function RevertConfirmHost(props: {
       environmentId={props.environmentId}
       threadId={props.threadId}
       target={{ type: "message", messageId: pending.messageId }}
-      restoresPrompt
+      restoresPrompt={pending.restoresPrompt}
       onCancel={() => closeThreadOverlay(revertConfirmAtom)}
       onConfirm={(choice) => {
         closeThreadOverlay(revertConfirmAtom);
-        props.onConfirm(pending.turnCount, pending.messageId, choice);
+        props.onConfirm(pending.turnCount, pending.messageId, pending.restoresPrompt, choice);
       }}
     />
   );
