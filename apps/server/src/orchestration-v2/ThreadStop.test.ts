@@ -661,15 +661,30 @@ it.effect("a repeated Stop that changes nothing still stops the delegated tasks"
 it.effect("thread.stop ends the team run its thread leads and holds the member's turn", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
     const threads = yield* ThreadManagementService.ThreadManagementService;
     const store = yield* TeamworkStore.TeamworkStore;
     const sql = yield* SqlClient.SqlClient;
     const parentThreadId = ThreadId.make("thread:team-stop-lead");
     const memberThreadId = ThreadId.make("thread:team-stop-member");
+    const idleThreadId = ThreadId.make("thread:team-stop-idle");
     yield* createWatchingThread(parentThreadId, 1);
     yield* createWatchingThread(memberThreadId, 2);
     yield* send(memberThreadId, "member first", "start_immediately");
     yield* send(memberThreadId, "member queued", "queue_after_active");
+    // A member whose last turn already completed: Stop must leave that turn alone.
+    yield* createWatchingThread(idleThreadId, 3);
+    yield* send(idleThreadId, "idle first", "start_immediately");
+    const now = yield* DateTime.now;
+    const idleRun = (yield* orchestrator.getThreadProjection(idleThreadId)).runs[0]!;
+    yield* projections.apply({
+      id: EventId.make("event:team-stop-idle:run-completed"),
+      type: "run.updated",
+      threadId: idleThreadId,
+      runId: idleRun.id,
+      occurredAt: now,
+      payload: { ...idleRun, status: "completed", completedAt: now },
+    });
 
     yield* store.setThreadSheetId(parentThreadId, DEFAULT_TEAM_SHEET_ID);
     const lead = yield* store.takeTurnContext({
@@ -695,6 +710,15 @@ it.effect("thread.stop ends the team run its thread leads and holds the member's
           threadId: memberThreadId,
           state: "invoked",
         },
+        {
+          id: TeamMemberId.make("build/m2"),
+          nodeId: TeamNodeId.make("build"),
+          slot: "m2",
+          kind: "build",
+          name: "Build m2",
+          threadId: idleThreadId,
+          state: "invoked",
+        },
       ],
     });
 
@@ -718,6 +742,11 @@ it.effect("thread.stop ends the team run its thread leads and holds the member's
     assert.equal(ended?.status, "stopped");
     assert.isNull(yield* store.activeRun(parentThreadId));
     assert.deepEqual((yield* threadState(memberThreadId)).runs, ["interrupted", "queued:held"]);
+    const idleItems = (yield* orchestrator.getThreadProjection(idleThreadId)).turnItems;
+    assert.lengthOf(
+      idleItems.filter((item) => item.type === "run_interrupt_request"),
+      0,
+    );
 
     const next = yield* store.takeTurnContext({
       threadId: parentThreadId,

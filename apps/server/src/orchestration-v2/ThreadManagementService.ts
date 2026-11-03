@@ -1479,6 +1479,9 @@ const make = Effect.gen(function* () {
         );
       for (const member of run?.members ?? []) {
         if (member.threadId === null || member.threadId === input.threadId) continue;
+        // An idle member has no turn to stop, and a Stop would mark its last completed turn.
+        const shell = yield* orchestrator.getThreadShell(member.threadId);
+        if (shell === null || shell.activeRunId === null) continue;
         yield* stopChild(member.threadId);
       }
     }
