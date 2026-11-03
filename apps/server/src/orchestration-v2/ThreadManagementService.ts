@@ -62,6 +62,7 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { projectedRowEncodedBytes } from "./threadHistoryPaging.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
+import * as TeamworkStore from "../teamwork/TeamworkStore.ts";
 import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimit.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
@@ -580,6 +581,8 @@ const make = Effect.gen(function* () {
   const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
+  // Teamwork is optional where a harness has no team store.
+  const teamwork = yield* Effect.serviceOption(TeamworkStore.TeamworkStore);
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
     (input) =>
@@ -1403,6 +1406,27 @@ const make = Effect.gen(function* () {
       Orchestrator.OrchestratorV2Error | ThreadManagementProviderInstanceDisabledError
     > = [];
     const stoppedChildThreadIds = new Set<ThreadId>();
+    // Follow-up tasks reuse a child thread, and a team member may be one too: walk each once.
+    const stopChild = (threadId: ThreadId) => {
+      if (stoppedChildThreadIds.has(threadId)) return Effect.void;
+      stoppedChildThreadIds.add(threadId);
+      return dispatch({
+        type: "thread.stop",
+        commandId: CommandId.make(`${input.commandId}:stop:${threadId}`),
+        threadId,
+        stopDelegatedTasks: false,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+      }).pipe(
+        Effect.andThen(stopDelegatedTasks({ ...input, threadId })),
+        Effect.catch((error) =>
+          Effect.logWarning("Unable to stop a delegated task", {
+            parentThreadId: input.threadId,
+            threadId,
+            error,
+          }).pipe(Effect.andThen(Effect.sync(() => failures.push(error)))),
+        ),
+      );
+    };
     for (const task of subagents) {
       if (task.origin !== "app_owned") continue;
       if (task.childThreadId === null) {
@@ -1440,26 +1464,23 @@ const make = Effect.gen(function* () {
         );
         continue;
       }
-      const threadId = task.childThreadId;
-      // Follow-up tasks reuse a child thread; walk its subtree only once.
-      if (stoppedChildThreadIds.has(threadId)) continue;
-      stoppedChildThreadIds.add(threadId);
-      yield* dispatch({
-        type: "thread.stop",
-        commandId: CommandId.make(`${input.commandId}:stop:${threadId}`),
-        threadId,
-        stopDelegatedTasks: false,
-        ...(input.reason === undefined ? {} : { reason: input.reason }),
-      }).pipe(
-        Effect.andThen(stopDelegatedTasks({ ...input, threadId })),
-        Effect.catch((error) =>
-          Effect.logWarning("Unable to stop a delegated task", {
-            parentThreadId: input.threadId,
-            threadId,
-            error,
-          }).pipe(Effect.andThen(Effect.sync(() => failures.push(error)))),
-        ),
-      );
+      yield* stopChild(task.childThreadId);
+    }
+    // Stop ends the team run this thread leads, then holds the turns of the members it started.
+    if (Option.isSome(teamwork)) {
+      const run = yield* teamwork.value
+        .endActiveRun(input.threadId, input.reason ?? "The conversation was stopped.")
+        .pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Unable to end a team run", { threadId: input.threadId, error }).pipe(
+              Effect.as(null),
+            ),
+          ),
+        );
+      for (const member of run?.members ?? []) {
+        if (member.threadId === null || member.threadId === input.threadId) continue;
+        yield* stopChild(member.threadId);
+      }
     }
     if (failures[0] !== undefined) return yield* failures[0];
   });

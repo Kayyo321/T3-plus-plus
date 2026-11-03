@@ -57,13 +57,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
-import type * as Stream from "effect/Stream";
+import * as Stream from "effect/Stream";
 
 import * as AuditTrail from "../audit/AuditTrail.ts";
 import * as NestedSessionService from "../orchestration-v2/NestedSessionService.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { forkParked } from "../serverActivation.ts";
 import { applyTeamAction, enforceTeamBudget } from "./teamRunMachine.ts";
 import {
   growthAwaitsOwner,
@@ -251,13 +252,35 @@ const make = Effect.gen(function* () {
       );
   });
 
-  /** Interrupts turns. Sessions stay: a later message re-invokes them. */
-  const stopMembers = Effect.fn("TeamworkService.stopMembers")(function* (run: TeamRun) {
+  /** Holds a session's turns, so a turn queued behind the stopped one does not start. */
+  const holdSession = Effect.fn("TeamworkService.holdSession")(function* (
+    shell: OrchestrationV2ThreadShell,
+    reason: string,
+  ) {
+    yield* threads
+      .dispatch({
+        type: "thread.stop",
+        commandId: CommandId.make(`command:team-stop:${yield* newId}`),
+        threadId: shell.id,
+        reason,
+      })
+      .pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not stop a team session", { threadId: shell.id, cause }),
+        ),
+      );
+  });
+
+  /** Sessions stay: a later message re-invokes them. */
+  const stopMembers = Effect.fn("TeamworkService.stopMembers")(function* (
+    run: TeamRun,
+    stop: (shell: OrchestrationV2ThreadShell, reason: string) => Effect.Effect<void>,
+  ) {
     for (const member of run.members) {
       if (member.threadId === null) continue;
       const shell = yield* shellOf(member.threadId);
       if (shell === null || shell.activeRunId === null) continue;
-      yield* interrupt(shell, run.waitingFor ?? "The team run stopped.");
+      yield* stop(shell, run.waitingFor ?? "The team run stopped.");
     }
   });
 
@@ -292,7 +315,7 @@ const make = Effect.gen(function* () {
   });
 
   const checkBudget = Effect.fn("TeamworkService.checkBudget")(function* (input: TeamRun) {
-    if (input.status !== "running") return input;
+    if (input.status !== "running" && input.status !== "awaiting_owner") return input;
     const costUsd =
       input.budget.maxCostUsd === undefined ? input.costUsd : yield* measureCost(input);
     const run =
@@ -302,7 +325,7 @@ const make = Effect.gen(function* () {
     const parked = enforceTeamBudget(run, DateTime.toEpochMillis(yield* DateTime.now));
     if (parked === null) return run;
     yield* store.saveRun(parked);
-    yield* stopMembers(parked);
+    yield* stopMembers(parked, interrupt);
     yield* record(
       parked,
       { kind: "system", createdBy: "system", creationSource: "server" },
@@ -317,6 +340,9 @@ const make = Effect.gen(function* () {
       .pipe(Effect.mapError(() => refused("not_found", "The conversation was not found.")));
     if (parent === null || parent.deletedAt !== null) {
       return yield* refused("not_found", "The conversation was not found.");
+    }
+    if (parent.archivedAt !== null) {
+      return yield* refused("wrong_phase", "Unarchive this conversation to run a team.");
     }
     if (parent.capabilityMode === "chat") {
       return yield* refused(
@@ -380,6 +406,20 @@ const make = Effect.gen(function* () {
       );
   });
 
+  /** The one way the owner's Stop ends a run: it stops the run, then holds its members' turns. */
+  const endRun = Effect.fn("TeamworkService.endRun")(function* (
+    run: TeamRun,
+    reason: string,
+    caller: Caller,
+  ) {
+    const result = applyTeamAction(run, { type: "owner_stop", reason }, yield* isoNow);
+    if (!result.ok) return yield* refused(result.refusal.reason, result.refusal.detail);
+    const saved = yield* store.saveRun(result.run);
+    yield* stopMembers(saved, holdSession);
+    yield* record(saved, caller, "owner_stop");
+    return saved;
+  });
+
   const act: TeamworkService["Service"]["act"] = Effect.fn("TeamworkService.act")(function* (
     input,
     caller,
@@ -398,11 +438,11 @@ const make = Effect.gen(function* () {
     }
     if (run.status === "over_budget" && !ownerAction)
       return yield* refused("budget", run.waitingFor ?? "The run is over budget.");
+    if (action.type === "owner_stop") return yield* endRun(run, action.reason, caller);
     const result = applyTeamAction(run, action, yield* isoNow);
     if (!result.ok) return yield* refused(result.refusal.reason, result.refusal.detail);
     const saved = yield* store.saveRun(result.run);
-    if (result.run.status === "stopped" || result.run.status === "over_budget")
-      yield* stopMembers(result.run);
+    if (result.run.status === "over_budget") yield* stopMembers(result.run, interrupt);
     yield* record(result.run, caller, action.type);
     if (action.type === "owner_growth_answer") {
       const request = saved.growth.find((entry) => entry.id === action.requestId);
@@ -784,11 +824,15 @@ const make = Effect.gen(function* () {
       );
     }
     const asksOwner = growth.mode === "ask";
+    const parks = asksOwner && run.status === "running";
     const saved = yield* store.saveRun({
       ...run,
       growth: [...run.growth, asksOwner ? { ...request, status: "awaiting_owner" } : request],
-      ...(asksOwner
-        ? { waitingFor: `Answer ${from.name}'s growth request: ${input.capacity}.` }
+      ...(parks
+        ? {
+            status: "awaiting_owner" as const,
+            waitingFor: `Answer ${from.name}'s growth request: ${input.capacity}.`,
+          }
         : {}),
       updatedAt: at,
     });
@@ -826,6 +870,21 @@ const make = Effect.gen(function* () {
       position: { x: team.position.x + 240, y: team.position.y },
       modelChoice: team.modelChoice,
     };
+  };
+
+  /** The sheet with a growth node added, its team's lines moved onto it. */
+  const sheetWithNode = (sheet: TeamSheet, team: TeamWorkNode, node: TeamWorkNode): TeamSheet => {
+    const edges = sheet.edges.flatMap((edge) =>
+      edge.from === team.id
+        ? [{ ...edge, from: node.id }]
+        : edge.to === team.id
+          ? [{ ...edge, to: node.id }]
+          : [],
+    );
+    return applyTeamSheetChanges(sheet, [
+      { type: "add_node", node },
+      ...edges.map((edge) => ({ type: "connect" as const, edge })),
+    ]);
   };
 
   const decideGrowth: TeamworkService["Service"]["decideGrowth"] = Effect.fn(
@@ -881,6 +940,9 @@ const make = Effect.gen(function* () {
     const teamSlot = slots.find(
       (slot) => slot.nodeId === team.id && slot.slot === TEAM_SESSION_SLOT,
     );
+    const updated = savesToSheet ? sheetWithNode(sheet, team, nodeForSlot) : null;
+    // A sheet this growth would break is refused before any session exists.
+    if (updated !== null) yield* requireValid(updated);
     const threadId = yield* createSession({
       run,
       parent,
@@ -895,18 +957,7 @@ const make = Effect.gen(function* () {
       caller,
     });
     let nextFlow = run.flow;
-    if (savesToSheet) {
-      const edges = sheet.edges.flatMap((edge) =>
-        edge.from === team.id
-          ? [{ ...edge, from: nodeForSlot.id }]
-          : edge.to === team.id
-            ? [{ ...edge, to: nodeForSlot.id }]
-            : [],
-      );
-      const updated = applyTeamSheetChanges(sheet, [
-        { type: "add_node", node: nodeForSlot },
-        ...edges.map((edge) => ({ type: "connect" as const, edge })),
-      ]);
+    if (savesToSheet && updated !== null) {
       const written = yield* store.writeSheet(
         { ...updated, revision: sheet.revision + 1, updatedAt: at },
         sheet.revision,
@@ -1102,6 +1153,40 @@ const make = Effect.gen(function* () {
     Effect.catch(() => Effect.logWarning("A teamwork budget check failed.")),
     Effect.repeat(Schedule.spaced("1 minute")),
     Effect.forkScoped,
+  );
+
+  const endParentRun = Effect.fn("TeamworkService.endParentRun")(function* (
+    threadId: ThreadId,
+    reason: string,
+  ) {
+    const run = yield* store.activeRun(threadId);
+    if (run === null) return;
+    yield* endRun(run, reason, { kind: "system", createdBy: "system", creationSource: "server" });
+  }, withLock);
+
+  // A conversation that is archived or deleted cannot keep its team running.
+  yield* forkParked(
+    threads.streamDomainEvents.pipe(
+      Stream.filter((event) => event.type === "thread.archived" || event.type === "thread.deleted"),
+      Stream.runForEach((event) =>
+        endParentRun(
+          event.threadId,
+          event.type === "thread.archived"
+            ? "The conversation was archived."
+            : "The conversation was deleted.",
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Could not end the team run of a conversation", {
+              threadId: event.threadId,
+              cause,
+            }),
+          ),
+        ),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("The teamwork conversation event stream failed", { cause }),
+      ),
+    ),
   );
 
   return TeamworkService.of({

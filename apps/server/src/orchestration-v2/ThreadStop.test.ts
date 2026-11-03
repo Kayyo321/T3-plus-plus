@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import {
   CommandId,
   ContextTransferId,
+  DEFAULT_TEAM_SHEET_ID,
   EventId,
   MessageId,
   NodeId,
@@ -12,11 +13,15 @@ import {
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
+  RunId,
   RuntimeRequestId,
   ScheduledTaskId,
+  TeamMemberId,
+  TeamNodeId,
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -39,6 +44,7 @@ import * as EffectOutbox from "./EffectOutbox.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
+import * as TeamworkStore from "../teamwork/TeamworkStore.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
@@ -59,6 +65,7 @@ const layerTest = ThreadManagementService.layer.pipe(
       ProjectionStore.layer.pipe(Layer.provide(layerDatabase)),
       EventStore.layer.pipe(Layer.provide(layerDatabase)),
       EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
+      TeamworkStore.layer.pipe(Layer.provide(layerDatabase), Layer.provide(NodeServices.layer)),
       ProviderReplayHarness.layerWithRegistry(
         { name: "thread-stop" },
         ProviderAdapterRegistry.layerFromAdapters([adapter]),
@@ -648,6 +655,80 @@ it.effect("a repeated Stop that changes nothing still stops the delegated tasks"
       walks.map((row) => row.command_id),
       ["stop-again:first", "stop-again:second"],
     );
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("thread.stop ends the team run its thread leads and holds the member's turn", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const threads = yield* ThreadManagementService.ThreadManagementService;
+    const store = yield* TeamworkStore.TeamworkStore;
+    const sql = yield* SqlClient.SqlClient;
+    const parentThreadId = ThreadId.make("thread:team-stop-lead");
+    const memberThreadId = ThreadId.make("thread:team-stop-member");
+    yield* createWatchingThread(parentThreadId, 1);
+    yield* createWatchingThread(memberThreadId, 2);
+    yield* send(memberThreadId, "member first", "start_immediately");
+    yield* send(memberThreadId, "member queued", "queue_after_active");
+
+    yield* store.setThreadSheetId(parentThreadId, DEFAULT_TEAM_SHEET_ID);
+    const lead = yield* store.takeTurnContext({
+      threadId: parentThreadId,
+      capabilityMode: "code",
+      orchestrationRunId: RunId.make("run:team-stop-lead"),
+      modelSelection,
+      text: "Ship it",
+      fromUser: true,
+    });
+    assert.include(lead ?? "", "Project Lead");
+    const active = (yield* store.activeRun(parentThreadId))!;
+    yield* store.saveRun({
+      ...active,
+      members: [
+        ...active.members,
+        {
+          id: TeamMemberId.make("build/m1"),
+          nodeId: TeamNodeId.make("build"),
+          slot: "m1",
+          kind: "build",
+          name: "Build m1",
+          threadId: memberThreadId,
+          state: "invoked",
+        },
+      ],
+    });
+
+    const stopCommandId = CommandId.make("team-stop-lead");
+    yield* orchestrator.dispatch({
+      type: "thread.stop",
+      commandId: stopCommandId,
+      threadId: parentThreadId,
+    });
+    const walks = yield* sql<{ readonly command_id: string }>`
+      SELECT command_id FROM orchestration_v2_effect_outbox
+      WHERE effect_type = 'delegated-tasks.stop'
+    `;
+    assert.deepEqual(
+      walks.map((row) => row.command_id),
+      [stopCommandId],
+    );
+
+    yield* threads.stopDelegatedTasks({ threadId: parentThreadId, commandId: stopCommandId });
+    const [ended] = yield* store.listRuns(parentThreadId);
+    assert.equal(ended?.status, "stopped");
+    assert.isNull(yield* store.activeRun(parentThreadId));
+    assert.deepEqual((yield* threadState(memberThreadId)).runs, ["interrupted", "queued:held"]);
+
+    const next = yield* store.takeTurnContext({
+      threadId: parentThreadId,
+      capabilityMode: "code",
+      orchestrationRunId: RunId.make("run:team-stop-next"),
+      modelSelection,
+      text: "Again",
+      fromUser: true,
+    });
+    assert.include(next ?? "", "Project Lead");
+    assert.notEqual((yield* store.activeRun(parentThreadId))?.id, ended?.id);
   }).pipe(Effect.provide(layerTest)),
 );
 

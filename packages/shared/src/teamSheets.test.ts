@@ -62,6 +62,25 @@ describe("teamSheetProblems", () => {
     );
   });
 
+  it("refuses more teams or lines than a sheet holds", () => {
+    const teams = Array.from({ length: 29 }, (_, index) => ({
+      ...extra,
+      id: TeamNodeId.make(`team-${index}`),
+      name: `Team ${index}`,
+    }));
+    const lines = Array.from({ length: 123 }, () => ({
+      from: lead,
+      to: build,
+      kind: "handoff" as const,
+    }));
+    const problems = teamSheetProblems({
+      nodes: [...DEFAULT_TEAM_SHEET.nodes, ...teams],
+      edges: [...DEFAULT_TEAM_SHEET.edges, ...lines],
+    });
+    expect(problems).toContain("A sheet has room for 32 teams at most.");
+    expect(problems).toContain("A sheet has room for 128 lines at most.");
+  });
+
   it("refuses a model option for a provider the environment lacks", () => {
     const sheet = applyTeamSheetChanges(DEFAULT_TEAM_SHEET, [
       {

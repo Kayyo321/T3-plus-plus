@@ -37,6 +37,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as WorkspaceProcessEnvironment from "../workspace/WorkspaceProcessEnvironment.ts";
+import { applyTeamAction } from "./teamRunMachine.ts";
 import { leadBrief, ownerNoteBrief } from "./teamworkBriefs.ts";
 
 const RunJson = Schema.fromJsonString(TeamRun);
@@ -86,6 +87,11 @@ export class TeamworkStore extends Context.Service<
     ) => Effect.Effect<ReadonlyArray<TeamRun>, TeamworkError>;
     readonly listRunningRuns: Effect.Effect<ReadonlyArray<TeamRun>, TeamworkError>;
     readonly activeRun: (threadId: ThreadId) => Effect.Effect<TeamRun | null, TeamworkError>;
+    /** Stops the thread's active run, if any, for a conversation that stopped or left. */
+    readonly endActiveRun: (
+      threadId: ThreadId,
+      reason: string,
+    ) => Effect.Effect<TeamRun | null, TeamworkError>;
     readonly beginRun: (input: BeginRunInput) => Effect.Effect<TeamRun, TeamworkError>;
     readonly getSheet: (id: TeamSheetId) => Effect.Effect<TeamSheet | null, TeamworkError>;
     readonly listSheets: Effect.Effect<ReadonlyArray<TeamSheet>, TeamworkError>;
@@ -198,7 +204,7 @@ const make = Effect.gen(function* () {
 
   const listRunningRuns = sql<{
     readonly json: string;
-  }>`SELECT run_json AS json FROM teamwork_runs WHERE json_extract(run_json, '$.status') = 'running'`.pipe(
+  }>`SELECT run_json AS json FROM teamwork_runs WHERE json_extract(run_json, '$.status') IN ('running', 'awaiting_owner')`.pipe(
     Effect.mapError(storeError),
     Effect.flatMap(decodeRows),
   );
@@ -213,6 +219,20 @@ const make = Effect.gen(function* () {
       const runs = yield* decodeRows(rows);
       return runs[0] ?? null;
     },
+  );
+
+  const endActiveRun: TeamworkStore["Service"]["endActiveRun"] = Effect.fn(
+    "TeamworkStore.endActiveRun",
+  )(
+    function* (threadId, reason) {
+      const active = yield* activeRun(threadId);
+      if (active === null) return null;
+      const at = DateTime.formatIso(yield* DateTime.now);
+      const result = applyTeamAction(active, { type: "owner_stop", reason }, at);
+      if (!result.ok) return null;
+      return yield* saveRun(result.run);
+    },
+    (effect) => lock.withPermits(1)(effect),
   );
 
   const getSheet: TeamworkStore["Service"]["getSheet"] = Effect.fn("TeamworkStore.getSheet")(
@@ -461,6 +481,7 @@ const make = Effect.gen(function* () {
     listRunsForCaller,
     listRunningRuns,
     activeRun,
+    endActiveRun,
     beginRun,
     getSheet,
     listSheets,

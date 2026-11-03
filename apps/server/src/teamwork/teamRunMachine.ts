@@ -73,6 +73,12 @@ const upsertTask = (run: TeamRun, action: Action<"task_upsert">): TeamTransition
   if (ownerId !== null && owner === undefined) {
     return refuse("not_found", `No member ${ownerId} on this run.`);
   }
+  if (owner?.kind === "review" || owner?.kind === "validate") {
+    return refuse(
+      "self_approval",
+      "Review and validate members judge work. Give this task to a build member or keep it yourself.",
+    );
+  }
   const previous = existing?.builtBy ?? [];
   const builtBy =
     owner?.kind === "build" && !previous.includes(owner.id) ? [...previous, owner.id] : previous;
@@ -235,6 +241,10 @@ const verdict = (run: TeamRun, action: Action<"verdict">, at: string): TeamTrans
     if (![...latest.values()].some(Boolean)) {
       return refuse("needs_evidence", "Record a passing check for this task first.");
     }
+    const failing = [...latest].find(([, passed]) => !passed);
+    if (failing !== undefined) {
+      return refuse("failed_checks", `The latest run of ${failing[0]} failed.`);
+    }
     return settle({ ...task, findings, status: "done" }, { activeNodeId: leadNodeId(run) });
   }
 
@@ -285,7 +295,9 @@ const report = (run: TeamRun, action: Action<"report">): TeamTransition => {
   }
   // A failed check stays visible: it must appear unless a later run of it passed.
   const unresolved = [
-    ...new Map(run.evidence.map((entry) => [entry.command, entry])).values(),
+    ...new Map(
+      run.evidence.map((entry) => [JSON.stringify([entry.taskId ?? null, entry.command]), entry]),
+    ).values(),
   ].filter((entry) => !entry.passed);
   const named = action.report.notVerified.join("\n");
   const hidden = unresolved.filter((entry) => !named.includes(entry.command));
@@ -300,6 +312,9 @@ const report = (run: TeamRun, action: Action<"report">): TeamTransition => {
     activeNodeId: null,
   });
 };
+
+const awaitingOwnerWait = (request: TeamGrowthRequest) =>
+  `Answer the growth request for ${request.capacity}.`;
 
 const answerGrowth = (
   run: TeamRun,
@@ -321,14 +336,12 @@ const answerGrowth = (
       };
   const growth = run.growth.map((candidate) => (candidate.id === decided.id ? decided : candidate));
   const stillAwaiting = growth.find((candidate) => candidate.status === "awaiting_owner");
+  if (run.status !== "awaiting_owner") return ok({ ...run, growth });
   return ok({
     ...run,
     growth,
-    status: stillAwaiting === undefined && run.status === "awaiting_owner" ? "running" : run.status,
-    waitingFor:
-      stillAwaiting === undefined
-        ? null
-        : `Answer the growth request for ${stillAwaiting.capacity}.`,
+    status: stillAwaiting === undefined ? "running" : "awaiting_owner",
+    waitingFor: stillAwaiting === undefined ? null : awaitingOwnerWait(stillAwaiting),
   });
 };
 
@@ -359,11 +372,12 @@ export const applyTeamAction = (run: TeamRun, action: TeamAction, at: string): T
         if (run.status !== "over_budget" && run.status !== "blocked") {
           return refuse("wrong_phase", "Only a run over budget or blocked can be resumed.");
         }
+        const awaiting = run.growth.find((request) => request.status === "awaiting_owner");
         const resumed: TeamRun = {
           ...run,
           budget: action.budget,
-          status: "running",
-          waitingFor: null,
+          status: awaiting === undefined ? "running" : "awaiting_owner",
+          waitingFor: awaiting === undefined ? null : awaitingOwnerWait(awaiting),
           correctionCycles: run.status === "blocked" ? 0 : run.correctionCycles,
         };
         return enforceTeamBudget(resumed, Date.parse(at)) === null
@@ -431,7 +445,7 @@ export const applyTeamAction = (run: TeamRun, action: TeamAction, at: string): T
 };
 
 export const enforceTeamBudget = (run: TeamRun, nowMs: number): TeamRun | null => {
-  if (run.status !== "running") return null;
+  if (run.status !== "running" && run.status !== "awaiting_owner") return null;
   const limit = run.budget.maxCostUsd;
   const reason =
     nowMs - Date.parse(run.startedAt) > run.budget.maxMinutes * 60_000

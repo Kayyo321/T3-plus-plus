@@ -11922,12 +11922,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ),
       );
     if (projection.thread.deletedAt !== null) return undefined;
-    // Queued after the interrupt, since a thread's effects run in order.
+    // Queued after the interrupt, since a thread's effects run in order. The walk also ends a
+    // team run this thread leads, so it is queued even when no delegated task is running.
     const stopDelegatedTasks =
-      command.stopDelegatedTasks === false ||
-      !projection.subagents.some(
-        (task) => task.origin === "app_owned" && task.childThreadId !== null,
-      )
+      command.stopDelegatedTasks === false
         ? Effect.void
         : Ref.update(effects, (existing) => [...existing, delegatedTasksStopEffect(command)]);
     const latestRun = projection.runs.findLast((run) => run.status !== "queued");
