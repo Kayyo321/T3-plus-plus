@@ -39,7 +39,9 @@ export function LayoutMenu(props: {
   const trigger = (
     <Toggle
       className="shrink-0 [-webkit-app-region:no-drag]"
-      pressed={activeId !== DEFAULT_BUILT_IN_LAYOUT_ID}
+      // A menu button, not a switch: a pressed look for a non-default layout reads as a stuck
+      // hover. The menu's check mark shows the active layout; the open menu still lights it.
+      pressed={false}
       aria-label="Layouts"
       data-layout-menu-trigger
       variant="ghost"
