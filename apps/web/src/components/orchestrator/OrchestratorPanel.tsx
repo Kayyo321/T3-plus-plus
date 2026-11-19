@@ -36,7 +36,7 @@ import { useEnvironmentProviders } from "../../state/environments";
 import { orchestratorEnvironment, useOrchestratorDock } from "../../state/orchestratorAgent";
 import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { randomUUID } from "../../lib/utils";
+import { cn, randomUUID } from "../../lib/utils";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -430,6 +430,8 @@ function ConversationBody(props: {
 export default function OrchestratorPanel(props: {
   readonly environmentId: EnvironmentId;
   readonly focus: OrchestratorFocus | undefined;
+  /** The IDE shows the panel as a floating window that owns its own frame. */
+  readonly presentation?: "dock" | "window";
 }) {
   const { environmentId } = props;
   const navigate = useNavigate();
@@ -537,10 +539,15 @@ export default function OrchestratorPanel(props: {
   return (
     <aside
       aria-label="Orchestrator"
-      data-orchestrator-dock
-      className="orchestrator-panel-enter relative isolate z-30 flex h-dvh w-96 max-w-[50vw] shrink-0 flex-col border-l border-border bg-background"
+      data-orchestrator-dock={props.presentation === "window" ? undefined : ""}
+      className={cn(
+        "relative isolate flex flex-col bg-background",
+        props.presentation === "window"
+          ? "size-full"
+          : "orchestrator-panel-enter z-30 h-dvh w-96 max-w-[50vw] shrink-0 border-l border-border",
+      )}
     >
-      <MinimizeTab onMinimize={() => setOpen(false)} />
+      {props.presentation === "window" ? null : <MinimizeTab onMinimize={() => setOpen(false)} />}
       <OrchestratorBackdrop />
       <Header
         provider={provider}

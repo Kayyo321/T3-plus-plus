@@ -316,6 +316,7 @@ import {
   ThreadPanelHeaderControl,
   WorkspaceTitlebarControls,
 } from "./chat/PanelLayoutControls";
+import { IdeSwitchButton } from "../ide/IdeSwitchButton";
 import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel } from "./chat/ThreadDetailsPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -3351,6 +3352,8 @@ export default function ChatView(props: ChatViewProps) {
     onToggleTerminal: toggleTerminalVisibilityStable,
     onToggleThreadPanel: toggleThreadPanelStable,
     onToggleRightPanel: toggleRightPanelStable,
+    ideSwitch:
+      embedded || activeProject === null || isChatMode ? null : <IdeSwitchButton target="ide" />,
     layoutMenu: embedded ? null : (
       <LayoutMenu threadRef={activeThreadRef} projectId={activeThread.projectId} />
     ),

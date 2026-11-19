@@ -15,6 +15,7 @@ export interface PanelLayoutControlsProps {
   showThreadPanelControl?: boolean;
   showTerminalControl?: boolean;
   showRightPanelControl?: boolean;
+  ideSwitch?: ReactNode;
   layoutMenu?: ReactNode;
   terminalAvailable: boolean;
   terminalOpen: boolean;
@@ -36,6 +37,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
   showThreadPanelControl = true,
   showTerminalControl = true,
   showRightPanelControl = true,
+  ideSwitch,
   layoutMenu,
   terminalAvailable,
   terminalOpen,
@@ -85,6 +87,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
       className="flex h-full shrink-0 items-center gap-1 [-webkit-app-region:no-drag]"
       data-panel-layout-controls
     >
+      {ideSwitch}
       {layoutMenu}
       {showThreadPanelControl ? threadPanelControl : null}
       {showTerminalControl ? (

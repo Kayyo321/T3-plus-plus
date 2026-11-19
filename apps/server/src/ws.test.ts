@@ -135,6 +135,7 @@ import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
 import * as OrchestrationEventStore from "./persistence/OrchestrationEventStore.ts";
 import * as SqlitePersistence from "./persistence/Sqlite.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
+import * as IdeService from "./ide/IdeService.ts";
 import * as ProjectEnrichment from "./project/ProjectEnrichmentService.ts";
 import * as ProjectService from "./project/ProjectService.ts";
 import {
@@ -561,6 +562,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(EnvironmentTheme.EnvironmentThemeService)({}),
   Layer.mock(GitWorkflowService.GitWorkflowService)({}),
   Layer.mock(HostResources.HostResources)({}),
+  Layer.mock(IdeService.IdeService)({}),
   Layer.mock(McpAppRequests.McpAppRequests)({}),
   Layer.mock(ModelManifest.ModelManifest)({}),
   Layer.mock(OrchestrationEventStore.OrchestrationEventStore)({}),

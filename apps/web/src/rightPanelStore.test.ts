@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { useClosedViewStore } from "./closedViewStore";
 import { BUILT_IN_LAYOUTS } from "./layouts/layoutDocument";
+import { WORKBENCH_LAYOUT } from "../test/layoutFixtures";
 import { arrangementFromDocument } from "./layouts/threadArrangement";
 import { reopenClosedView } from "./reopenClosedView";
 import {
@@ -42,7 +43,10 @@ async function reloadRightPanelStore() {
 }
 
 describe("arrangements", () => {
-  const layout = (id: string) => BUILT_IN_LAYOUTS.find((entry) => entry.id === id)!;
+  const layout = (id: string) =>
+    id === WORKBENCH_LAYOUT.id
+      ? WORKBENCH_LAYOUT
+      : BUILT_IN_LAYOUTS.find((entry) => entry.id === id)!;
   const panel = () => selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
   const arrange = (id: string, opens: readonly string[] = []) =>
     useRightPanelStore
@@ -50,7 +54,7 @@ describe("arrangements", () => {
       .applyArrangement(refA, arrangementFromDocument(layout(id), 1), opens);
 
   it("keeps the docked explorer when a file opens", () => {
-    arrange("ide", ["files"]);
+    arrange("workbench", ["files"]);
     useRightPanelStore.getState().openFile(refA, "src/app.ts");
     expect(panel().surfaces.map((surface) => surface.kind)).toEqual(["files", "file"]);
   });
@@ -69,7 +73,7 @@ describe("arrangements", () => {
   });
 
   it("closes only the toggled tab, since other groups stay on screen", () => {
-    arrange("ide", ["files", "diff"]);
+    arrange("workbench", ["files", "diff"]);
     useRightPanelStore.getState().activateSurface(refA, "diff");
     useRightPanelStore.getState().toggle(refA, "diff");
     expect(panel().isOpen).toBe(true);
@@ -77,7 +81,7 @@ describe("arrangements", () => {
   });
 
   it("tracks each group's active tab through the store's own actions", () => {
-    arrange("ide", ["files", "diff"]);
+    arrange("workbench", ["files", "diff"]);
     useRightPanelStore.getState().activateSurface(refA, "files");
     useRightPanelStore.getState().activateSurface(refA, "diff");
     expect(panel().arrangement?.activeByGroup).toEqual({ explorer: "files", tools: "diff" });
@@ -90,13 +94,15 @@ describe("arrangements", () => {
   });
 
   it("survives a reload and a storage migration", async () => {
-    arrange("ide", ["files"]);
+    arrange("workbench", ["files"]);
     await reloadRightPanelStore();
-    expect(panel().arrangement?.layoutId).toBe("ide");
+    expect(panel().arrangement?.layoutId).toBe("workbench");
     const migrated = migratePersistedRightPanelState({
       byThreadKey: { "env-1:thread-A": { ...panel(), arrangement: panel().arrangement } },
     });
-    expect(migrated.byThreadKey["env-1:thread-A"]?.arrangement?.root).toEqual(layout("ide").root);
+    expect(migrated.byThreadKey["env-1:thread-A"]?.arrangement?.root).toEqual(
+      layout("workbench").root,
+    );
   });
 
   it("drops a damaged arrangement on migration and keeps the tabs", () => {

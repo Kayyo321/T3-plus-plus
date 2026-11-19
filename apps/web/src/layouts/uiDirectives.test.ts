@@ -10,6 +10,9 @@ import {
 import { useSplitViewStore } from "./splitViewStore";
 import { INITIAL_SPLIT_VIEW } from "./splitView.logic";
 import { applyUiDirective } from "./uiDirectives";
+import { useLayoutStore } from "./layoutStore";
+import { useIdeSurface } from "../ide/ideSurfaceStore";
+import { WORKBENCH_LAYOUT } from "../../test/layoutFixtures";
 
 const environmentId = EnvironmentId.make("env");
 const threadRef = scopeThreadRef(environmentId, ThreadId.make("thread"));
@@ -20,6 +23,8 @@ const panel = () =>
 beforeEach(() => {
   useSplitViewStore.setState(INITIAL_SPLIT_VIEW, true);
   useRightPanelStore.setState({ byThreadKey: {}, threadPanelVisibilityByThreadKey: {} });
+  useLayoutStore.setState({ saved: [] });
+  useIdeSurface.setState({ surface: "chat" });
 });
 
 describe("applyUiDirective", () => {
@@ -33,7 +38,8 @@ describe("applyUiDirective", () => {
   });
 
   it("applies a layout's panel settings", () => {
-    applyUiDirective({ type: "layout.apply", layout: "ide", threadRef });
+    useLayoutStore.setState({ saved: [WORKBENCH_LAYOUT] });
+    applyUiDirective({ type: "layout.apply", layout: "workbench", threadRef });
     expect(
       selectThreadPanelOpen(
         useRightPanelStore.getState().threadPanelVisibilityByThreadKey,
@@ -51,7 +57,8 @@ describe("applyUiDirective", () => {
   });
 
   it("asks ChatView for the tabs that need a session", () => {
-    applyUiDirective({ type: "layout.apply", layout: "ide", threadRef });
+    useLayoutStore.setState({ saved: [WORKBENCH_LAYOUT] });
+    applyUiDirective({ type: "layout.apply", layout: "workbench", threadRef });
     expect(panel().arrangement?.pendingOpens).toEqual(["terminal"]);
   });
 
@@ -61,6 +68,20 @@ describe("applyUiDirective", () => {
     expect(panel().arrangement).toBeUndefined();
     expect(panel().isOpen).toBe(false);
     expect(panel().surfaces).toHaveLength(1);
+  });
+
+  it("opens the IDE for an ide layout unless one is saved under that name", () => {
+    expect(applyUiDirective({ type: "layout.apply", layout: "IDE", threadRef })).toEqual({
+      ok: true,
+    });
+    expect(useIdeSurface.getState().surface).toBe("ide");
+    expect(panel().arrangement).toBeUndefined();
+
+    useIdeSurface.setState({ surface: "chat" });
+    useLayoutStore.setState({ saved: [{ ...WORKBENCH_LAYOUT, id: "mine", name: "IDE" }] });
+    applyUiDirective({ type: "layout.apply", layout: "ide", threadRef });
+    expect(useIdeSurface.getState().surface).toBe("chat");
+    expect(panel().arrangement?.layoutId).toBe("mine");
   });
 
   it("reports an unknown layout and an unknown panel instead of throwing", () => {

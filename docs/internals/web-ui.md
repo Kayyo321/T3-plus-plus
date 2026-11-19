@@ -38,6 +38,48 @@ Build new UI the same way. Compose or extend a component instead of copying its 
 When a call site repeats a treatment another one already uses, make it a variant or a slot on the
 shared component. A new composer banner or notice uses the `ComposerBanner` slots.
 
+## Theme
+
+Every surface takes its color from the semantic tokens in [`index.css`](../../apps/web/src/index.css):
+`bg-background`, `text-muted-foreground`, `border-border`, and the rest. A component never holds a
+literal color, radius, or spacing value where a token or scale step exists. When a surface needs a
+color no token names, add the token to the theme layers so every built-in, custom, and imported theme
+resolves it, rather than picking a value for one theme.
+
+Surfaces outside React's styling, such as canvases, iframes, and the IDE's editor, read the live
+tokens and read them again when `<html>`'s class, style, or `data-theme-id` changes. Tailwind's
+`@theme inline` emits no `--color-*` variables, so read the variable behind each one, as
+[`vscodeTheme.ts`](../../apps/web/src/ide/vscodeTheme.ts) does.
+
+## Verifying UI
+
+A change that renders is not a change that works. For user-visible work:
+
+1. Build from the primitives, then run `vp run check:changed`.
+2. Drive the real app ([test-t3-app](../../.agents/skills/test-t3-app/SKILL.md)) through the flow as a
+   user would, keyboard included.
+3. Capture Default dark, Default light, and one non-default built-in theme such as Grove, at
+   1024×680, 1440×900, and 1920×1080, in every state the change adds: open and closed, hover, focus,
+   loading, empty, and error.
+4. Inspect the captures for alignment, clipping, overflow, contrast, and anything still painted in
+   another theme's colors. Check reduced motion.
+5. Report what you verified and what you did not.
+
+## UI review
+
+Reject a change that:
+
+- copies a primitive's markup instead of using it, or restyles one with `className`;
+- hardcodes a color, radius, or spacing value a token or scale covers, or reads a token that some
+  themes do not define;
+- gives a control focus, hover, or active states unlike its siblings', or a focus ring its parent can
+  clip;
+- lets content overflow its container or leaves a control unreachable at the smallest supported
+  window;
+- breaks keyboard navigation or leaves focus inside a hidden surface;
+- adds motion that runs at rest, or motion that ignores reduced motion;
+- changes visuals without before and after captures.
+
 ## ASCII landing
 
 The new thread background is the one continuously repainting surface. It holds that exception by

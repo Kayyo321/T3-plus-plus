@@ -8,7 +8,8 @@ import {
 import { formatHourShort, formatRelativeHourShort } from "@t3tools/shared/usageFormat";
 import { describe, test } from "vite-plus/test";
 
-import { BUILT_IN_LAYOUTS, flattenLayout } from "./layouts/layoutDocument";
+import { flattenLayout } from "./layouts/layoutDocument";
+import { WORKBENCH_LAYOUT } from "../test/layoutFixtures";
 import { deriveEditReview } from "./components/files/agentEditReview";
 import { resolveExpandedPaneIds } from "./layouts/splitView.logic";
 
@@ -30,7 +31,7 @@ const hours = Array.from({ length: 24 }, (_, index) =>
   new Date(start + index * 3_600_000).toISOString(),
 );
 const referenceTime = "2026-08-12T00:00:00.000Z";
-const ideLayout = BUILT_IN_LAYOUTS.find((layout) => layout.id === "ide")!;
+const ideLayout = WORKBENCH_LAYOUT;
 const fourPanes = {
   panes: ["a", "b", "c", "d"].map((id) => ({ id, target: null })),
   focusedPaneId: "c",
@@ -42,7 +43,7 @@ const editorEdited = editorFile
   .join("");
 
 describe("client performance", () => {
-  test("flatten the IDE layout for one resize frame", async ({ bench }) => {
+  test("flatten the workbench layout for one resize frame", async ({ bench }) => {
     await bench("flatten", () => {
       flattenLayout(ideLayout.root);
     }).run();

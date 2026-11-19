@@ -37,6 +37,9 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.conversationFoldersMutate]: AuthOrchestrationOperateScope,
   // Stopping a server signals its processes, as closing a terminal does.
   [WS_METHODS.previewStopLocalServer]: AuthTerminalOperateScope,
+  // The editor runs its own terminals and extensions on the environment.
+  [WS_METHODS.ideOpen]: AuthTerminalOperateScope,
+  [WS_METHODS.ideSetTheme]: AuthTerminalOperateScope,
   [WS_METHODS.serverRunStorageCleanup]: AuthSettingsWriteScope,
   [WS_METHODS.serverCheckOtlpEndpoint]: AuthSettingsWriteScope,
   [WS_METHODS.pullRequestsRunAction]: AuthSourceControlWriteScope,

@@ -58,7 +58,9 @@ import {
 } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
+  ArrowDownLeftIcon,
   ArrowLeftIcon,
+  ArrowUpRightIcon,
   BotIcon,
   BugIcon,
   EyeIcon,
@@ -89,6 +91,7 @@ import {
   FileTextIcon,
 } from "lucide-react";
 import { toggleThreadCapabilityMode } from "~/lib/threadCapabilityMode";
+import { useIdeSurface } from "~/ide/ideSurfaceStore";
 import { openThreadFind } from "./chat/threadFindStore";
 import {
   useDeferredValue,
@@ -474,6 +477,8 @@ function OpenCommandPaletteDialog(props: {
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
+  const inIde = useIdeSurface((state) => state.surface === "ide");
+  const toggleIde = useIdeSurface((state) => state.toggle);
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
   const paletteRouteTarget = useThreadRouteTarget();
@@ -1316,6 +1321,25 @@ function OpenCommandPaletteDialog(props: {
         useOrchestratorDock.getState().toggle();
       },
     });
+
+    if (activeThread?.projectId) {
+      actionItems.push({
+        kind: "action",
+        value: "action:ide-toggle",
+        searchTerms: ["ide", "editor", "vs code", "vscode", "code", "chat", "back"],
+        title: inIde ? "Back to chat" : "Open IDE",
+        searchTitle: inIde ? "Back to chat" : "Open IDE",
+        icon: inIde ? (
+          <ArrowDownLeftIcon className={ITEM_ICON_CLASS} />
+        ) : (
+          <ArrowUpRightIcon className={ITEM_ICON_CLASS} />
+        ),
+        shortcutCommand: "ide.toggle",
+        run: async () => {
+          toggleIde();
+        },
+      });
+    }
 
     actionItems.push({
       kind: "submenu",

@@ -69,11 +69,15 @@ The orchestrator is an agent docked beside your conversations that operates T3++
 
 Teamwork runs a request through a team on a **sheet**: a Project Lead plus teams that build, review, and validate. Edit the chart, save sheets you like, and turn one on from the composer. A run board shows every team's progress. [Teamwork](./docs/user/teamwork.md)
 
-### Split view, saved layouts, and IDE mode
+### Split view and saved layouts
 
 <img src="./assets/readme/split-view.webp" alt="Two conversations side by side in split view" />
 
-Put conversations side by side, dock files, diffs, terminals, and a browser around them, and save the arrangement. Focus, Review, Debug, Pair, and IDE are one click away in **Layouts**. [Layouts](./docs/user/layouts.md)
+Put conversations side by side, dock files, diffs, terminals, and a browser around them, and save the arrangement. Focus, Review, Debug, and Pair are one click away in **Layouts**. [Layouts](./docs/user/layouts.md)
+
+### A real code editor, one click away
+
+**IDE ↗** swaps the window for VSCodium, the open-source build of VS Code, opened on the conversation's folder and painted in your theme. Extensions install from Open VSX. A rail beside the code shows which agents are working, their subagents, and who needs you; **Chat ↙** brings the conversation back. [IDE mode](./docs/user/ide.md)
 
 ### Git where the work is
 

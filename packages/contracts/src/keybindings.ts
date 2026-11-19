@@ -94,6 +94,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "preview.resetZoom",
   "commandPalette.toggle",
   "orchestrator.toggle",
+  "ide.toggle",
   "filePicker.toggle",
   "projectSearch.toggle",
   "usage.open",

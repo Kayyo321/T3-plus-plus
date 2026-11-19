@@ -1,4 +1,4 @@
-# Layouts, split view, and IDE mode
+# Layouts and split view
 
 A layout is a saved arrangement of panels. It holds positions, sizes, and which panels are open, and
 never any conversation content. Layouts live on this device and do not follow you to other clients.
@@ -13,13 +13,12 @@ Open the layouts menu in the title bar, or press Ctrl+K (Cmd+K on macOS) and sea
 Applying a layout changes only the current conversation. Panels on screen before and after stay
 loaded, so nothing reloads.
 
-| Layout | Shows                                                  |
-| ------ | ------------------------------------------------------ |
-| Focus  | The conversation alone, and any split closed           |
-| Review | The conversation beside diff and pull requests         |
-| Debug  | The conversation over a terminal, beside the browser   |
-| Pair   | Two conversations side by side                         |
-| IDE    | Files, editor, and tools, with the conversation docked |
+| Layout | Shows                                                |
+| ------ | ---------------------------------------------------- |
+| Focus  | The conversation alone, and any split closed         |
+| Review | The conversation beside diff and pull requests       |
+| Debug  | The conversation over a terminal, beside the browser |
+| Pair   | Two conversations side by side                       |
 
 ## Arrange panels
 
@@ -64,16 +63,4 @@ Saved layouts remember how many panes are open and their sizes, not which conver
 them. Applying one opens any extra panes on the picker. Panel-only layouts such as Review leave a
 split as it is and change just the focused conversation.
 
-## IDE mode
-
-The IDE layout turns the conversation into a docked panel beside a file explorer, tabbed editor,
-terminal, and diff.
-
-- **Review the agent's edits.** Changes made while a file is open, or in the latest turn, are
-  highlighted in the editor as they land, with **Accept** and **Revert** under each change. Accepting
-  keeps the change and clears the highlight. Reverting restores that change alone. Your own unsaved
-  edits to a file under review appear as changes too.
-- **Ask about code.** Select code in the editor and choose **Ask about this**. The selection joins
-  the composer as context, and the composer takes focus.
-
-Go to definition, diagnostics, and other language intelligence are not part of IDE mode yet.
+For a full code editor with your agents beside it, use [IDE mode](./ide.md).

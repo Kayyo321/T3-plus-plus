@@ -1,6 +1,6 @@
 # Layouts and split view
 
-> For maintainers. Using T3++? See [Layouts, split view, and IDE mode](../user/layouts.md).
+> For maintainers. Using T3++? See [Layouts and split view](../user/layouts.md).
 
 ## Why a flat tree, not a docking framework
 
@@ -83,9 +83,3 @@ not "the agent changed".
 
 Mobile does not get layouts. It has one screen's worth of navigation of its own
 ([mobile navigation](./mobile-navigation.md)), and panel geometry has no meaning there.
-
-## Language intelligence
-
-Deferred. IDE mode's bar is file editing with agent awareness. Reusing the machine's language
-servers needs a server-side process model per environment, which is a separate project from this
-layout work.

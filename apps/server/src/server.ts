@@ -78,6 +78,8 @@ import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import * as DeviceHubProxy from "./device/DeviceHubProxy.ts";
+import * as IdeProxy from "./ide/IdeProxy.ts";
+import * as IdeService from "./ide/IdeService.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import * as PortScanner from "./preview/PortScanner.ts";
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
@@ -690,6 +692,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ProviderUsageLimitsIngestion.layer,
   layerProviderInstallationRefresh,
   ReplayMarkers.layer,
+  IdeService.layer.pipe(Layer.provide(NetService.layer)),
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),
@@ -804,6 +807,7 @@ const layerMakeRoutes = Layer.mergeAll(
     GuestHttp.layer,
     RemoteControlHttp.layer,
     DeviceHubProxy.layer,
+    IdeProxy.layer,
     ServerBrowserStream.routeLayer,
     ServerHttp.layerStaticAndDevRoute,
     Ws.layer,

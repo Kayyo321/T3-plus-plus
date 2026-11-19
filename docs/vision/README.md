@@ -57,7 +57,7 @@ client; gaps are named in the row. Mobile and desktop were not run for this tabl
 | Chat mode                       | Partial | Enforced per adapter; web and mobile controls exist; mobile not run.                                                                                                           |
 | Scheduled tasks                 | Partial | Service, settings page, and web notifications exist; a real scheduled run and notification were not observed.                                                                  |
 | Computer use                    | Partial | Service, web panel, and remote view exist; live backend untested.                                                                                                              |
-| IDE mode                        | Partial | Layout applies in the web client; composer is cramped at narrow widths.                                                                                                        |
+| IDE mode                        | Partial | VSCodium behind **IDE ↗** with theme sync and the agent rail; agent marks inside the editor are not built yet.                                                                 |
 | UI overhaul and ASCII landing   | Partial | ASCII landing and density shipped; wider overhaul incomplete.                                                                                                                  |
 
 ## Product principles for the fork
