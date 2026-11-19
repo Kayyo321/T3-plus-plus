@@ -169,3 +169,39 @@ export const injectWorkbenchConfiguration = (html: string, token: string): strin
       return whole;
     }
   });
+
+// T3's "++": two geometric plus signs with square ends, like the brand's monospace "++".
+const LOGO_ARM = 26;
+const LOGO_BAR = 6;
+const LOGO_GAP = 10;
+
+const logoShapes = () => {
+  const left = (100 - (LOGO_ARM * 2 + LOGO_GAP)) / 2;
+  const top = (100 - LOGO_ARM) / 2;
+  const inset = (LOGO_ARM - LOGO_BAR) / 2;
+  return [left, left + LOGO_ARM + LOGO_GAP]
+    .map(
+      (x) =>
+        `<rect x="${x}" y="${top + inset}" width="${LOGO_ARM}" height="${LOGO_BAR}" rx="1"/>` +
+        `<rect x="${x + inset}" y="${top}" width="${LOGO_BAR}" height="${LOGO_ARM}" rx="1"/>`,
+    )
+    .join("");
+};
+
+const logoSvg = (color: string, opacity: number) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><g fill="${color}" opacity="${opacity}">${logoShapes()}</g></svg>`;
+
+const IDE_BRAND_ASSETS: Readonly<Record<string, () => string>> = {
+  "letterpress-dark.svg": () => logoSvg("#B2B2B2", 0.3),
+  "letterpress-light.svg": () => logoSvg("#B2B2B2", 0.2),
+  "letterpress-hcDark.svg": () => logoSvg("#3C3C3C", 1),
+  "letterpress-hcLight.svg": () => logoSvg("#B2B2B2", 1),
+  "code-icon.svg": () => logoSvg("#8A8A8A", 1),
+};
+
+/** T3's "++" in place of VSCodium's mark: the empty-editor watermark and the app icon. */
+export const ideBrandAsset = (pathname: string): string | null => {
+  const match = /\/static\/out\/media\/([A-Za-z-]+\.svg)$/.exec(pathname);
+  const asset = match ? IDE_BRAND_ASSETS[match[1]!] : undefined;
+  return asset ? asset() : null;
+};

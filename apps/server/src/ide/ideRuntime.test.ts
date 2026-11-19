@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   IDE_WORKBENCH_DEFAULTS,
+  ideBrandAsset,
   ideOpenPath,
   injectWorkbenchConfiguration,
   ideReleaseAsset,
@@ -108,5 +109,21 @@ describe("injectWorkbenchConfiguration", () => {
     });
     expect(result.endsWith("<title>t</title></head>")).toBe(true);
     expect(injectWorkbenchConfiguration("<p>no editor</p>", "tok")).toBe("<p>no editor</p>");
+  });
+});
+
+describe("ideBrandAsset", () => {
+  it("replaces VSCodium's watermark and app icon, and nothing else", () => {
+    const media = "/ide/0123456789abcdef0123456789abcdef/stable-abc/static/out/media";
+    for (const name of [
+      "letterpress-dark",
+      "letterpress-light",
+      "letterpress-hcDark",
+      "code-icon",
+    ]) {
+      expect(ideBrandAsset(`${media}/${name}.svg`)).toContain("<svg");
+    }
+    expect(ideBrandAsset(`${media}/loading-dark.svg`)).toBeNull();
+    expect(ideBrandAsset(`${media}/letterpress-dark.svg.map`)).toBeNull();
   });
 });

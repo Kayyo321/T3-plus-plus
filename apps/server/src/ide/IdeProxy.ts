@@ -12,7 +12,12 @@ import {
 import * as Socket from "effect/socket/Socket";
 
 import { upstreamWebSocketConstructor } from "../device/DeviceHubProxy.ts";
-import { IDE_ROUTE_PREFIX, ideRequestSecret, injectWorkbenchConfiguration } from "./ideRuntime.ts";
+import {
+  IDE_ROUTE_PREFIX,
+  ideBrandAsset,
+  ideRequestSecret,
+  injectWorkbenchConfiguration,
+} from "./ideRuntime.ts";
 import * as IdeService from "./IdeService.ts";
 
 const DROPPED_REQUEST_HEADERS = new Set([
@@ -134,6 +139,13 @@ const handler = Effect.gen(function* () {
   const ide = yield* IdeService.IdeService;
   const target = secret === null ? null : yield* ide.proxyTarget(secret);
   if (target === null) return HttpServerResponse.text("Not Found", { status: 404 });
+  const brand = request.method === "GET" ? ideBrandAsset(url.value.pathname) : null;
+  if (brand !== null) {
+    return HttpServerResponse.text(brand, {
+      contentType: "image/svg+xml",
+      headers: { "cache-control": "public, max-age=86400", "referrer-policy": "no-referrer" },
+    });
+  }
   const upstreamUrl = `${target.origin}${url.value.pathname}${url.value.search}`;
   const headers = upstreamHeaders(request, target);
   if (request.headers.upgrade?.toLowerCase() === "websocket") {
