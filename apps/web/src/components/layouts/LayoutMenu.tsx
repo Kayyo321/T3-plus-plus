@@ -40,7 +40,7 @@ export function LayoutMenu(props: {
     <Toggle
       className="shrink-0 [-webkit-app-region:no-drag]"
       // A menu button, not a switch: a pressed look for a non-default layout reads as a stuck
-      // hover. The menu's check mark shows the active layout; the open menu still lights it.
+      // hover, so that state is the dot below. The open menu still lights it.
       pressed={false}
       aria-label="Layouts"
       data-layout-menu-trigger
@@ -49,6 +49,9 @@ export function LayoutMenu(props: {
       disabled={threadRef === null}
     >
       <LayoutDashboardIcon className="size-4" />
+      {activeId === DEFAULT_BUILT_IN_LAYOUT_ID ? null : (
+        <span aria-hidden className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary" />
+      )}
     </Toggle>
   );
   return (
