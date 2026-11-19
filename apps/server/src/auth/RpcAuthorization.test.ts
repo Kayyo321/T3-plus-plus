@@ -73,6 +73,9 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.terminalClear,
       WS_METHODS.terminalClose,
       WS_METHODS.previewStopLocalServer,
+      // The editor hosts its own terminals.
+      WS_METHODS.ideOpen,
+      WS_METHODS.ideSetTheme,
     ]) {
       expect(requiredScopeForRpcMethod(method)).toBe(AuthTerminalOperateScope);
     }

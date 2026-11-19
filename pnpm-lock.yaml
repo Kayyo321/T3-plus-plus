@@ -1061,6 +1061,9 @@ importers:
       '@pierre/diffs':
         specifier: 1.6.1
         version: 1.6.1(patch_hash=4645364ddf113e48e8827f3b4966b3b1ff745317011e5a3d904e2d8672dee7dc)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@pierre/theme':
+        specifier: 2.0.0
+        version: 2.0.0
       '@pierre/trees':
         specifier: 1.0.0-beta.6
         version: 1.0.0-beta.6(@pierre/theme@2.0.0)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(shiki@4.2.0)

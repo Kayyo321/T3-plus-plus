@@ -6,6 +6,7 @@ import { userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../../test/render";
 import { BUILT_IN_LAYOUTS } from "../../layouts/layoutDocument";
+import { WORKBENCH_LAYOUT } from "../../../test/layoutFixtures";
 import { arrangementFromDocument } from "../../layouts/threadArrangement";
 import { type RightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
 
@@ -36,7 +37,10 @@ vi.mock("../RightPanelTabs", () => ({
 const { ThreadWorkbench } = await import("./ThreadWorkbench");
 
 const threadRef = scopeThreadRef(EnvironmentId.make("env"), ThreadId.make("thread"));
-const layout = (id: string) => BUILT_IN_LAYOUTS.find((entry) => entry.id === id)!;
+const layout = (id: string) =>
+  id === WORKBENCH_LAYOUT.id
+    ? WORKBENCH_LAYOUT
+    : BUILT_IN_LAYOUTS.find((entry) => entry.id === id)!;
 const diff: RightPanelSurface = { id: "diff", kind: "diff" };
 
 function Workbench(props: { layoutId: string }) {
@@ -81,7 +85,7 @@ describe("ThreadWorkbench", () => {
     await using screen = await render(<Workbench layoutId="review" />, { router: false });
     await expect.element(screen.getByText("Surface diff")).toBeInTheDocument();
 
-    await screen.rerender(<Workbench layoutId="ide" />);
+    await screen.rerender(<Workbench layoutId="workbench" />);
 
     await expect.element(screen.getByText("Surface diff")).toBeInTheDocument();
     expect(mounts.get("diff")).toBe(1);
@@ -89,7 +93,7 @@ describe("ThreadWorkbench", () => {
 
   it("publishes the conversation's place for the chat column", async () => {
     using _state = setup();
-    await using screen = await render(<Workbench layoutId="ide" />, { router: false });
+    await using screen = await render(<Workbench layoutId="workbench" />, { router: false });
     await expect.element(screen.getByText("Surface diff")).toBeInTheDocument();
     const host = screen.container.querySelector<HTMLElement>("[data-layout]")!;
     expect(host.style.getPropertyValue("--workbench-chat-left")).toContain("calc(");

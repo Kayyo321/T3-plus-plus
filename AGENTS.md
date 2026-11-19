@@ -143,6 +143,15 @@ An empty database is a bad test. Seed your worktree's `.t3pp` with a copy of rea
 
 For mobile verification, a missing or outdated native client is an install step, not a blocker. Run `vp run mobile:install <ios|android> [device-id]` on the device host before starting Metro; it targets the only booted simulator or connected Android device when the id is omitted. It installs the dev client for this checkout's native fingerprint from the shared cache in seconds and builds only when no machine has built it yet, so prefer it over `expo run:*`, `xcodebuild`, or `gradlew`, which rebuild from scratch. Its stdout is one JSON line; build output goes to the log it names. See `test-t3-mobile` for the full workflow.
 
+## UI work
+
+T3's design system is authoritative: extend it, never replace it. Before frontend work, read
+[Web UI](docs/internals/web-ui.md), and follow its Theme, Verifying UI, and UI review sections. Build
+from `components/ui`, paint only from theme tokens, and verify in the real app across themes and
+window sizes before calling anything done; a build that passes proves nothing about how it looks.
+When available, the `frontend-design`, `web-design-guidelines`, `impeccable` (its polish pass), and
+`verification-before-completion` skills fit these stages.
+
 ## Evals
 
 `evals/` checks how real models behave with T3++'s model-facing text: agent instructions, MCP tool descriptions and schemas, and generated titles. Before you change that text, read [evals/README.md](evals/README.md) and run the evals it names. When you fix a model behavior bug, add a case that fails before the fix.

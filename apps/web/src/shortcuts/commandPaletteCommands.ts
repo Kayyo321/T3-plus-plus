@@ -1,3 +1,4 @@
+import { useIdeSurface } from "../ide/ideSurfaceStore";
 import type { AnyRouter } from "@tanstack/react-router";
 
 import {
@@ -97,6 +98,11 @@ export function installCommandPaletteCommands(
       "orchestrator.toggle": (event) => {
         consume(event);
         useOrchestratorDock.getState().toggle();
+      },
+      "ide.toggle": (event) => {
+        consume(event);
+        if (event.repeat) return;
+        useIdeSurface.getState().toggle();
       },
       "filePicker.toggle": toggleOverlay("filePicker.toggle"),
       "projectSearch.toggle": toggleOverlay("projectSearch.toggle"),

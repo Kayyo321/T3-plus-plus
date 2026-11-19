@@ -123,23 +123,6 @@ export const BUILT_IN_LAYOUTS: ReadonlyArray<LayoutDocument> = [
   builtIn("pair", "Pair", conversationGroup, {
     panes: { count: 2, sizes: [0.5, 0.5], linked: false },
   }),
-  builtIn(
-    "ide",
-    "IDE",
-    split(
-      "column",
-      [0.72, 0.28],
-      [
-        split(
-          "row",
-          [0.18, 0.54, 0.28],
-          [group("explorer", ["files"], ["files"]), group("editor", ["file"]), conversationGroup],
-        ),
-        group("tools", ["terminal", "diff", "git-graph"], ["terminal", "diff", "git-graph"]),
-      ],
-    ),
-    { settings: { threadDetails: false, terminalDrawer: false } },
-  ),
 ];
 
 export const DEFAULT_BUILT_IN_LAYOUT_ID = "focus";

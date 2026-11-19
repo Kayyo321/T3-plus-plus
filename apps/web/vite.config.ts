@@ -351,7 +351,9 @@ export default defineConfig(() => {
                 {
                   target: devProxyTarget,
                   changeOrigin: !DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES.has(prefix),
-                  ...(prefix === "/ws" || prefix === "/api" ? { ws: true } : {}),
+                  ...(prefix === "/ws" || prefix === "/api" || prefix === "/ide"
+                    ? { ws: true }
+                    : {}),
                 },
               ]),
             ),

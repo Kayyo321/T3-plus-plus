@@ -550,6 +550,7 @@ import {
   SourceControlSignInResult,
 } from "./sourceControl.ts";
 import { VcsError } from "./vcs.ts";
+import { IdeError, IdeOpenInput, IdeOpenResult, IdeThemeInput } from "./ide.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
@@ -565,6 +566,9 @@ export const WS_METHODS = {
   projectsCreateFromThread: "projects.createFromThread",
 
   shellOpenInEditor: "shell.openInEditor",
+
+  ideOpen: "ide.open",
+  ideSetTheme: "ide.setTheme",
 
   filesystemBrowse: "filesystem.browse",
   filesystemGetMetadata: "filesystem.getMetadata",
@@ -1592,6 +1596,17 @@ const WsProjectsCreateFromThreadRpc = Rpc.make(WS_METHODS.projectsCreateFromThre
 const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
   error: Schema.Union([ExternalLauncherError, EnvironmentAuthorizationError]),
+});
+
+const WsIdeOpenRpc = Rpc.make(WS_METHODS.ideOpen, {
+  payload: IdeOpenInput,
+  success: IdeOpenResult,
+  error: Schema.Union([IdeError, EnvironmentAuthorizationError]),
+});
+
+const WsIdeSetThemeRpc = Rpc.make(WS_METHODS.ideSetTheme, {
+  payload: IdeThemeInput,
+  error: Schema.Union([IdeError, EnvironmentAuthorizationError]),
 });
 
 const WsFilesystemGetMetadataRpc = Rpc.make(WS_METHODS.filesystemGetMetadata, {
@@ -2996,6 +3011,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsWriteFileRpc,
   WsProjectsMutateRpc,
   WsShellOpenInEditorRpc,
+  WsIdeOpenRpc,
+  WsIdeSetThemeRpc,
   WsFilesystemBrowseRpc,
   WsFilesystemGetMetadataRpc,
   WsAgentSessionsScanRpc,

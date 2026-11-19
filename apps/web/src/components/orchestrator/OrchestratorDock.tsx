@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId, OrchestratorUiDirective, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useEffectEvent } from "react";
+import { createPortal } from "react-dom";
 
 import { applyUiDirective, type UiDirective } from "../../layouts/uiDirectives";
 import { selectActiveRightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
@@ -10,6 +11,7 @@ import { usePrimaryEnvironmentId } from "../../state/environments";
 import { orchestratorEnvironment, useOrchestratorDock } from "../../state/orchestratorAgent";
 import { toastManager } from "../ui/toast";
 import OrchestratorPanel from "./OrchestratorPanel";
+import { useIdeSurface } from "../../ide/ideSurfaceStore";
 
 const uiDirectiveFor = (
   request: Exclude<
@@ -72,6 +74,9 @@ function DirectiveListener(props: { readonly environmentId: EnvironmentId }) {
 
 export function OrchestratorDock(props: { readonly threadRef: ScopedThreadRef | null }) {
   const open = useOrchestratorDock((state) => state.open);
+  const ideSlot = useIdeSurface((state) =>
+    state.surface === "ide" ? state.orchestratorSlot : null,
+  );
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const environmentId = props.threadRef?.environmentId ?? primaryEnvironmentId;
   const shell = useQuietThreadShell(props.threadRef);
@@ -91,10 +96,20 @@ export function OrchestratorDock(props: { readonly threadRef: ScopedThreadRef | 
           ...(shell.branch === null ? {} : { branch: shell.branch }),
           ...sheetFocus,
         };
+  const panel = open ? (
+    ideSlot === null ? (
+      <OrchestratorPanel environmentId={environmentId} focus={focus} />
+    ) : (
+      createPortal(
+        <OrchestratorPanel environmentId={environmentId} focus={focus} presentation="window" />,
+        ideSlot,
+      )
+    )
+  ) : null;
   return (
     <>
       <DirectiveListener environmentId={environmentId} />
-      {open ? <OrchestratorPanel environmentId={environmentId} focus={focus} /> : null}
+      {panel}
     </>
   );
 }

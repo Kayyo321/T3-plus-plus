@@ -3,6 +3,8 @@ import { Outlet, createFileRoute, redirect, useMatches } from "@tanstack/react-r
 import { useState } from "react";
 
 import { OrchestratorDock } from "../components/orchestrator/OrchestratorDock";
+import { IdeSurface } from "../ide/IdeSurface";
+import { useQuietThreadShell } from "../state/entities";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { SaveLayoutDialogHost } from "../components/layouts/SaveLayoutDialog";
 import { ThreadRouteView } from "../components/ThreadRouteView";
@@ -42,6 +44,19 @@ function ChatRouteLayout() {
       : shownDraft
         ? scopeThreadRef(shownDraft.environmentId, shownDraft.threadId)
         : null;
+  const dockThreadShell = useQuietThreadShell(
+    shownTarget?.kind === "server" ? shownTarget.threadRef : null,
+  );
+  const ideProjectId = dockThreadShell?.projectId ?? shownDraft?.projectId ?? null;
+  const ideCapability = dockThreadShell?.capabilityMode ?? shownDraft?.capabilityMode;
+  const ideTarget =
+    dockThreadRef !== null && ideProjectId !== null && ideCapability !== "chat"
+      ? {
+          environmentId: dockThreadRef.environmentId,
+          threadId: dockThreadRef.threadId,
+          projectId: ideProjectId,
+        }
+      : null;
   return (
     <>
       {shownTarget?.kind === "server" && !modalOpen ? (
@@ -56,6 +71,7 @@ function ChatRouteLayout() {
       )}
       {modalOpen ? <Outlet /> : null}
       <OrchestratorDock threadRef={dockThreadRef} />
+      <IdeSurface target={ideTarget} />
       <SaveLayoutDialogHost />
     </>
   );

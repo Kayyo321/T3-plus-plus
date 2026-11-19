@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { RightPanelSurface } from "../rightPanelStore";
+import { WORKBENCH_LAYOUT } from "../../test/layoutFixtures";
 import { BUILT_IN_LAYOUTS, findGroup, listGroups, type LayoutDocument } from "./layoutDocument";
 import {
   activeSurfaceOfGroup,
@@ -16,7 +17,7 @@ import {
 } from "./threadArrangement";
 
 const layout = (id: string): LayoutDocument => BUILT_IN_LAYOUTS.find((entry) => entry.id === id)!;
-const ide = () => arrangementFromDocument(layout("ide"), 1)!;
+const ide = () => arrangementFromDocument(WORKBENCH_LAYOUT, 1)!;
 
 const diff: RightPanelSurface = { id: "diff", kind: "diff" };
 const files: RightPanelSurface = { id: "files", kind: "files" };

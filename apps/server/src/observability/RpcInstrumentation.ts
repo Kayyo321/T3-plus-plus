@@ -249,6 +249,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.projectsCreateNew]: "orchestration",
   [WS_METHODS.projectsCreateFromThread]: "orchestration",
   [WS_METHODS.shellOpenInEditor]: "workspace",
+  [WS_METHODS.ideOpen]: "workspace",
+  [WS_METHODS.ideSetTheme]: "workspace",
   [WS_METHODS.filesystemBrowse]: "workspace",
   [WS_METHODS.filesystemGetMetadata]: "workspace",
   [WS_METHODS.agentSessionsScan]: "workspace",

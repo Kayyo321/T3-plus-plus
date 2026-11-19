@@ -180,6 +180,7 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+0", command: "preview.resetZoom", when: "previewFocus" },
   { key: "mod+k", command: "commandPalette.toggle", when: "!terminalFocus" },
   { key: "mod+alt+o", command: "orchestrator.toggle" },
+  { key: "mod+alt+e", command: "ide.toggle" },
   { key: "mod+p", command: "filePicker.toggle", when: "!terminalFocus" },
   { key: "mod+shift+f", command: "projectSearch.toggle", when: "!terminalFocus" },
   { key: "mod+alt+w", command: "workspaceBundle.switch", when: "!terminalFocus" },

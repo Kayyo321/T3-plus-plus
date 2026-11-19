@@ -19,6 +19,7 @@ import {
   readFocusedThreadRef,
   resetLayout,
 } from "./layoutActions";
+import { useIdeSurface } from "../ide/ideSurfaceStore";
 import { findLayout, useLayoutStore } from "./layoutStore";
 import { paneTargetKey } from "./splitView.logic";
 import { useSplitViewStore } from "./splitViewStore";
@@ -152,6 +153,10 @@ export function applyUiDirective(directive: UiDirective): UiDirectiveResult {
   switch (directive.type) {
     case "layout.apply": {
       const layout = findLayout(useLayoutStore.getState(), directive.layout);
+      if (layout === null && directive.layout.trim().toLowerCase() === "ide") {
+        useIdeSurface.getState().setSurface("ide");
+        return done;
+      }
       if (layout === null) return failed(`Unknown layout: ${directive.layout}`);
       applyLayout(threadRef, layout);
       return done;
