@@ -51,16 +51,3 @@ export function presenceLabel(status: Status): string {
       return "Done";
   }
 }
-
-export function threadInitial(title: string): string {
-  return /[\p{L}\p{N}]/u.exec(title)?.[0]?.toUpperCase() ?? "•";
-}
-
-/** A stable git-lane color per thread, so an agent keeps its color everywhere it shows. */
-export function threadLane(id: string): number {
-  let hash = 0;
-  for (let index = 0; index < id.length; index += 1) {
-    hash = (Math.imul(hash, 31) + id.charCodeAt(index)) >>> 0;
-  }
-  return hash % 8;
-}

@@ -31,6 +31,14 @@ const IDE_THEME_TOKENS = [
   "terminal-foreground",
   "terminal-cursor",
   "terminal-selection-background",
+  "git-lane-0",
+  "git-lane-1",
+  "git-lane-2",
+  "git-lane-3",
+  "git-lane-4",
+  "git-lane-5",
+  "git-lane-6",
+  "git-lane-7",
 ] as const;
 
 type IdeThemeToken = (typeof IDE_THEME_TOKENS)[number];
@@ -45,6 +53,15 @@ const withAlpha = (hex: string, alpha: number) =>
 function vscodeColorsFromTokens(t: ResolvedIdeTokens): Record<string, string> {
   const chrome = t.background;
   return {
+    // Agent lanes for T3's margin extension, so gutter marks and badges match the rail.
+    "t3pp.lane0": t["git-lane-0"],
+    "t3pp.lane1": t["git-lane-1"],
+    "t3pp.lane2": t["git-lane-2"],
+    "t3pp.lane3": t["git-lane-3"],
+    "t3pp.lane4": t["git-lane-4"],
+    "t3pp.lane5": t["git-lane-5"],
+    "t3pp.lane6": t["git-lane-6"],
+    "t3pp.lane7": t["git-lane-7"],
     foreground: t.foreground,
     descriptionForeground: t["muted-foreground"],
     focusBorder: t.ring,

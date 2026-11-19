@@ -40,6 +40,29 @@ Code's color keys, with pierre's token colors so syntax matches diffs. Tailwind'
 emits no `--color-*` variables, so the bridge reads the variables behind them, and reads sidebar
 tokens inside a `[data-app-sidebar]` scope because the sidebar re-scopes them.
 
+## Margin extension
+
+The editor marks what the open thread's agent changed in its latest turn, badges those files, and
+offers Accept and Revert per hunk. A small extension does this from inside the editor
+([`marginExtension.ts`](../../apps/server/src/ide/marginExtension.ts)); the data comes from
+[`IdeAgentChanges.ts`](../../apps/server/src/ide/IdeAgentChanges.ts).
+
+- **Built in, not installed.** VSCodium prunes extensions it did not install itself, so the service
+  writes the extension into the install's own `extensions/` folder before each start.
+- **Loopback, behind the path.** The extension runs in the editor's extension host, which holds no
+  T3 session and cannot reach the client's WebSocket. It calls `/ide/<secret>/.t3pp/` on the server
+  over loopback (`T3PP_IDE_ENDPOINT`). The secret is the same capability that opens the editor, and
+  only `ide.open`, under terminal scope, hands it out. The feed is only for the thread `ide.open`
+  last bound to that folder; the extension cannot ask for another. The feed request long-polls on
+  the thread's run and checkpoint events.
+- **Hunks come from the checkpoint diff.** The feed is the turn diff from `CheckpointDiffQuery`,
+  with whitespace kept so hunks apply byte for byte. Each hunk is located in the file as it is now,
+  so a hunk the user edited or reverted drops out. Revert and its undo apply one hunk through the
+  checkpoint store's `applyPatch`, renumbered to where it sits now: Git pins a hunk that starts at
+  line 1 to the file's start.
+- **Accept stays in the editor.** The change is already on disk, so accepting only hides its marks,
+  per editor window. `Show Accepted Agent Changes Again` brings them back.
+
 ## Memory
 
 Every editor window runs an extension host and its language servers; TypeScript alone can take

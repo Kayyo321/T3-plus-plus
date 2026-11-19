@@ -1,7 +1,13 @@
 // The path secret is the capability: only `ide.open`, which requires terminal scope, hands it
 // out. Cookies cannot authenticate here because desktop frames the editor cross-site.
+import {
+  IdeAgentChanges as IdeAgentChangesFeed,
+  IdeAgentChangesInput,
+  IdeAgentHunkActionInput,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import {
   HttpClient,
   HttpClientRequest,
@@ -12,8 +18,10 @@ import {
 import * as Socket from "effect/socket/Socket";
 
 import { upstreamWebSocketConstructor } from "../device/DeviceHubProxy.ts";
+import * as IdeAgentChanges from "./IdeAgentChanges.ts";
 import {
   IDE_ROUTE_PREFIX,
+  ideAgentRoute,
   ideBrandAsset,
   ideRequestSecret,
   injectWorkbenchConfiguration,
@@ -131,6 +139,45 @@ const proxyHttp = Effect.fn("IdeProxy.proxyHttp")(function* (
   });
 });
 
+const decodeChangesInput = Schema.decodeUnknownEffect(IdeAgentChangesInput);
+const decodeHunkInput = Schema.decodeUnknownEffect(Schema.fromJsonString(IdeAgentHunkActionInput));
+const encodeChanges = Schema.encodeEffect(IdeAgentChangesFeed);
+
+const AGENT_HEADERS = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
+
+const agentError = (status: number, message: string) =>
+  HttpServerResponse.jsonUnsafe({ message }, { status, headers: AGENT_HEADERS });
+
+/** The margin extension's feed and hunk actions, behind the same capability as the editor. */
+const agentRoute = Effect.fn("IdeProxy.agentRoute")(function* (
+  request: HttpServerRequest.HttpServerRequest,
+  route: string,
+  url: URL,
+) {
+  const agentChanges = yield* IdeAgentChanges.IdeAgentChanges;
+  if (route === "changes" && request.method === "GET") {
+    const input = yield* decodeChangesInput({
+      folder: url.searchParams.get("folder") ?? "",
+      ...(url.searchParams.has("after") ? { after: url.searchParams.get("after") } : {}),
+    }).pipe(Effect.option);
+    if (Option.isNone(input)) return agentError(400, "Bad Request");
+    return yield* agentChanges.changes(input.value).pipe(
+      Effect.flatMap(encodeChanges),
+      Effect.map((body) => HttpServerResponse.jsonUnsafe(body, { headers: AGENT_HEADERS })),
+      Effect.catch((error) => Effect.succeed(agentError(409, error.message))),
+    );
+  }
+  if (route === "hunk" && request.method === "POST") {
+    const input = yield* request.text.pipe(Effect.flatMap(decodeHunkInput), Effect.option);
+    if (Option.isNone(input)) return agentError(400, "Bad Request");
+    return yield* agentChanges.applyHunk(input.value).pipe(
+      Effect.as(HttpServerResponse.empty({ status: 204, headers: AGENT_HEADERS })),
+      Effect.catch((error) => Effect.succeed(agentError(409, error.message))),
+    );
+  }
+  return agentError(404, "Not Found");
+});
+
 const handler = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
   const url = HttpServerRequest.toURL(request);
@@ -139,6 +186,8 @@ const handler = Effect.gen(function* () {
   const ide = yield* IdeService.IdeService;
   const target = secret === null ? null : yield* ide.proxyTarget(secret);
   if (target === null) return HttpServerResponse.text("Not Found", { status: 404 });
+  const route = ideAgentRoute(url.value.pathname);
+  if (route !== null) return yield* agentRoute(request, route, url.value);
   const brand = request.method === "GET" ? ideBrandAsset(url.value.pathname) : null;
   if (brand !== null) {
     return HttpServerResponse.text(brand, {

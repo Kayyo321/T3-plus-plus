@@ -22,7 +22,8 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+import { HttpClient, HttpClientRequest, HttpClientResponse, HttpServer } from "effect/http";
+import * as NetAddress from "effect/net/NetAddress";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as NodeCrypto from "node:crypto";
@@ -31,11 +32,14 @@ import { ServerConfig } from "../config.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import { threadWorkspaceRoot } from "../project/threadWorkspaceRoot.ts";
+import * as IdeAgentChanges from "./IdeAgentChanges.ts";
+import { IDE_MARGIN_EXTENSION, IDE_MARGIN_EXTENSION_DIR } from "./marginExtension.ts";
 import {
   ideBasePath,
   ideOpenPath,
   ideReleaseAsset,
   ideServerCommand,
+  ideAgentEndpointPath,
   mergeIdeMachineSettings,
   parseIdeSettings,
   VSCODIUM_VERSION,
@@ -90,6 +94,16 @@ const make = Effect.gen(function* () {
   const arch = yield* HostProcess.Architecture;
   const threads = yield* ThreadManagementService.ThreadManagementService;
   const projects = yield* ProjectService.ProjectService;
+  const agentChanges = yield* IdeAgentChanges.IdeAgentChanges;
+  const httpServer = yield* HttpServer.HttpServer;
+  // The margin extension runs beside the editor and reaches this server over loopback.
+  const loopbackOrigin = NetAddress.isInetAddress(httpServer.address)
+    ? `http://${
+        NetAddress.isUnspecified(httpServer.address.address)
+          ? "127.0.0.1"
+          : NetAddress.formatUrlHostString(NetAddress.formatIp(httpServer.address.address))
+      }:${httpServer.address.port}`
+    : null;
 
   const installDir = path.join(
     config.baseDir,
@@ -204,8 +218,23 @@ const make = Effect.gen(function* () {
     );
   });
 
+  /** Built in rather than installed: VSCodium prunes extensions it did not install itself. */
+  const writeMarginExtension = Effect.fn("IdeService.writeMarginExtension")(
+    function* () {
+      const dir = path.join(installDir, "extensions", IDE_MARGIN_EXTENSION_DIR);
+      yield* fs.makeDirectory(dir, { recursive: true });
+      for (const [name, contents] of Object.entries(IDE_MARGIN_EXTENSION)) {
+        const target = path.join(dir, name);
+        const current = yield* fs.readFileString(target).pipe(Effect.orElseSucceed(() => null));
+        if (current !== contents) yield* fs.writeFileString(target, contents);
+      }
+    },
+    Effect.mapError(() => failure("install_failed", "Could not install T3's editor extension.")),
+  );
+
   const spawnEditor = Effect.fn("IdeService.spawnEditor")(function* () {
     const command = yield* ensureInstalled();
+    yield* writeMarginExtension();
     yield* writeMachineSettings();
     const token = NodeCrypto.randomBytes(32).toString("hex");
     const secret = NodeCrypto.randomBytes(16).toString("hex");
@@ -240,7 +269,17 @@ const make = Effect.gen(function* () {
               "--reconnection-grace-time",
               String(RECONNECTION_GRACE_SECONDS),
             ],
-            { detached: false, shell: false, stdout: "ignore", stderr: "ignore" },
+            {
+              detached: false,
+              shell: false,
+              stdout: "ignore",
+              stderr: "ignore",
+              extendEnv: true,
+              env:
+                loopbackOrigin === null
+                  ? {}
+                  : { T3PP_IDE_ENDPOINT: `${loopbackOrigin}${ideAgentEndpointPath(secret)}` },
+            },
           ),
         )
         .pipe(
@@ -291,6 +330,7 @@ const make = Effect.gen(function* () {
       return yield* failure("folder_missing", "This conversation has no folder to open.");
     }
     const running = yield* ensureRunning;
+    yield* agentChanges.bind(folder, input.threadId);
     return { path: ideOpenPath(running.secret, platform, folder) };
   });
 

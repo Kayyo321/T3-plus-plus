@@ -69,6 +69,12 @@ export interface VcsCheckpointOps {
     readonly paths: ReadonlyArray<string>;
     readonly message: string;
   }) => Effect.Effect<void, VcsError>;
+  /** Applies part of a checkpoint diff to the worktree, or takes it back out. False when it no longer fits. */
+  readonly applyPatch: (input: {
+    readonly cwd: string;
+    readonly patch: string;
+    readonly reverse: boolean;
+  }) => Effect.Effect<boolean, VcsError>;
 }
 
 export class VcsDriver extends Context.Service<

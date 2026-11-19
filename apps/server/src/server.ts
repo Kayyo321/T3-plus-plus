@@ -78,6 +78,7 @@ import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import * as DeviceHubProxy from "./device/DeviceHubProxy.ts";
+import * as IdeAgentChanges from "./ide/IdeAgentChanges.ts";
 import * as IdeProxy from "./ide/IdeProxy.ts";
 import * as IdeService from "./ide/IdeService.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -692,7 +693,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ProviderUsageLimitsIngestion.layer,
   layerProviderInstallationRefresh,
   ReplayMarkers.layer,
-  IdeService.layer.pipe(Layer.provide(NetService.layer)),
+  IdeService.layer.pipe(Layer.provideMerge(IdeAgentChanges.layer), Layer.provide(NetService.layer)),
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),

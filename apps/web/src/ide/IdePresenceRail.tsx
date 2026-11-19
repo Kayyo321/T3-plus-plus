@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { type ScopedThreadRef, threadInitial, threadLane } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { MessageCircleIcon } from "lucide-react";
 import { useState } from "react";
@@ -19,7 +19,7 @@ import { useOrchestratorDock } from "../state/orchestratorAgent";
 import { environmentThreadDetails } from "../state/threads";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useIdeSurface } from "./ideSurfaceStore";
-import { presenceLabel, presenceThreads, threadInitial, threadLane } from "./presence.logic";
+import { presenceLabel, presenceThreads } from "./presence.logic";
 
 type ThreadStatus = ReturnType<typeof resolveSidebarThreadStatus>;
 

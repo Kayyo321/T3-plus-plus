@@ -34,6 +34,18 @@ The rail on the right edge shows the conversations working in this project:
 The orchestrator mark at the top of the rail, or Ctrl+Alt+O (Cmd+Option+O on macOS), opens the orchestrator in a
 window over the editor.
 
+## See what an agent changed
+
+After a turn, the editor marks the lines the conversation's agent changed, in that conversation's
+color from the rail. Files it touched carry its letter in the Explorer.
+
+Above each change, **Accept** keeps it and clears its marks; **Revert** puts those lines back the
+way they were before the turn, and **Undo** in the notification brings the change back. Revert
+works one change at a time, and only while those lines still read the way the agent left them.
+Accepted marks come back with `T3++: Show Accepted Agent Changes Again` in the command palette.
+
+Marks cover the latest finished turn. Lines you edit afterwards stop counting as the agent's.
+
 ## Theme
 
 The editor uses your T3++ theme, including custom and imported themes, and follows it when you

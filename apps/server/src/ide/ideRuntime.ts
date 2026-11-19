@@ -57,6 +57,16 @@ export const ideServerCommand = (
 
 export const ideBasePath = (secret: string) => `${IDE_ROUTE_PREFIX}/${secret}`;
 
+/** T3's own routes inside the editor's path, which VSCodium never serves. */
+const IDE_AGENT_SEGMENT = ".t3pp";
+
+export const ideAgentEndpointPath = (secret: string) =>
+  `${ideBasePath(secret)}/${IDE_AGENT_SEGMENT}`;
+
+/** `changes` or `hunk` for a request to T3's routes inside the editor's path. */
+export const ideAgentRoute = (pathname: string): string | null =>
+  /^\/ide\/[A-Za-z0-9_-]{16,}\/\.t3pp\/([a-z]+)$/.exec(pathname)?.[1] ?? null;
+
 /** The capability in an editor request path, or null when the path is not an editor path. */
 export const ideRequestSecret = (pathname: string): string | null => {
   const match = /^\/ide\/([A-Za-z0-9_-]{16,})(?:\/|$)/.exec(pathname);

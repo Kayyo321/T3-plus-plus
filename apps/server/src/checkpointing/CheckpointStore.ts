@@ -75,6 +75,10 @@ export class CheckpointStore extends Context.Service<
     readonly stashPaths: (
       input: Parameters<VcsCheckpointOps["stashPaths"]>[0],
     ) => Effect.Effect<void, CheckpointStoreError>;
+
+    readonly applyPatch: (
+      input: Parameters<VcsCheckpointOps["applyPatch"]>[0],
+    ) => Effect.Effect<boolean, CheckpointStoreError>;
   }
 >()("t3pp/checkpointing/CheckpointStore") {}
 
@@ -136,6 +140,13 @@ export const make = Effect.gen(function* () {
     },
   );
 
+  const applyPatch: CheckpointStore["Service"]["applyPatch"] = Effect.fn("applyPatch")(
+    function* (input) {
+      const checkpoints = yield* resolveCheckpoints(input.cwd);
+      return yield* checkpoints.applyPatch(input);
+    },
+  );
+
   const deleteCheckpointRefs: CheckpointStore["Service"]["deleteCheckpointRefs"] = Effect.fn(
     "deleteCheckpointRefs",
   )(function* (input) {
@@ -152,6 +163,7 @@ export const make = Effect.gen(function* () {
     listAuthoredPaths,
     deleteCheckpointRefs,
     stashPaths,
+    applyPatch,
   });
 });
 

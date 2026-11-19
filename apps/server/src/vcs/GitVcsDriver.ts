@@ -1477,6 +1477,28 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         stdin: input.paths.join("\0"),
       });
     }),
+    applyPatch: Effect.fn("GitVcsDriver.checkpoints.applyPatch")(function* (input) {
+      // Paths are repository-relative; outside the root, `git apply` would skip them silently.
+      const root = yield* execute({
+        operation: "GitVcsDriver.checkpoints.applyPatch",
+        cwd: input.cwd,
+        args: ["rev-parse", "--show-toplevel"],
+      });
+      const applied = yield* execute({
+        operation: "GitVcsDriver.checkpoints.applyPatch",
+        cwd: root.stdout.trim(),
+        args: [
+          ...longPaths,
+          "apply",
+          "--whitespace=nowarn",
+          ...(input.reverse ? ["--reverse"] : []),
+          "-",
+        ],
+        stdin: input.patch,
+        allowNonZeroExit: true,
+      });
+      return applied.exitCode === 0;
+    }),
   };
 
   return {
